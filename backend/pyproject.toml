@@ -1,0 +1,27 @@
+[project]
+name = "advisor-backend"
+version = "0.1.0"
+description = "Portfolio advisor backend"
+authors = [
+    { name = "Clara Rodriguez Acevedo", email = "spainpenguincubes@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.3",
+    "fastapi>=0.159.1",
+    "feedparser>=6.0.14",
+    "google-genai>=2.32.0",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.16.1",
+    "supabase>=2.33.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "psycopg[binary]>=3.3.6",
+    "python-dotenv>=1.2.4",
+]
