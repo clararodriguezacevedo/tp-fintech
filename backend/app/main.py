@@ -62,9 +62,15 @@ def require_api_key(request: Request, x_api_key: str | None = Header(None)) -> N
         raise HTTPException(401, "missing or wrong X-API-Key")
 
 
+_public_docs = get_settings().vercel_env != "production"
+
 app = FastAPI(
     title="Portfolio advisor", lifespan=lifespan, generate_unique_id_function=_operation_id,
     dependencies=[Depends(require_api_key)],
+    # The interactive docs and schema stay local; in production they'd advertise every route.
+    docs_url="/docs" if _public_docs else None,
+    redoc_url="/redoc" if _public_docs else None,
+    openapi_url="/openapi.json" if _public_docs else None,
 )
 app.add_middleware(
     CORSMiddleware,

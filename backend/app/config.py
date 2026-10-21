@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     api_key: str = ""
     # Comma-separated origins allowed by CORS, e.g. the deployed frontend's URL.
     allowed_origins: str = "http://localhost:3000"
+    # Set by Vercel itself ("production", "preview", "development"); empty when run locally.
+    vercel_env: str = ""
 
     # The scheduled jobs run on GitHub Actions (.github/workflows). Turn this on only to run
     # them inside the API process instead, e.g. offline development.

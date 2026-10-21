@@ -8,6 +8,7 @@ app.trading.paper.
 Every response is validated into the models in app.models.iol.
 """
 
+import logging
 import time
 from collections import defaultdict
 from datetime import date, timedelta
@@ -23,6 +24,8 @@ from app.models.iol import (
 )
 
 BASE_URL = "https://api.invertironline.com"
+
+log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -71,6 +74,7 @@ class IOLClient:
     # Auth
 
     def _auth(self, data: dict[str, str]) -> None:
+        log.info("IOL auth: %s grant", data["grant_type"])
         r = self._http.post("/token", data=data)
         r.raise_for_status()
         token = Token.model_validate(r.json())
@@ -106,11 +110,28 @@ class IOLClient:
             {"grant_type": "password", "username": self._username, "password": self._password}
         )
 
+    def _recover_from_401(self) -> None:
+        log.info("IOL answered 401; recovering the session")
+        """IOL keeps one live token per user, so another process renewing the session (an Actions
+        run, a different Vercel instance) revokes ours before it expires. Take the newer session
+        from the store if there is one; otherwise renew it ourselves."""
+        stale = self._token
+        self._load_session()
+        if self._token and self._token != stale and time.time() < self._expires_at:
+            return
+        self._expires_at = 0.0  # force _ensure_token to renew
+        self._ensure_token()
+
     def _request(self, method: str, path: str, **kwargs) -> object:
         self._ensure_token()
         r = self._http.request(
             method, path, headers={"Authorization": f"Bearer {self._token}"}, **kwargs
         )
+        if r.status_code == 401:
+            self._recover_from_401()
+            r = self._http.request(
+                method, path, headers={"Authorization": f"Bearer {self._token}"}, **kwargs
+            )
         r.raise_for_status()
         return r.json()
 

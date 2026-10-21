@@ -1,0 +1,6 @@
+# Never upload secrets or local environments in a Vercel deploy.
+.env
+.env.*
+.venv/
+__pycache__/
+scripts/
