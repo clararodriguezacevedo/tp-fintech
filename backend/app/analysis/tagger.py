@@ -21,17 +21,33 @@ ALL_TICKERS = sorted({t for group in UNIVERSE.values() for t in group})
 
 log = logging.getLogger(__name__)
 
-SYSTEM = f"""You tag financial news and prediction markets for an Argentine retail investor.
+SYSTEM = """You tag financial news and prediction markets for an Argentine retail investor.
 
 For each item, list the tickers it could move on the next trading day, with direction and
-strength. Only use tickers from this list: {", ".join(ALL_TICKERS)}.
+strength. Only use tickers from this list: {tickers}.
 Use "MERVAL" for broad Argentine equity impact and "BONOS" for broad sovereign bond impact.
-
+{holdings}
 For a prediction market, the direction refers to the YES outcome becoming more likely.
 Return an empty ticker list when nothing on the list is plausibly affected; most sports,
 celebrity and weather items fall here.
 
 Write the summary in Spanish, one or two plain sentences an average investor understands."""
+
+
+def _system(holdings: dict[str, str]) -> str:
+    """holdings: ticker -> description, for positions outside the base universe."""
+    extra = ""
+    if holdings:
+        lines = "\n".join(f"- {t}: {d}" for t, d in sorted(holdings.items()))
+        extra = f"\nThe investor also holds these, which are on the list too:\n{lines}\n"
+    return SYSTEM.format(tickers=", ".join(sorted(set(ALL_TICKERS) | set(holdings))), holdings=extra)
+
+
+class TagInput(BaseModel):
+    id: str
+    kind: Literal["news", "market"]
+    title: str
+    text: str = ""
 
 
 class TickerImpact(BaseModel):
@@ -61,19 +77,21 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def tag_items(items: list[dict]) -> list[TaggedItem]:
-    """items: dicts with id, kind ("news" | "market"), title, text. Send ~20 per call."""
+def tag_items(items: list[TagInput], holdings: dict[str, str] | None = None) -> list[TaggedItem]:
+    """Tag a batch of news and markets. Send ~20 per call.
+
+    holdings: ticker -> description of the user's positions, so they can be tagged too.
+    """
+    holdings = holdings or {}
     if not items:
         return []
-    lines = [
-        f"[{it['id']}] ({it['kind']}) {it['title']}\n{it.get('text', '')[:600]}" for it in items
-    ]
+    lines = [f"[{it.id}] ({it.kind}) {it.title}\n{it.text[:600]}" for it in items]
     try:
         response = _get_client().models.generate_content(
             model=get_settings().tagger_model,
             contents="\n\n".join(lines),
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM,
+                system_instruction=_system(holdings),
                 response_mime_type="application/json",
                 response_schema=TagBatch,
             ),
@@ -85,7 +103,7 @@ def tag_items(items: list[dict]) -> list[TaggedItem]:
     batch = response.parsed
     if not isinstance(batch, TagBatch):
         return []
-    allowed = set(ALL_TICKERS) | {"MERVAL", "BONOS"}
+    allowed = set(ALL_TICKERS) | set(holdings) | {"MERVAL", "BONOS"}
     for item in batch.items:
         item.impacts = [i for i in item.impacts if i.ticker in allowed]
     return batch.items

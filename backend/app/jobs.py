@@ -2,11 +2,15 @@
 
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 
 import httpx
 
-from app.analysis.tagger import tag_items
-from app.db import get_db
+from app.analysis import scoring, track_record
+from app.analysis.tagger import TagInput, tag_items
+from app.db import get_db, rows_as
+from app.models.db import MarketRow, NewsRow
+from app.portfolio import get_holdings
 from app.sources import kalshi, news, polymarket
 
 log = logging.getLogger(__name__)
@@ -23,45 +27,41 @@ SNAPSHOT_MIN_MOVE = 0.005
 
 def _current_probabilities(external_ids: list[str]) -> dict[tuple[str, str], float | None]:
     # Chunked so the PostgREST query string stays short.
-    out = {}
+    out: dict[tuple[str, str], float | None] = {}
     for i in range(0, len(external_ids), 100):
-        rows = (
-            get_db().table("prediction_markets").select("source,external_id,probability")
-            .in_("external_id", external_ids[i : i + 100]).execute().data
+        rows = rows_as(
+            MarketRow,
+            get_db().table("prediction_markets").select("*")
+            .in_("external_id", external_ids[i : i + 100]).execute().data,
         )
-        out.update({(r["source"], r["external_id"]): r["probability"] for r in rows})
+        out.update({(r.source, r.external_id): r.probability for r in rows})
     return out
 
 
-def _moved(before, after) -> bool:
+def _moved(before: float | None, after: float | None) -> bool:
     if after is None:
         return False
     if before is None:
         return True
-    return abs(float(after) - float(before)) >= SNAPSHOT_MIN_MOVE
+    return abs(after - before) >= SNAPSHOT_MIN_MOVE
 
 
 def collect_markets() -> None:
     db = get_db()
     with httpx.Client(timeout=30) as client:
         markets = polymarket.fetch_markets(client) + kalshi.fetch_markets(client)
-    previous = _current_probabilities([m["external_id"] for m in markets])
-    rows = [{**m, "updated_at": _now()} for m in markets]
-    saved = (
-        db.table("prediction_markets")
-        .upsert(rows, on_conflict="source,external_id")
-        .execute()
-        .data
+    previous = _current_probabilities([m.external_id for m in markets])
+    rows = [m.model_dump(mode="json") | {"updated_at": _now()} for m in markets]
+    saved = rows_as(
+        MarketRow,
+        db.table("prediction_markets").upsert(rows, on_conflict="source,external_id").execute().data,
     )
     # Only snapshot markets whose probability moved, so the free-tier database doesn't fill up
     # with identical rows every 10 minutes.
-    changed = [
-        r for r in saved
-        if _moved(previous.get((r["source"], r["external_id"])), r["probability"])
-    ]
+    changed = [r for r in saved if _moved(previous.get((r.source, r.external_id)), r.probability)]
     if changed:
         db.table("market_snapshots").insert(
-            [{"market_id": r["id"], "probability": r["probability"], "volume_24h": r["volume_24h"]}
+            [{"market_id": r.id, "probability": r.probability, "volume_24h": r.volume_24h}
              for r in changed]
         ).execute()
     log.info("saved %d markets, %d snapshots", len(saved), len(changed))
@@ -72,19 +72,25 @@ def collect_news() -> None:
         items = news.fetch_all(client)
     if items:
         get_db().table("news_items").upsert(
-            items, on_conflict="external_id", ignore_duplicates=True
+            [n.model_dump(mode="json") for n in items], on_conflict="external_id",
+            ignore_duplicates=True,
         ).execute()
     log.info("fetched %d news items", len(items))
 
 
-def _save_tags(table: str, kind: str, rows: list[dict], text_key: str | None) -> None:
+def _holding_descriptions() -> dict[str, str]:
+    try:
+        return {h.ticker: h.description for h in get_holdings()}
+    except Exception:
+        log.exception("could not load holdings; tagging with the base universe only")
+        return {}
+
+
+def _save_tags(table: str, kind: Literal["news", "market"], items: list[TagInput],
+               holdings: dict[str, str]) -> None:
     db = get_db()
-    tagged = tag_items(
-        [{"id": r["id"], "kind": kind, "title": r["title"], "text": r.get(text_key) or ""}
-         for r in rows]
-    )
     impacts = []
-    for item in tagged:
+    for item in tag_items(items, holdings):
         db.table(table).update({"ai_summary": item.summary, "tagged_at": _now()}).eq(
             "id", item.id
         ).execute()
@@ -98,24 +104,45 @@ def _save_tags(table: str, kind: str, rows: list[dict], text_key: str | None) ->
 def tag_pending() -> None:
     """Tag news and markets that haven't been through the LLM yet."""
     db = get_db()
-    pending_news = (
-        db.table("news_items").select("id,title,summary").is_("tagged_at", "null")
-        .order("published_at", desc=True).limit(TAG_BATCH_SIZE).execute().data
+    holdings = _holding_descriptions()
+    pending_news = rows_as(
+        NewsRow,
+        db.table("news_items").select("*").is_("tagged_at", "null")
+        .order("published_at", desc=True).limit(TAG_BATCH_SIZE).execute().data,
     )
     if pending_news:
-        _save_tags("news_items", "news", pending_news, "summary")
+        _save_tags("news_items", "news", [
+            TagInput(id=n.id, kind="news", title=n.title, text=n.summary or "") for n in pending_news
+        ], holdings)
 
-    pending_markets = (
-        db.table("prediction_markets").select("id,title").is_("tagged_at", "null")
-        .order("volume_24h", desc=True).limit(TAG_BATCH_SIZE).execute().data
+    pending_markets = rows_as(
+        MarketRow,
+        db.table("prediction_markets").select("*").is_("tagged_at", "null")
+        .order("volume_24h", desc=True).limit(TAG_BATCH_SIZE).execute().data,
     )
     if pending_markets:
-        _save_tags("prediction_markets", "market", pending_markets, None)
+        _save_tags("prediction_markets", "market", [
+            TagInput(id=m.id, kind="market", title=m.title) for m in pending_markets
+        ], holdings)
+
+
+def score_live() -> None:
+    recs = scoring.score_all("live")
+    log.info("scored %d tickers (live)", len(recs))
 
 
 def run_cycle() -> None:
-    for job in (collect_markets, collect_news, tag_pending):
+    for job in (collect_markets, collect_news, tag_pending, score_live):
         try:
             job()
         except Exception:
             log.exception("%s failed", job.__name__)
+
+
+def after_close() -> None:
+    """17:30 on weekdays: grade the day's recommendations, then issue tomorrow's."""
+    for job in (track_record.evaluate_pending, lambda: scoring.score_all("daily")):
+        try:
+            job()
+        except Exception:
+            log.exception("after-close job failed")

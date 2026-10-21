@@ -7,6 +7,9 @@ from time import mktime
 import feedparser
 import httpx
 
+from app.models.domain import NewsRecord
+from app.models.gdelt import ArtList
+
 RSS_FEEDS = {
     "ambito": "https://www.ambito.com/rss/pages/economia.xml",
     "infobae": "https://www.infobae.com/arc/outboundfeeds/rss/category/economia/",
@@ -28,7 +31,7 @@ def _id(url: str) -> str:
     return hashlib.sha1(url.encode()).hexdigest()
 
 
-def fetch_rss(client: httpx.Client) -> list[dict]:
+def fetch_rss(client: httpx.Client) -> list[NewsRecord]:
     out = []
     for source, url in RSS_FEEDS.items():
         try:
@@ -37,25 +40,25 @@ def fetch_rss(client: httpx.Client) -> list[dict]:
         except httpx.HTTPError:
             continue
         for e in feedparser.parse(r.content).entries:
+            link, title = e.get("link"), e.get("title")
+            if not isinstance(link, str) or not isinstance(title, str):
+                continue
             published = e.get("published_parsed") or e.get("updated_parsed")
-            out.append(
-                {
-                    "external_id": _id(e.link),
-                    "source": source,
-                    "title": e.title,
-                    "summary": e.get("summary", "")[:1000],
-                    "url": e.link,
-                    "published_at": (
-                        datetime.fromtimestamp(mktime(published), tz=timezone.utc).isoformat()
-                        if published
-                        else None
-                    ),
-                }
-            )
+            out.append(NewsRecord(
+                external_id=_id(link),
+                source=source,
+                title=title,
+                summary=str(e.get("summary", ""))[:1000],
+                url=link,
+                published_at=(
+                    datetime.fromtimestamp(mktime(published), tz=timezone.utc)  # type: ignore[arg-type]
+                    if published else None
+                ),
+            ))
     return out
 
 
-def fetch_gdelt(client: httpx.Client, timespan: str = "1h") -> list[dict]:
+def fetch_gdelt(client: httpx.Client, timespan: str = "1h") -> list[NewsRecord]:
     r = client.get(
         GDELT_URL,
         params={
@@ -68,25 +71,21 @@ def fetch_gdelt(client: httpx.Client, timespan: str = "1h") -> list[dict]:
         },
         headers=HEADERS,
     )
-    # GDELT answers rate-limited calls with a 200 and a plain-text body.
+    # GDELT answers rate-limited calls with a plain-text body (sometimes with a 200).
     if "json" not in r.headers.get("content-type", ""):
         return []
-    out = []
-    for a in r.json().get("articles", []):
-        seen = datetime.strptime(a["seendate"], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-        out.append(
-            {
-                "external_id": _id(a["url"]),
-                "source": a.get("domain", "gdelt"),
-                "title": a["title"],
-                "summary": "",
-                "url": a["url"],
-                "published_at": seen.isoformat(),
-            }
+    return [
+        NewsRecord(
+            external_id=_id(a.url),
+            source=a.domain or "gdelt",
+            title=a.title,
+            url=a.url,
+            published_at=a.seendate,
         )
-    return out
+        for a in ArtList.model_validate(r.json()).articles
+    ]
 
 
-def fetch_all(client: httpx.Client) -> list[dict]:
-    items = {n["external_id"]: n for n in fetch_rss(client) + fetch_gdelt(client)}
+def fetch_all(client: httpx.Client) -> list[NewsRecord]:
+    items = {n.external_id: n for n in fetch_rss(client) + fetch_gdelt(client)}
     return list(items.values())

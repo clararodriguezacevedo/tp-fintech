@@ -5,22 +5,39 @@ refresh token. Reads always use the real API (IOL's sandbox is not available). b
 sell() refuse to run unless IOL_LIVE_TRADING=true; otherwise trades are simulated by
 app.trading.paper.
 
-Endpoint paths follow the public IOL v2 docs (https://api.invertironline.com/Help). Check each
-one against the docs the first time it runs, since IOL does not publish an OpenAPI file.
+Every response is validated into the models in app.models.iol.
 """
 
 import time
+from collections import defaultdict
 from datetime import date, timedelta
+from typing import TypeVar
 
 import httpx
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from app.config import get_settings
+from app.models.iol import (
+    Activo, CaucionPanel, DailyBar, EstadoCuenta, HistoryPoint, Opcion, Operacion, Panel,
+    Portafolio, Quote, Token,
+)
 
 BASE_URL = "https://api.invertironline.com"
+
+T = TypeVar("T")
 
 
 class LiveTradingDisabled(RuntimeError):
     pass
+
+
+class OrderResult(BaseModel):
+    """POST /api/v2/operar/{Comprar|Vender}. Not captured yet (no real order has been sent),
+    so every field is optional and the raw body is kept."""
+
+    model_config = ConfigDict(extra="allow")
+    ok: bool | None = None
+    numeroOperacion: int | None = None
 
 
 class IOLClient:
@@ -35,14 +52,14 @@ class IOLClient:
 
     # Auth
 
-    def _auth(self, data: dict) -> None:
+    def _auth(self, data: dict[str, str]) -> None:
         r = self._http.post("/token", data=data)
         r.raise_for_status()
-        body = r.json()
-        self._token = body["access_token"]
-        self._refresh = body.get("refresh_token")
+        token = Token.model_validate(r.json())
+        self._token = token.access_token
+        self._refresh = token.refresh_token
         # Renew a minute early so a request never goes out with an expired token.
-        self._expires_at = time.time() + int(body.get("expires_in", 900)) - 60
+        self._expires_at = time.time() + token.expires_in - 60
 
     def _ensure_token(self) -> None:
         if self._token and time.time() < self._expires_at:
@@ -57,7 +74,7 @@ class IOLClient:
             {"grant_type": "password", "username": self._username, "password": self._password}
         )
 
-    def _request(self, method: str, path: str, **kwargs) -> dict | list:
+    def _request(self, method: str, path: str, **kwargs) -> object:
         self._ensure_token()
         r = self._http.request(
             method, path, headers={"Authorization": f"Bearer {self._token}"}, **kwargs
@@ -65,47 +82,86 @@ class IOLClient:
         r.raise_for_status()
         return r.json()
 
+    def _get(self, path: str, type_: type[T]) -> T:
+        return TypeAdapter(type_).validate_python(self._request("GET", path))
+
     # Account
 
-    def account_status(self) -> dict:
-        return self._request("GET", "/api/v2/estadocuenta")
+    def account_status(self) -> EstadoCuenta:
+        return self._get("/api/v2/estadocuenta", EstadoCuenta)
 
-    def portfolio(self, country: str = "argentina") -> dict:
-        return self._request("GET", f"/api/v2/portafolio/{country}")
+    def portfolio(self, country: str = "argentina") -> Portafolio:
+        return self._get(f"/api/v2/portafolio/{country}", Portafolio)
 
-    def operations(self) -> list:
-        return self._request("GET", "/api/v2/operaciones")
+    def holdings(self) -> list[Activo]:
+        return self.portfolio().activos
 
-    def operation(self, number: int) -> dict:
-        return self._request("GET", f"/api/v2/operaciones/{number}")
+    def operations(self) -> list[Operacion]:
+        return self._get("/api/v2/operaciones", list[Operacion])
 
-    def cancel_operation(self, number: int) -> dict:
+    def operation(self, number: int) -> Operacion:
+        return self._get(f"/api/v2/operaciones/{number}", Operacion)
+
+    def cancel_operation(self, number: int) -> object:
         if not self.live:
             raise LiveTradingDisabled("real orders are off; set IOL_LIVE_TRADING=true to enable")
         return self._request("DELETE", f"/api/v2/operaciones/{number}")
 
     # Market data
 
-    def quote(self, symbol: str, market: str = "bCBA") -> dict:
-        return self._request("GET", f"/api/v2/{market}/Titulos/{symbol}/Cotizacion")
+    def quote(self, symbol: str, market: str = "bCBA") -> Quote:
+        return self._get(f"/api/v2/{market}/Titulos/{symbol}/Cotizacion", Quote)
 
-    def history(self, symbol: str, start: date, end: date, market: str = "bCBA") -> list:
-        return self._request(
-            "GET",
+    def history(
+        self, symbol: str, start: date, end: date, market: str = "bCBA", adjusted: bool = False
+    ) -> list[HistoryPoint]:
+        """Raw history rows. adjusted=True gives daily rows but only works for local stocks."""
+        mode = "ajustada" if adjusted else "sinAjustar"
+        return self._get(
             f"/api/v2/{market}/Titulos/{symbol}/Cotizacion/seriehistorica/"
-            f"{start.isoformat()}/{end.isoformat()}/ajustada",
+            f"{start.isoformat()}/{end.isoformat()}/{mode}",
+            list[HistoryPoint],
         )
 
-    def options(self, symbol: str, market: str = "bCBA") -> list:
-        return self._request("GET", f"/api/v2/{market}/Titulos/{symbol}/Opciones")
+    def daily_history(
+        self, symbol: str, start: date, end: date, market: str = "bCBA"
+    ) -> list[DailyBar]:
+        """One candle per trading day, oldest first, for stocks, CEDEARs and bonds alike.
 
-    def panel(self, instrument: str, panel: str, country: str = "argentina") -> dict:
-        """e.g. panel("acciones", "merval"), panel("cedears", "todos"), panel("cauciones", "todas")."""
-        return self._request("GET", f"/api/v2/Cotizaciones/{instrument}/{panel}/{country}")
+        Built from the unadjusted series, which has several intraday rows per day: the last row
+        of each day carries the close and that day's high and low so far.
+        """
+        by_day: dict[date, list[HistoryPoint]] = defaultdict(list)
+        for p in self.history(symbol, start, end, market):
+            if p.ultimo_precio > 0:
+                by_day[p.fecha_hora.date()].append(p)
+        bars = []
+        for day in sorted(by_day):
+            rows = sorted(by_day[day], key=lambda p: p.fecha_hora)
+            prices = [p.ultimo_precio for p in rows]
+            highs = [p.maximo for p in rows if p.maximo > 0] or prices
+            lows = [p.minimo for p in rows if p.minimo > 0] or prices
+            opens = [p.apertura for p in rows if p.apertura > 0] or prices
+            bars.append(DailyBar(
+                day=day, open=opens[0], high=max(highs), low=min(lows), close=prices[-1],
+            ))
+        return bars
+
+    def options(self, symbol: str, market: str = "bCBA") -> list[Opcion]:
+        return self._get(f"/api/v2/{market}/Titulos/{symbol}/Opciones", list[Opcion])
+
+    def panel(self, instrument: str, panel: str, country: str = "argentina") -> Panel:
+        """Working panels: ("acciones", "merval"), ("bonos", "todos")."""
+        return self._get(f"/api/v2/Cotizaciones/{instrument}/{panel}/{country}", Panel)
+
+    def cauciones(self) -> CaucionPanel:
+        return self._get("/api/v2/Cotizaciones/cauciones/todas/argentina", CaucionPanel)
 
     # Orders
 
-    def _order(self, side: str, symbol: str, quantity: int, price: float, market: str) -> dict:
+    def _order(
+        self, side: str, symbol: str, quantity: int, price: float, market: str
+    ) -> OrderResult:
         if not self.live:
             raise LiveTradingDisabled("real orders are off; set IOL_LIVE_TRADING=true to enable")
         body = {
@@ -117,12 +173,14 @@ class IOLClient:
             "validez": (date.today() + timedelta(days=1)).isoformat(),
             "tipoOrden": "precioLimite",
         }
-        return self._request("POST", f"/api/v2/operar/{side}", json=body)
+        return OrderResult.model_validate(
+            self._request("POST", f"/api/v2/operar/{side}", json=body)
+        )
 
-    def buy(self, symbol: str, quantity: int, price: float, market: str = "bCBA") -> dict:
+    def buy(self, symbol: str, quantity: int, price: float, market: str = "bCBA") -> OrderResult:
         return self._order("Comprar", symbol, quantity, price, market)
 
-    def sell(self, symbol: str, quantity: int, price: float, market: str = "bCBA") -> dict:
+    def sell(self, symbol: str, quantity: int, price: float, market: str = "bCBA") -> OrderResult:
         return self._order("Vender", symbol, quantity, price, market)
 
 

@@ -1,0 +1,1754 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Portfolio advisor",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/run": {
+      "post": {
+        "summary": "Run Jobs Now",
+        "description": "Run one collection cycle right away instead of waiting for the timer.",
+        "operationId": "run_jobs_now",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/news": {
+      "get": {
+        "summary": "List News",
+        "operationId": "list_news",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NewsRow"
+                  },
+                  "title": "Response List News"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/markets": {
+      "get": {
+        "summary": "List Markets",
+        "operationId": "list_markets",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "polymarket",
+                    "kalshi"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketRow"
+                  },
+                  "title": "Response List Markets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/markets/{market_id}/history": {
+      "get": {
+        "summary": "Market History",
+        "description": "Probability evolution: Polymarket's own history when available, else our snapshots.",
+        "operationId": "market_history",
+        "parameters": [
+          {
+            "name": "market_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Market Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProbabilityPoint"
+                  },
+                  "title": "Response Market History"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tickers/{ticker}/impacts": {
+      "get": {
+        "summary": "Ticker Impacts",
+        "operationId": "ticker_impacts",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TickerImpactRow"
+                  },
+                  "title": "Response Ticker Impacts"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolio": {
+      "get": {
+        "summary": "Portfolio",
+        "operationId": "portfolio",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HoldingOut"
+                  },
+                  "type": "array",
+                  "title": "Response Portfolio"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tickers/{ticker}/plan": {
+      "get": {
+        "summary": "Trade Plan",
+        "description": "SL/TP and quantity for a one-click buy, sized from the ticker's ATR.",
+        "operationId": "trade_plan",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "portfolio_value",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "title": "Portfolio Value"
+            }
+          },
+          {
+            "name": "cash",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "title": "Cash"
+            }
+          },
+          {
+            "name": "entry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "defaults to the last IOL price",
+              "title": "Entry"
+            },
+            "description": "defaults to the last IOL price"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradePlan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trades": {
+      "post": {
+        "summary": "Buy",
+        "description": "One-click buy. Paper by default; fills now if BYMA is open, otherwise queues.",
+        "operationId": "buy",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeRow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Trades",
+        "operationId": "list_trades",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "sent",
+                    "filled",
+                    "stopped_out",
+                    "took_profit",
+                    "closed",
+                    "cancelled",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TradeRow"
+                  },
+                  "title": "Response List Trades"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trades/{trade_id}/close": {
+      "post": {
+        "summary": "Close Trade",
+        "operationId": "close_trade",
+        "parameters": [
+          {
+            "name": "trade_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trade Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeRow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recommendations": {
+      "get": {
+        "summary": "List Recommendations",
+        "description": "Latest recommendation per ticker for the next close.",
+        "operationId": "list_recommendations",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "live",
+                "daily"
+              ],
+              "type": "string",
+              "default": "live",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "buy",
+                    "sell",
+                    "keep"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "name": "held",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Held"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecommendationRow"
+                  },
+                  "title": "Response List Recommendations"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolio/advice": {
+      "get": {
+        "summary": "Portfolio Advice",
+        "description": "Sell or keep for each position the user holds.",
+        "operationId": "portfolio_advice",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecommendationRow"
+                  },
+                  "type": "array",
+                  "title": "Response Portfolio Advice"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/track-record": {
+      "get": {
+        "summary": "Track Record Summary",
+        "operationId": "track_record_summary",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackRecordSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/track-record/history": {
+      "get": {
+        "summary": "Track Record History",
+        "operationId": "track_record_history",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecommendationRow"
+                  },
+                  "title": "Response Track Record History"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BuyRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Ticker"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "stop_loss": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Stop Loss"
+          },
+          "take_profit": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Take Profit"
+          },
+          "recommendation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "quantity",
+          "stop_loss",
+          "take_profit"
+        ],
+        "title": "BuyRequest"
+      },
+      "Evidence": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "news",
+              "market"
+            ],
+            "title": "Kind"
+          },
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Direction"
+          },
+          "strength": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Strength"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "contribution": {
+            "type": "number",
+            "title": "Contribution"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "broad": {
+            "type": "boolean",
+            "title": "Broad",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "item_id",
+          "title",
+          "direction",
+          "strength",
+          "reason",
+          "contribution"
+        ],
+        "title": "Evidence",
+        "description": "One news item or market behind a recommendation."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "market_open": {
+            "type": "boolean",
+            "title": "Market Open"
+          },
+          "next_open": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Open"
+          },
+          "live_trading": {
+            "type": "boolean",
+            "title": "Live Trading"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "paper",
+              "live"
+            ],
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "market_open",
+          "next_open",
+          "live_trading",
+          "mode"
+        ],
+        "title": "Health"
+      },
+      "HitStats": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "hits": {
+            "type": "integer",
+            "title": "Hits"
+          },
+          "hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate"
+          },
+          "avg_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Return"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "hits",
+          "hit_rate",
+          "avg_return"
+        ],
+        "title": "HitStats"
+      },
+      "HoldingOut": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "last_price": {
+            "type": "number",
+            "title": "Last Price"
+          },
+          "avg_price": {
+            "type": "number",
+            "title": "Avg Price"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "gain_pct": {
+            "type": "number",
+            "title": "Gain Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "description",
+          "type",
+          "quantity",
+          "last_price",
+          "avg_price",
+          "value",
+          "gain_pct"
+        ],
+        "title": "HoldingOut"
+      },
+      "MarketRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "polymarket",
+              "kalshi"
+            ],
+            "title": "Source"
+          },
+          "external_id": {
+            "type": "string",
+            "title": "External Id"
+          },
+          "event_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "clob_token_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clob Token Ids"
+          },
+          "probability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probability"
+          },
+          "change_1h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change 1H"
+          },
+          "change_24h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change 24H"
+          },
+          "volume_24h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume 24H"
+          },
+          "ai_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Summary"
+          },
+          "tagged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagged At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "external_id",
+          "title",
+          "updated_at"
+        ],
+        "title": "MarketRow"
+      },
+      "NewsRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "external_id": {
+            "type": "string",
+            "title": "External Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "ai_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Summary"
+          },
+          "tagged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagged At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "external_id",
+          "source",
+          "title",
+          "url",
+          "created_at"
+        ],
+        "title": "NewsRow"
+      },
+      "ProbabilityPoint": {
+        "properties": {
+          "t": {
+            "type": "string",
+            "format": "date-time",
+            "title": "T"
+          },
+          "p": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "P"
+          }
+        },
+        "type": "object",
+        "required": [
+          "t",
+          "p"
+        ],
+        "title": "ProbabilityPoint"
+      },
+      "RecommendationRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell",
+              "keep"
+            ],
+            "title": "Action"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "live",
+              "daily"
+            ],
+            "title": "Kind"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "news",
+                  "markets",
+                  "trend"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver"
+          },
+          "held": {
+            "type": "boolean",
+            "title": "Held"
+          },
+          "signal_breakdown": {
+            "$ref": "#/components/schemas/SignalBreakdown"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "price_at_rec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price At Rec"
+          },
+          "target_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Target Date"
+          },
+          "close_on_target": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close On Target"
+          },
+          "realized_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Return"
+          },
+          "hit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit"
+          },
+          "evaluated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluated At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ticker",
+          "action",
+          "kind",
+          "score",
+          "confidence",
+          "held",
+          "signal_breakdown",
+          "evidence",
+          "target_date",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RecommendationRow"
+      },
+      "SignalBreakdown": {
+        "properties": {
+          "news": {
+            "type": "number",
+            "title": "News"
+          },
+          "markets": {
+            "type": "number",
+            "title": "Markets"
+          },
+          "trend": {
+            "type": "number",
+            "title": "Trend"
+          }
+        },
+        "type": "object",
+        "required": [
+          "news",
+          "markets",
+          "trend"
+        ],
+        "title": "SignalBreakdown"
+      },
+      "TickerImpactRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "item_kind": {
+            "type": "string",
+            "enum": [
+              "news",
+              "market"
+            ],
+            "title": "Item Kind"
+          },
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Direction"
+          },
+          "strength": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Strength"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "item_kind",
+          "item_id",
+          "ticker",
+          "direction",
+          "strength",
+          "created_at"
+        ],
+        "title": "TickerImpactRow"
+      },
+      "TrackRecordSummary": {
+        "properties": {
+          "overall": {
+            "$ref": "#/components/schemas/HitStats"
+          },
+          "action": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HitStats"
+            },
+            "propertyNames": {
+              "enum": [
+                "buy",
+                "sell",
+                "keep"
+              ]
+            },
+            "type": "object",
+            "title": "Action"
+          },
+          "driver": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HitStats"
+            },
+            "type": "object",
+            "title": "Driver"
+          },
+          "confidence": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HitStats"
+            },
+            "type": "object",
+            "title": "Confidence"
+          },
+          "held": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HitStats"
+            },
+            "type": "object",
+            "title": "Held"
+          }
+        },
+        "type": "object",
+        "required": [
+          "overall",
+          "action",
+          "driver",
+          "confidence",
+          "held"
+        ],
+        "title": "TrackRecordSummary"
+      },
+      "TradePlan": {
+        "properties": {
+          "entry": {
+            "type": "number",
+            "title": "Entry"
+          },
+          "stop_loss": {
+            "type": "number",
+            "title": "Stop Loss"
+          },
+          "take_profit": {
+            "type": "number",
+            "title": "Take Profit"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "max_loss": {
+            "type": "number",
+            "title": "Max Loss"
+          },
+          "market_open": {
+            "type": "boolean",
+            "title": "Market Open"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry",
+          "stop_loss",
+          "take_profit",
+          "quantity",
+          "max_loss",
+          "market_open"
+        ],
+        "title": "TradePlan"
+      },
+      "TradeRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "market": {
+            "type": "string",
+            "title": "Market"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "entry_price": {
+            "type": "number",
+            "title": "Entry Price"
+          },
+          "stop_loss": {
+            "type": "number",
+            "title": "Stop Loss"
+          },
+          "take_profit": {
+            "type": "number",
+            "title": "Take Profit"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sent",
+              "filled",
+              "stopped_out",
+              "took_profit",
+              "closed",
+              "cancelled",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          },
+          "fill_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fill Price"
+          },
+          "filled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filled At"
+          },
+          "exit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Price"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "realized_pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Pnl"
+          },
+          "iol_order_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iol Order Number"
+          },
+          "exit_order_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Order Number"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "recommendation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ticker",
+          "market",
+          "quantity",
+          "entry_price",
+          "stop_loss",
+          "take_profit",
+          "status",
+          "live",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TradeRow"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

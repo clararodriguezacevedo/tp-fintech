@@ -23,5 +23,13 @@ package = false
 [dependency-groups]
 dev = [
     "psycopg[binary]>=3.3.6",
+    "pyright>=1.1.414",
     "python-dotenv>=1.2.4",
 ]
+
+[tool.pyright]
+include = ["app", "scripts"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"

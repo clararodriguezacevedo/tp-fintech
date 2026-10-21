@@ -73,6 +73,37 @@ El esquema de la base está en `supabase/migrations/`. Para aplicar las migracio
 cd backend && uv run python scripts/migrate.py
 ```
 
+## Tipado
+
+- **APIs externas**: cada respuesta de IOL, Polymarket, Kalshi y GDELT se valida con modelos
+  Pydantic en `backend/app/models/`, armados a partir de respuestas reales. Si una API cambia
+  un campo que usamos, falla al parsear y no más adelante.
+- **Base de datos y API propia**: las filas de Supabase se validan con `backend/app/models/db.py`
+  y cada endpoint declara su `response_model`, así que `/openapi.json` describe todo.
+- **Frontend**: los esquemas zod de `frontend/src/lib/api/schemas.ts` se generan desde ese
+  OpenAPI, y `frontend/src/lib/api/client.ts` valida cada respuesta con ellos.
+- **Chequeo estático**: `pyright` en el backend y `tsc` en el frontend.
+
+Después de cambiar un modelo del backend:
+
+```bash
+cd backend && uv run python -m scripts.export_openapi
+cd frontend && npm run gen:api && npm run typecheck
+cd backend && uv run pyright
+```
+
+## Recomendaciones y track record
+
+Cada ciclo calcula un puntaje por ticker (ver `backend/app/analysis/scoring.py`) que combina
+noticias (con decaimiento por antigüedad), el movimiento en 24 h de los mercados de predicción
+(contando cada evento una sola vez) y la tendencia del precio. Los tickers en cartera solo
+pueden recibir vender o mantener; el resto, comprar o mantener.
+
+A las 17:30 se califican las recomendaciones del día contra el cierre y se emiten las del día
+siguiente. Comprar acierta si el precio sube, vender si baja, mantener si se mueve menos de
+1,5%. `GET /track-record` muestra la tasa de acierto por acción, por señal dominante, por
+confianza y por si el ticker estaba en cartera.
+
 ## Paper trading
 
 IOL no ofrece un sandbox utilizable, así que con `IOL_LIVE_TRADING=false` (el valor por

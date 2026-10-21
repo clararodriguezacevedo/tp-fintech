@@ -5,6 +5,7 @@ Needs DATABASE_URL in backend/.env. Applied files are recorded in public.schema_
 """
 
 from pathlib import Path
+from typing import LiteralString, cast
 
 import psycopg
 from dotenv import dotenv_values
@@ -51,7 +52,8 @@ def main() -> None:
         for f in pending:
             # Each file runs in its own transaction, so a failing file leaves nothing half done.
             with conn.transaction():
-                conn.execute(f.read_text(encoding="utf-8"))
+                # Migration files are ours, not user input, so running them as raw SQL is fine.
+                conn.execute(cast(LiteralString, f.read_text(encoding="utf-8")))
                 conn.execute("insert into schema_migrations (name) values (%s)", (f.name,))
             print(f"applied {f.name}")
 

@@ -1,24 +1,18 @@
 """Polymarket public market data. No credentials needed for any of these reads."""
 
-import json
-
 import httpx
+from pydantic import TypeAdapter
+
+from app.models.domain import MarketRecord
+from app.models.polymarket import GammaMarket, PriceHistory, PricePoint, Trade
 
 GAMMA = "https://gamma-api.polymarket.com"
 CLOB = "https://clob.polymarket.com"
 DATA = "https://data-api.polymarket.com"
 
 
-def _yes_price(market: dict) -> float | None:
-    # Gamma returns outcomePrices as a JSON-encoded string, e.g. '["0.62", "0.38"]'.
-    try:
-        return float(json.loads(market["outcomePrices"])[0])
-    except (KeyError, IndexError, ValueError, TypeError):
-        return None
-
-
-def fetch_markets(client: httpx.Client, limit: int = 100) -> list[dict]:
-    """Most traded open markets in the last 24h, normalized to our schema."""
+def fetch_raw_markets(client: httpx.Client, limit: int = 100) -> list[GammaMarket]:
+    """Most traded open markets in the last 24h."""
     r = client.get(
         f"{GAMMA}/markets",
         params={
@@ -30,36 +24,39 @@ def fetch_markets(client: httpx.Client, limit: int = 100) -> list[dict]:
         },
     )
     r.raise_for_status()
-    out = []
-    for m in r.json():
-        out.append(
-            {
-                "source": "polymarket",
-                "external_id": m["conditionId"],
-                "title": m["question"],
-                "url": f"https://polymarket.com/event/{m.get('slug', '')}",
-                "probability": _yes_price(m),
-                "change_1h": m.get("oneHourPriceChange"),
-                "change_24h": m.get("oneDayPriceChange"),
-                "volume_24h": m.get("volume24hr"),
-                "end_date": m.get("endDate"),
-                "clob_token_ids": json.loads(m.get("clobTokenIds") or "[]"),
-            }
+    return TypeAdapter(list[GammaMarket]).validate_python(r.json())
+
+
+def fetch_markets(client: httpx.Client, limit: int = 100) -> list[MarketRecord]:
+    return [
+        MarketRecord(
+            source="polymarket",
+            external_id=m.condition_id,
+            event_key=m.event_key,
+            title=m.question,
+            url=f"https://polymarket.com/event/{m.events[0].slug if m.events else m.slug}",
+            probability=m.yes_price,
+            change_1h=m.one_hour_price_change,
+            change_24h=m.one_day_price_change,
+            volume_24h=m.volume_24hr,
+            end_date=m.end_date,
+            clob_token_ids=m.clob_token_ids,
         )
-    return out
+        for m in fetch_raw_markets(client, limit)
+    ]
 
 
-def fetch_price_history(client: httpx.Client, token_id: str, interval: str = "1w") -> list[dict]:
+def fetch_price_history(client: httpx.Client, token_id: str, interval: str = "1w") -> list[PricePoint]:
     """Probability over time for one outcome token, for the evolution chart."""
     r = client.get(
         f"{CLOB}/prices-history",
         params={"market": token_id, "interval": interval, "fidelity": 60},
     )
     r.raise_for_status()
-    return [{"t": p["t"], "p": p["p"]} for p in r.json().get("history", [])]
+    return PriceHistory.model_validate(r.json()).history
 
 
-def fetch_large_trades(client: httpx.Client, condition_id: str, min_usd: float = 10_000) -> list[dict]:
+def fetch_large_trades(client: httpx.Client, condition_id: str, min_usd: float = 10_000) -> list[Trade]:
     """Recent trades above min_usd on one market (large-bet alerts)."""
     r = client.get(
         f"{DATA}/trades",
@@ -71,14 +68,4 @@ def fetch_large_trades(client: httpx.Client, condition_id: str, min_usd: float =
         },
     )
     r.raise_for_status()
-    return [
-        {
-            "side": t.get("side"),
-            "outcome": t.get("outcome"),
-            "size": t.get("size"),
-            "price": t.get("price"),
-            "usd": float(t.get("size", 0)) * float(t.get("price", 0)),
-            "timestamp": t.get("timestamp"),
-        }
-        for t in r.json()
-    ]
+    return TypeAdapter(list[Trade]).validate_python(r.json())

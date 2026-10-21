@@ -10,50 +10,59 @@ Lifecycle: queued (market closed) -> filled -> stopped_out | took_profit | close
 import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
+from typing import Any
 
 from app.analysis import market_hours
 from app.brokers.iol import get_iol
 from app.config import get_settings
-from app.db import get_db
+from app.db import get_db, rows_as
+from app.models.db import TradeRow, TradeStatus
 
 log = logging.getLogger(__name__)
 
-OPEN_STATUSES = ("queued", "filled")
+OPEN_STATUSES: list[TradeStatus] = ["queued", "filled"]
 
 PriceFn = Callable[[str, str], float]
 
 
 def last_price(ticker: str, market: str = "bCBA") -> float:
-    return float(get_iol().quote(ticker, market)["ultimoPrecio"])
+    return get_iol().quote(ticker, market).ultimo_precio
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _update(trade_id: str, **fields) -> dict:
+def _update(trade_id: str, **fields: Any) -> TradeRow:
     fields["updated_at"] = _now()
-    return get_db().table("trade_intents").update(fields).eq("id", trade_id).execute().data[0]
+    data = get_db().table("trade_intents").update(fields).eq("id", trade_id).execute().data
+    return rows_as(TradeRow, data)[0]
 
 
-def _fill(trade: dict, price: float) -> dict:
+def _get(trade_id: str) -> TradeRow:
+    rows = rows_as(TradeRow, get_db().table("trade_intents").select("*").eq("id", trade_id).execute().data)
+    if not rows:
+        raise ValueError(f"trade {trade_id} not found")
+    return rows[0]
+
+
+def _fill(trade: TradeRow, price: float) -> TradeRow:
     live = get_settings().iol_live_trading
-    fields = {"status": "filled", "fill_price": price, "filled_at": _now(), "live": live}
+    fields: dict[str, Any] = {"status": "filled", "fill_price": price, "filled_at": _now(), "live": live}
     if live:
-        order = get_iol().buy(trade["ticker"], trade["quantity"], price, trade["market"])
-        fields["iol_order_number"] = order.get("numeroOperacion")
-    return _update(trade["id"], **fields)
+        order = get_iol().buy(trade.ticker, trade.quantity, price, trade.market)
+        fields["iol_order_number"] = order.numeroOperacion
+    return _update(trade.id, **fields)
 
 
-def _close(trade: dict, price: float, status: str) -> dict:
-    if trade["live"]:
-        order = get_iol().sell(trade["ticker"], trade["quantity"], price, trade["market"])
-        exit_number = order.get("numeroOperacion")
-    else:
-        exit_number = None
-    pnl = (price - float(trade["fill_price"])) * trade["quantity"]
+def _close(trade: TradeRow, price: float, status: TradeStatus) -> TradeRow:
+    exit_number = None
+    if trade.live:
+        exit_number = get_iol().sell(trade.ticker, trade.quantity, price, trade.market).numeroOperacion
+    assert trade.fill_price is not None, "only filled trades can be closed"
+    pnl = (price - trade.fill_price) * trade.quantity
     return _update(
-        trade["id"], status=status, exit_price=price, closed_at=_now(),
+        trade.id, status=status, exit_price=price, closed_at=_now(),
         realized_pnl=round(pnl, 2), exit_order_number=exit_number,
     )
 
@@ -67,15 +76,17 @@ def create_buy(
     market: str = "bCBA",
     price_fn: PriceFn = last_price,
     is_open: Callable[[], bool] = market_hours.is_open,
-) -> dict:
+) -> TradeRow:
     """Record the buy and fill it right away if BYMA is open; otherwise it waits in the queue."""
     ticker = ticker.upper()
+    if quantity <= 0:
+        raise ValueError("quantity must be positive")
     entry = price_fn(ticker, market)
     if not stop_loss < entry < take_profit:
         raise ValueError(
             f"need stop_loss < price < take_profit, got {stop_loss} < {entry} < {take_profit}"
         )
-    trade = get_db().table("trade_intents").insert({
+    data = get_db().table("trade_intents").insert({
         "ticker": ticker,
         "market": market,
         "quantity": quantity,
@@ -84,44 +95,45 @@ def create_buy(
         "take_profit": take_profit,
         "recommendation_id": recommendation_id,
         "live": get_settings().iol_live_trading,
-    }).execute().data[0]
+    }).execute().data
+    trade = rows_as(TradeRow, data)[0]
     if is_open():
         trade = _fill(trade, entry)
     return trade
 
 
-def close_trade(trade_id: str, price_fn: PriceFn = last_price) -> dict:
+def close_trade(trade_id: str, price_fn: PriceFn = last_price) -> TradeRow:
     """Sell now at the last price (or cancel, if it never filled)."""
-    trade = get_db().table("trade_intents").select("*").eq("id", trade_id).execute().data[0]
-    if trade["status"] == "queued":
+    trade = _get(trade_id)
+    if trade.status == "queued":
         return _update(trade_id, status="cancelled", closed_at=_now())
-    if trade["status"] != "filled":
-        raise ValueError(f"trade is already {trade['status']}")
-    return _close(trade, price_fn(trade["ticker"], trade["market"]), "closed")
+    if trade.status != "filled":
+        raise ValueError(f"trade is already {trade.status}")
+    return _close(trade, price_fn(trade.ticker, trade.market), "closed")
 
 
-def check_open_trades(price_fn: PriceFn = last_price) -> list[dict]:
+def check_open_trades(price_fn: PriceFn = last_price) -> list[TradeRow]:
     """Fill queued trades and trigger stop loss / take profit. Runs every minute while open."""
-    trades = (
-        get_db().table("trade_intents").select("*").in_("status", list(OPEN_STATUSES))
-        .execute().data
+    trades = rows_as(
+        TradeRow,
+        get_db().table("trade_intents").select("*").in_("status", OPEN_STATUSES).execute().data,
     )
     changed = []
     prices: dict[tuple[str, str], float] = {}
     for t in trades:
-        key = (t["ticker"], t["market"])
+        key = (t.ticker, t.market)
         try:
             if key not in prices:
                 prices[key] = price_fn(*key)
             price = prices[key]
-            if t["status"] == "queued":
+            if t.status == "queued":
                 changed.append(_fill(t, price))
-            elif price <= float(t["stop_loss"]):
+            elif price <= t.stop_loss:
                 changed.append(_close(t, price, "stopped_out"))
-            elif price >= float(t["take_profit"]):
+            elif price >= t.take_profit:
                 changed.append(_close(t, price, "took_profit"))
         except Exception as e:
-            log.exception("trade %s failed", t["id"])
-            if t["live"]:
-                _update(t["id"], status="failed", error=str(e)[:500])
+            log.exception("trade %s failed", t.id)
+            if t.live:
+                _update(t.id, status="failed", error=str(e)[:500])
     return changed
