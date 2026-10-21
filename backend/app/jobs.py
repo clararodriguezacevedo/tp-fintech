@@ -11,7 +11,7 @@ from app.analysis import scoring, track_record
 from app.analysis.tagger import TagInput, tag_items
 from app.db import get_db, rows_as
 from app.models.db import MarketRow, NewsRow
-from app.portfolio import get_holdings
+from app.portfolio import get_holdings, refresh_holdings
 from app.sources import kalshi, news, polymarket
 
 log = logging.getLogger(__name__)
@@ -146,6 +146,7 @@ def _run_all(steps: list[tuple[str, Callable[[], object]]]) -> list[str]:
 
 def run_cycle() -> list[str]:
     return _run_all([
+        ("refresh_holdings", refresh_holdings),
         ("collect_markets", collect_markets),
         ("collect_news", collect_news),
         ("tag_pending", tag_pending),

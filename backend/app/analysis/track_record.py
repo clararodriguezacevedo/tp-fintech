@@ -14,7 +14,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 
 from app.analysis import market_hours
-from app.brokers.iol import get_iol
+from app import prices
 from app.db import get_db, rows_as
 from app.models.db import Action, RecommendationRow
 from app.schemas import HitStats, TrackRecordSummary
@@ -28,10 +28,7 @@ GIVE_UP_AFTER_DAYS = 5
 
 
 def close_on(ticker: str, day: date) -> float | None:
-    for bar in get_iol().daily_history(ticker, day, day + timedelta(days=1)):
-        if bar.day == day:
-            return bar.close
-    return None
+    return prices.close_on(ticker, day)
 
 
 def is_hit(action: Action, ret: float) -> bool:

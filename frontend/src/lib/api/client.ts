@@ -6,6 +6,9 @@ import { z } from "zod";
 import { schemas } from "./schemas";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Server-only (no NEXT_PUBLIC_ prefix), so the key never reaches the browser. Call the API from
+// server components, route handlers or server actions, not from client components.
+const API_KEY = process.env.API_KEY;
 
 export type Health = z.infer<typeof schemas.Health>;
 export type NewsItem = z.infer<typeof schemas.NewsRow>;
@@ -13,6 +16,7 @@ export type Market = z.infer<typeof schemas.MarketRow>;
 export type ProbabilityPoint = z.infer<typeof schemas.ProbabilityPoint>;
 export type TickerImpact = z.infer<typeof schemas.TickerImpactRow>;
 export type Holding = z.infer<typeof schemas.HoldingOut>;
+export type PortfolioValuePoint = z.infer<typeof schemas.PortfolioValuePoint>;
 export type TradePlan = z.infer<typeof schemas.TradePlan>;
 export type BuyRequest = z.infer<typeof schemas.BuyRequest>;
 export type Trade = z.infer<typeof schemas.TradeRow>;
@@ -44,7 +48,11 @@ async function request<S extends z.ZodTypeAny>(
   const res = await fetch(url, {
     cache: "no-store",
     ...init,
-    headers: { "Content-Type": "application/json", ...init.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
+      ...init.headers,
+    },
   });
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, path, body);
@@ -61,6 +69,8 @@ export const api = {
   tickerImpacts: (ticker: string) =>
     request(z.array(schemas.TickerImpactRow), `/tickers/${ticker}/impacts`),
   portfolio: () => request(z.array(schemas.HoldingOut), "/portfolio"),
+  portfolioHistory: (days = 90) =>
+    request(z.array(schemas.PortfolioValuePoint), "/portfolio/history", { query: { days } }),
   portfolioAdvice: () => request(z.array(schemas.RecommendationRow), "/portfolio/advice"),
   recommendations: (query: { kind?: "live" | "daily"; action?: "buy" | "sell" | "keep"; held?: boolean } = {}) =>
     request(z.array(schemas.RecommendationRow), "/recommendations", { query }),

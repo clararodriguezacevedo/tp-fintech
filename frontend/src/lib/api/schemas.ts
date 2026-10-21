@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+const x_api_key = z.union([z.string(), z.null()]).optional();
 const Health = z
   .object({
     ok: z.boolean(),
@@ -7,20 +8,6 @@ const Health = z
     next_open: z.string().datetime({ offset: true }),
     live_trading: z.boolean(),
     mode: z.enum(["paper", "live"]),
-  })
-  .passthrough();
-const NewsRow = z
-  .object({
-    id: z.string(),
-    external_id: z.string(),
-    source: z.string(),
-    title: z.string(),
-    summary: z.union([z.string(), z.null()]).optional(),
-    url: z.string(),
-    published_at: z.union([z.string(), z.null()]).optional(),
-    ai_summary: z.union([z.string(), z.null()]).optional(),
-    tagged_at: z.union([z.string(), z.null()]).optional(),
-    created_at: z.string().datetime({ offset: true }),
   })
   .passthrough();
 const ValidationError = z
@@ -35,6 +22,20 @@ const ValidationError = z
 const HTTPValidationError = z
   .object({ detail: z.array(ValidationError) })
   .partial()
+  .passthrough();
+const NewsRow = z
+  .object({
+    id: z.string(),
+    external_id: z.string(),
+    source: z.string(),
+    title: z.string(),
+    summary: z.union([z.string(), z.null()]).optional(),
+    url: z.string(),
+    published_at: z.union([z.string(), z.null()]).optional(),
+    ai_summary: z.union([z.string(), z.null()]).optional(),
+    tagged_at: z.union([z.string(), z.null()]).optional(),
+    created_at: z.string().datetime({ offset: true }),
+  })
   .passthrough();
 const source = z.union([z.enum(["polymarket", "kalshi"]), z.null()]).optional();
 const MarketRow = z
@@ -86,6 +87,9 @@ const HoldingOut = z
     value: z.number(),
     gain_pct: z.number(),
   })
+  .passthrough();
+const PortfolioValuePoint = z
+  .object({ t: z.string().datetime({ offset: true }), value: z.number() })
   .passthrough();
 const entry = z.union([z.number(), z.null()]).optional();
 const TradePlan = z
@@ -217,15 +221,17 @@ const TrackRecordSummary = z
   .passthrough();
 
 export const schemas = {
+  x_api_key,
   Health,
-  NewsRow,
   ValidationError,
   HTTPValidationError,
+  NewsRow,
   source,
   MarketRow,
   ProbabilityPoint,
   TickerImpactRow,
   HoldingOut,
+  PortfolioValuePoint,
   entry,
   TradePlan,
   BuyRequest,

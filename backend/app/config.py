@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     # Off by default: every order goes to the IOL sandbox unless this is true.
     iol_live_trading: bool = False
 
+    # Shared secret every request (except /health) must send as X-API-Key. Empty disables the
+    # check, which is only acceptable for local development.
+    api_key: str = ""
+    # Comma-separated origins allowed by CORS, e.g. the deployed frontend's URL.
+    allowed_origins: str = "http://localhost:3000"
+
     # The scheduled jobs run on GitHub Actions (.github/workflows). Turn this on only to run
     # them inside the API process instead, e.g. offline development.
     run_scheduler: bool = False

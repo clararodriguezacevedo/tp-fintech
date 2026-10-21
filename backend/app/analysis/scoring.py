@@ -17,7 +17,7 @@ Tickers the user holds can only get sell or keep; the rest can only get buy or k
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from pydantic import BaseModel
 
@@ -26,7 +26,7 @@ from app.analysis.tagger import UNIVERSE
 from app.brokers.iol import get_iol
 from app.db import get_db, rows_as
 from app.models.db import Action, Evidence, MarketRow, NewsRow, SignalBreakdown, TickerImpactRow
-from app.models.iol import DailyBar
+from app import prices
 from app.portfolio import BOND_TYPES, EQUITY_TYPES, Holding, get_holdings
 
 log = logging.getLogger(__name__)
@@ -141,20 +141,9 @@ def collect_signals(now: datetime | None = None) -> dict[str, TickerSignals]:
 
 # Prices
 
-_bars_cache: dict[tuple[str, date], list[DailyBar]] = {}
-
-
-def daily_bars(ticker: str) -> list[DailyBar]:
-    key = (ticker, date.today())
-    if key not in _bars_cache:
-        end = date.today()
-        _bars_cache[key] = get_iol().daily_history(ticker, end - timedelta(days=45), end)
-    return _bars_cache[key]
-
-
 def trend_score(ticker: str, last: float) -> float:
     """tanh(z / 2) where z is how many ATRs `last` sits from the 20-day average close."""
-    bars = daily_bars(ticker)
+    bars = prices.daily_bars(ticker)
     if len(bars) < 21:
         return 0.0
     closes = [b.close for b in bars]
@@ -220,7 +209,7 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     signals = collect_signals(now)
     holdings: dict[str, Holding]
     try:
-        holdings = {h.ticker: h for h in get_holdings(refresh=True)}
+        holdings = {h.ticker: h for h in get_holdings()}
     except Exception:
         log.exception("could not load holdings; scoring without portfolio")
         holdings = {}

@@ -23,6 +23,11 @@ class ProbabilityPoint(BaseModel):
     p: float = Field(ge=0, le=1)
 
 
+class PortfolioValuePoint(BaseModel):
+    t: datetime
+    value: float
+
+
 class TradePlan(BaseModel):
     entry: float
     stop_loss: float

@@ -1,15 +1,16 @@
 import logging
+import secrets
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Literal
 
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
-from app import jobs
+from app import jobs, prices
 from app.analysis import market_hours, risk, track_record
 from app.brokers.iol import get_iol
 from app.config import get_settings
@@ -18,9 +19,10 @@ from app.models.db import (
     Action, MarketRow, NewsRow, RecommendationRow, SnapshotRow, TickerImpactRow, TradeRow,
     TradeStatus,
 )
-from app.portfolio import get_holdings
+from app.portfolio import get_holdings, value_history
 from app.schemas import (
-    BuyRequest, Health, HoldingOut, ProbabilityPoint, TrackRecordSummary, TradePlan,
+    BuyRequest, Health, HoldingOut, PortfolioValuePoint, ProbabilityPoint, TrackRecordSummary,
+    TradePlan,
 )
 from app.sources import polymarket
 from app.trading import paper
@@ -51,10 +53,23 @@ def _operation_id(route: APIRoute) -> str:
     return route.name
 
 
-app = FastAPI(title="Portfolio advisor", lifespan=lifespan, generate_unique_id_function=_operation_id)
+def require_api_key(request: Request, x_api_key: str | None = Header(None)) -> None:
+    """Every route except /health needs the shared key once API_KEY is set (always, deployed)."""
+    expected = get_settings().api_key
+    if not expected or request.url.path == "/health":
+        return
+    if not x_api_key or not secrets.compare_digest(x_api_key, expected):
+        raise HTTPException(401, "missing or wrong X-API-Key")
+
+
+app = FastAPI(
+    title="Portfolio advisor", lifespan=lifespan, generate_unique_id_function=_operation_id,
+    dependencies=[Depends(require_api_key)],
+)
 app.add_middleware(
-    CORSMiddleware, allow_origins=["http://localhost:3000"], allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in get_settings().allowed_origins.split(",") if o.strip()],
+    allow_methods=["*"], allow_headers=["*"],
 )
 
 
@@ -130,6 +145,12 @@ def portfolio() -> list[HoldingOut]:
     return [HoldingOut.model_validate(h.model_dump()) for h in get_holdings()]
 
 
+@app.get("/portfolio/history", response_model=list[PortfolioValuePoint])
+def portfolio_history(days: int = Query(90, ge=1, le=365)) -> list[PortfolioValuePoint]:
+    """Total portfolio value at each saved snapshot."""
+    return [PortfolioValuePoint(t=t, value=v) for t, v in value_history(days)]
+
+
 @app.get("/tickers/{ticker}/plan", response_model=TradePlan)
 def trade_plan(
     ticker: str,
@@ -139,8 +160,7 @@ def trade_plan(
 ) -> TradePlan:
     """SL/TP and quantity for a one-click buy, sized from the ticker's ATR."""
     ticker = ticker.upper()
-    end = date.today()
-    bars = get_iol().daily_history(ticker, end - timedelta(days=45), end)
+    bars = prices.daily_bars(ticker)
     if len(bars) < 15:
         raise HTTPException(422, f"not enough price history for {ticker}")
     price = entry or get_iol().quote(ticker).ultimo_precio
