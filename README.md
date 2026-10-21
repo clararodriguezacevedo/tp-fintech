@@ -73,6 +73,26 @@ El esquema de la base está en `supabase/migrations/`. Para aplicar las migracio
 cd backend && uv run python scripts/migrate.py
 ```
 
+## Tareas programadas (GitHub Actions)
+
+Los jobs corren en GitHub Actions, no en el proceso de la API (`.github/workflows/`):
+
+| Workflow | Cuándo (hora Argentina) | Qué hace |
+| --- | --- | --- |
+| `collect` | cada 10 minutos | junta mercados y noticias, los etiqueta con Gemini, actualiza las recomendaciones live |
+| `trades` | cada 5 minutos, lunes a viernes de 11 a 17 | llena compras en cola y revisa stop loss / take profit del paper trading |
+| `after close` | 17:30, lunes a viernes | califica las recomendaciones del día y emite las del día siguiente |
+
+Las claves están en los Secrets del repo (`SUPABASE_URL`, `SUPABASE_KEY`, `GEMINI_API_KEY`,
+`IOL_USERNAME`, `IOL_PASSWORD`). Las órdenes reales siguen bloqueadas salvo que se cree la
+variable de repo `IOL_LIVE_TRADING=true`.
+
+Para correr un job a mano: pestaña Actions del repo > workflow > *Run workflow*, o localmente
+`cd backend && uv run python -m scripts.run_job {cycle|trades|after-close}`.
+
+GitHub demora los crons a veces (de unos minutos a media hora en horas pico) y desactiva los
+workflows programados de un repo público después de 60 días sin commits.
+
 ## Tipado
 
 - **APIs externas**: cada respuesta de IOL, Polymarket, Kalshi y GDELT se valida con modelos
