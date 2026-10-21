@@ -73,6 +73,22 @@ El esquema de la base está en `supabase/migrations/`. Para aplicar las migracio
 cd backend && uv run python scripts/migrate.py
 ```
 
+## API desplegada (Vercel)
+
+La API corre en Vercel como función serverless: **https://tp-fintech-api.vercel.app**
+(proyecto `tp-fintech-api`, raíz `backend/`).
+
+- Todas las rutas salvo `/health` piden el header `X-API-Key` con el valor de `API_KEY`. El
+  frontend lo manda desde el servidor de Next.js; nunca va al navegador.
+- `/docs` y `/openapi.json` están apagados en producción (siguen andando en local).
+- Variables de entorno en Vercel: las mismas cinco claves de los Secrets de GitHub, más
+  `API_KEY`, `IOL_LIVE_TRADING` y `TAGGER_MODEL`.
+- Como cada request puede caer en una instancia nueva, lo que antes vivía en memoria está en
+  Supabase: velas diarias (`daily_bars`), snapshots de la cartera (`holdings_snapshots`) y la
+  sesión de IOL (`iol_session`, para no loguearse con la contraseña en cada arranque).
+
+Para redesplegar a mano: `cd backend && npx vercel deploy --prod`.
+
 ## Tareas programadas (GitHub Actions)
 
 Los jobs corren en GitHub Actions, no en el proceso de la API (`.github/workflows/`):
