@@ -1,6 +1,7 @@
 """Periodic jobs. APScheduler runs them on a timer inside the FastAPI process (see main.py)."""
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -131,18 +132,30 @@ def score_live() -> None:
     log.info("scored %d tickers (live)", len(recs))
 
 
-def run_cycle() -> None:
-    for job in (collect_markets, collect_news, tag_pending, score_live):
+def _run_all(steps: list[tuple[str, Callable[[], object]]]) -> list[str]:
+    """Run every step even if one fails; return the names of the ones that failed."""
+    failed = []
+    for name, step in steps:
         try:
-            job()
+            step()
         except Exception:
-            log.exception("%s failed", job.__name__)
+            log.exception("%s failed", name)
+            failed.append(name)
+    return failed
 
 
-def after_close() -> None:
+def run_cycle() -> list[str]:
+    return _run_all([
+        ("collect_markets", collect_markets),
+        ("collect_news", collect_news),
+        ("tag_pending", tag_pending),
+        ("score_live", score_live),
+    ])
+
+
+def after_close() -> list[str]:
     """17:30 on weekdays: grade the day's recommendations, then issue tomorrow's."""
-    for job in (track_record.evaluate_pending, lambda: scoring.score_all("daily")):
-        try:
-            job()
-        except Exception:
-            log.exception("after-close job failed")
+    return _run_all([
+        ("evaluate_pending", track_record.evaluate_pending),
+        ("score_daily", lambda: scoring.score_all("daily")),
+    ])

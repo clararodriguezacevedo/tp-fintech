@@ -1,0 +1,19 @@
+# Every 5 minutes while BYMA is open (11:00 to 17:00 ART = 14:00 to 20:00 UTC, weekdays):
+# fill queued paper trades and check stop loss / take profit.
+name: trades
+
+on:
+  schedule:
+    - cron: "*/5 14-19 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: trades
+  cancel-in-progress: false
+
+jobs:
+  trades:
+    uses: ./.github/workflows/_run-job.yml
+    with:
+      job: trades
+    secrets: inherit

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Off by default: every order goes to the IOL sandbox unless this is true.
     iol_live_trading: bool = False
 
+    # The scheduled jobs run on GitHub Actions (.github/workflows). Turn this on only to run
+    # them inside the API process instead, e.g. offline development.
+    run_scheduler: bool = False
     collect_interval_minutes: int = 10
     # Fraction of the portfolio a single stop-out is allowed to lose.
     risk_per_trade: float = 0.01

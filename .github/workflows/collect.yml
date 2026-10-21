@@ -1,0 +1,19 @@
+# Every 10 minutes: collect markets and news, tag them with Gemini, refresh live recommendations.
+name: collect
+
+on:
+  schedule:
+    - cron: "3-59/10 * * * *"
+  workflow_dispatch:
+
+# Never run two cycles at once; a late cycle waits for the previous one.
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  cycle:
+    uses: ./.github/workflows/_run-job.yml
+    with:
+      job: cycle
+    secrets: inherit

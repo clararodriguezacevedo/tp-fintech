@@ -1,0 +1,19 @@
+# 17:30 ART (20:30 UTC) on weekdays: grade today's recommendations against the close, then
+# issue tomorrow's.
+name: after close
+
+on:
+  schedule:
+    - cron: "30 20 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: after-close
+  cancel-in-progress: false
+
+jobs:
+  after-close:
+    uses: ./.github/workflows/_run-job.yml
+    with:
+      job: after-close
+    secrets: inherit

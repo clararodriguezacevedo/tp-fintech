@@ -1,0 +1,36 @@
+# Shared steps for the scheduled jobs: set up Python with uv and run one backend job.
+name: run job
+
+on:
+  workflow_call:
+    inputs:
+      job:
+        description: "cycle | trades | after-close"
+        required: true
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      IOL_USERNAME: ${{ secrets.IOL_USERNAME }}
+      IOL_PASSWORD: ${{ secrets.IOL_PASSWORD }}
+      # Real orders stay off unless this repository variable is set to "true".
+      IOL_LIVE_TRADING: ${{ vars.IOL_LIVE_TRADING || 'false' }}
+      TAGGER_MODEL: ${{ vars.TAGGER_MODEL || 'gemini-3.5-flash-lite' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.7"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen --no-dev
+      - run: uv run --no-dev python -m scripts.run_job ${{ inputs.job }}

@@ -30,6 +30,9 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not get_settings().run_scheduler:
+        yield
+        return
     scheduler = BackgroundScheduler(timezone="America/Argentina/Buenos_Aires")
     scheduler.add_job(jobs.run_cycle, "interval", minutes=get_settings().collect_interval_minutes)
     # Fill queued buys and check stop loss / take profit every minute while BYMA is open.
