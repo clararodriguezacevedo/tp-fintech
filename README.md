@@ -87,6 +87,11 @@ cd backend && uv run python scripts/migrate.py
 | `/historial` | tasa de acierto por acción, señal y confianza, y cada recomendación calificada |
 | `/noticias` | últimas noticias y los mercados de predicción que mueven algún ticker |
 
+El sitio está en **https://tp-fintech-web.vercel.app** y pide contraseña (la ventana de login del
+navegador, cualquier usuario): muestra la cartera real de IOL, así que no puede ser público. La
+contraseña es `SITE_PASSWORD`, en `frontend/.env.local` y en las variables del proyecto
+`tp-fintech-web` de Vercel. Sin esa variable (desarrollo local) el sitio queda abierto.
+
 La API se llama solo desde el servidor de Next.js (server components y server actions), así
 que `API_KEY` nunca llega al navegador. Comprar, vender y mantener usan azul, naranja y gris
 (validados para daltonismo) y siempre van con la palabra y un símbolo.
