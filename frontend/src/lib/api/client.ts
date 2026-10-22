@@ -18,6 +18,8 @@ export type TickerImpact = z.infer<typeof schemas.TickerImpactRow>;
 export type Holding = z.infer<typeof schemas.HoldingOut>;
 export type PortfolioValuePoint = z.infer<typeof schemas.PortfolioValuePoint>;
 export type TradePlan = z.infer<typeof schemas.TradePlan>;
+export type AccountSummary = z.infer<typeof schemas.AccountSummary>;
+export type DailyBar = z.infer<typeof schemas.DailyBar>;
 export type BuyRequest = z.infer<typeof schemas.BuyRequest>;
 export type Trade = z.infer<typeof schemas.TradeRow>;
 export type Recommendation = z.infer<typeof schemas.RecommendationRow>;
@@ -62,7 +64,7 @@ async function request<S extends z.ZodTypeAny>(
 export const api = {
   health: () => request(schemas.Health, "/health"),
   news: (limit = 50) => request(z.array(schemas.NewsRow), "/news", { query: { limit } }),
-  markets: (query: { source?: "polymarket" | "kalshi"; limit?: number } = {}) =>
+  markets: (query: { source?: "polymarket" | "kalshi"; limit?: number; relevant?: boolean } = {}) =>
     request(z.array(schemas.MarketRow), "/markets", { query }),
   marketHistory: (marketId: string) =>
     request(z.array(schemas.ProbabilityPoint), `/markets/${marketId}/history`),
@@ -72,9 +74,13 @@ export const api = {
   portfolioHistory: (days = 90) =>
     request(z.array(schemas.PortfolioValuePoint), "/portfolio/history", { query: { days } }),
   portfolioAdvice: () => request(z.array(schemas.RecommendationRow), "/portfolio/advice"),
-  recommendations: (query: { kind?: "live" | "daily"; action?: "buy" | "sell" | "keep"; held?: boolean } = {}) =>
-    request(z.array(schemas.RecommendationRow), "/recommendations", { query }),
-  tradePlan: (ticker: string, query: { portfolio_value: number; cash: number; entry?: number }) =>
+  recommendations: (
+    query: { kind?: "live" | "daily"; action?: "buy" | "sell" | "keep"; held?: boolean; ticker?: string } = {},
+  ) => request(z.array(schemas.RecommendationRow), "/recommendations", { query }),
+  account: () => request(schemas.AccountSummary, "/account"),
+  bars: (ticker: string, days = 90) =>
+    request(z.array(schemas.DailyBar), `/tickers/${ticker}/bars`, { query: { days } }),
+  tradePlan: (ticker: string, query: { portfolio_value?: number; cash?: number; entry?: number } = {}) =>
     request(schemas.TradePlan, `/tickers/${ticker}/plan`, { query }),
   trades: (status?: Trade["status"]) => request(z.array(schemas.TradeRow), "/trades", { query: { status } }),
   buy: (req: BuyRequest) =>

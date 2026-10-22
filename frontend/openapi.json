@@ -198,6 +198,18 @@
             }
           },
           {
+            "name": "relevant",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "only markets linked to at least one ticker",
+              "default": false,
+              "title": "Relevant"
+            },
+            "description": "only markets linked to at least one ticker"
+          },
+          {
             "name": "x-api-key",
             "in": "header",
             "required": false,
@@ -486,6 +498,125 @@
         }
       }
     },
+    "/account": {
+      "get": {
+        "summary": "Account",
+        "description": "Total account value and cash available to trade, from IOL.",
+        "operationId": "account",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tickers/{ticker}/bars": {
+      "get": {
+        "summary": "Ticker Bars",
+        "description": "Closed daily candles, oldest first (cached in Supabase).",
+        "operationId": "ticker_bars",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 10,
+              "default": 90,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DailyBar"
+                  },
+                  "title": "Response Ticker Bars"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tickers/{ticker}/plan": {
       "get": {
         "summary": "Trade Plan",
@@ -504,22 +635,40 @@
           {
             "name": "portfolio_value",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "number",
-              "exclusiveMinimum": 0,
+              "anyOf": [
+                {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "defaults to the IOL account total",
               "title": "Portfolio Value"
-            }
+            },
+            "description": "defaults to the IOL account total"
           },
           {
             "name": "cash",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "number",
-              "exclusiveMinimum": 0,
+              "anyOf": [
+                {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "defaults to the peso cash available",
               "title": "Cash"
-            }
+            },
+            "description": "defaults to the peso cash available"
           },
           {
             "name": "entry",
@@ -825,6 +974,22 @@
             }
           },
           {
+            "name": "ticker",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticker"
+            }
+          },
+          {
             "name": "x-api-key",
             "in": "header",
             "required": false,
@@ -1031,6 +1196,29 @@
   },
   "components": {
     "schemas": {
+      "AccountSummary": {
+        "properties": {
+          "total_value": {
+            "type": "number",
+            "title": "Total Value"
+          },
+          "cash_ars": {
+            "type": "number",
+            "title": "Cash Ars"
+          },
+          "cash_usd": {
+            "type": "number",
+            "title": "Cash Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_value",
+          "cash_ars",
+          "cash_usd"
+        ],
+        "title": "AccountSummary"
+      },
       "BuyRequest": {
         "properties": {
           "ticker": {
@@ -1074,6 +1262,41 @@
           "take_profit"
         ],
         "title": "BuyRequest"
+      },
+      "DailyBar": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "open": {
+            "type": "number",
+            "title": "Open"
+          },
+          "high": {
+            "type": "number",
+            "title": "High"
+          },
+          "low": {
+            "type": "number",
+            "title": "Low"
+          },
+          "close": {
+            "type": "number",
+            "title": "Close"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "open",
+          "high",
+          "low",
+          "close"
+        ],
+        "title": "DailyBar",
+        "description": "Our own daily candle, built from HistoryPoint rows."
       },
       "Evidence": {
         "properties": {

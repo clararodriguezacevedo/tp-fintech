@@ -23,6 +23,12 @@ class ProbabilityPoint(BaseModel):
     p: float = Field(ge=0, le=1)
 
 
+class AccountSummary(BaseModel):
+    total_value: float  # whole account in pesos, as IOL values it
+    cash_ars: float
+    cash_usd: float
+
+
 class PortfolioValuePoint(BaseModel):
     t: datetime
     value: float

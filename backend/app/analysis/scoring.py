@@ -97,7 +97,7 @@ def _market_evidence(imp: TickerImpactRow, item: MarketRow) -> Evidence | None:
         kind="market", item_id=item.id, title=item.title, url=item.url, direction=imp.direction,
         strength=imp.strength, reason=imp.reason or "",
         contribution=round(sign * STRENGTH[imp.strength] * scaled, 4),
-        detail=f"{item.source}: {prob}({item.change_24h * 100:+.1f} pts en 24 h)",
+        detail=f"{item.source}: {prob}({item.change_24h * 100:+.1f} pts en 24 h)".replace(".", ","),
     )
 
 

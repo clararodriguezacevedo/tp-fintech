@@ -45,9 +45,10 @@ mercado argentino (acciones, CEDEARs, bonos).
 | --- | --- |
 | Backend | Python 3.12, FastAPI, `uv` |
 | Base de datos | Supabase (Postgres hosteado) |
-| Tareas periódicas | APScheduler (corre dentro del proceso de FastAPI) |
+| Tareas periódicas | GitHub Actions (cron) |
 | LLM | Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`), free tier |
-| Frontend | Next.js + Tailwind |
+| Frontend | Next.js + Tailwind, en Vercel |
+| Backend en producción | Vercel (función serverless) |
 | Broker | IOL: lecturas contra la API real; compras en **paper trading** por defecto (simuladas con precios reales de IOL), órdenes reales solo con `IOL_LIVE_TRADING=true` |
 
 ## Estructura
@@ -72,6 +73,23 @@ El esquema de la base está en `supabase/migrations/`. Para aplicar las migracio
 ```bash
 cd backend && uv run python scripts/migrate.py
 ```
+
+## Frontend
+
+"El Parqué": Next.js (App Router) con páginas renderizadas en el servidor.
+
+| Página | Qué muestra |
+| --- | --- |
+| `/` Portada | la recomendación principal con su evidencia, otras compras, lo que pasa con tu cartera y los tickers cerca del umbral |
+| `/cartera` | valor, vender o mantener por posición, treemap de composición, alertas de concentración y evolución del valor |
+| `/ticker/[símbolo]` | precio de 90 días con stop loss y take profit, por qué la señal, y la compra en un click (revisar y confirmar) |
+| `/operaciones` | compras en práctica con su estado y resultado, cancelar o cerrar |
+| `/historial` | tasa de acierto por acción, señal y confianza, y cada recomendación calificada |
+| `/noticias` | últimas noticias y los mercados de predicción que mueven algún ticker |
+
+La API se llama solo desde el servidor de Next.js (server components y server actions), así
+que `API_KEY` nunca llega al navegador. Comprar, vender y mantener usan azul, naranja y gris
+(validados para daltonismo) y siempre van con la palabra y un símbolo.
 
 ## API desplegada (Vercel)
 

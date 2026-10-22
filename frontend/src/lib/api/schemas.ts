@@ -91,7 +91,23 @@ const HoldingOut = z
 const PortfolioValuePoint = z
   .object({ t: z.string().datetime({ offset: true }), value: z.number() })
   .passthrough();
-const entry = z.union([z.number(), z.null()]).optional();
+const AccountSummary = z
+  .object({
+    total_value: z.number(),
+    cash_ars: z.number(),
+    cash_usd: z.number(),
+  })
+  .passthrough();
+const DailyBar = z
+  .object({
+    day: z.string(),
+    open: z.number(),
+    high: z.number(),
+    low: z.number(),
+    close: z.number(),
+  })
+  .passthrough();
+const portfolio_value = z.union([z.number(), z.null()]).optional();
 const TradePlan = z
   .object({
     entry: z.number(),
@@ -232,7 +248,9 @@ export const schemas = {
   TickerImpactRow,
   HoldingOut,
   PortfolioValuePoint,
-  entry,
+  AccountSummary,
+  DailyBar,
+  portfolio_value,
   TradePlan,
   BuyRequest,
   TradeRow,

@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # them inside the API process instead, e.g. offline development.
     run_scheduler: bool = False
     collect_interval_minutes: int = 10
+    # Cash the trade planner assumes in paper mode, so simulated buys don't depend on the real
+    # account's balance.
+    paper_cash: float = 1_000_000
     # Fraction of the portfolio a single stop-out is allowed to lose.
     risk_per_trade: float = 0.01
 

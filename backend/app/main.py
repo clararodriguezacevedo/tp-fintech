@@ -20,8 +20,9 @@ from app.models.db import (
     TradeStatus,
 )
 from app.portfolio import get_holdings, value_history
+from app.models.iol import DailyBar
 from app.schemas import (
-    BuyRequest, Health, HoldingOut, PortfolioValuePoint, ProbabilityPoint, TrackRecordSummary,
+    AccountSummary, BuyRequest, Health, HoldingOut, PortfolioValuePoint, ProbabilityPoint, TrackRecordSummary,
     TradePlan,
 )
 from app.sources import polymarket
@@ -109,11 +110,23 @@ def list_news(limit: int = Query(50, ge=1, le=500)) -> list[NewsRow]:
 
 @app.get("/markets", response_model=list[MarketRow])
 def list_markets(
-    source: Literal["polymarket", "kalshi"] | None = None, limit: int = Query(50, ge=1, le=500)
+    source: Literal["polymarket", "kalshi"] | None = None,
+    limit: int = Query(50, ge=1, le=500),
+    relevant: bool = Query(False, description="only markets linked to at least one ticker"),
 ) -> list[MarketRow]:
-    q = get_db().table("prediction_markets").select("*")
+    db = get_db()
+    q = db.table("prediction_markets").select("*")
     if source:
         q = q.eq("source", source)
+    if relevant:
+        linked = {
+            str(r["item_id"])  # type: ignore[index]
+            for r in db.table("ticker_impacts").select("item_id").eq("item_kind", "market")
+            .limit(5000).execute().data
+        }
+        if not linked:
+            return []
+        q = q.in_("id", sorted(linked)[:300])
     return rows_as(MarketRow, q.order("volume_24h", desc=True).limit(limit).execute().data)
 
 
@@ -157,15 +170,42 @@ def portfolio_history(days: int = Query(90, ge=1, le=365)) -> list[PortfolioValu
     return [PortfolioValuePoint(t=t, value=v) for t, v in value_history(days)]
 
 
+@app.get("/account", response_model=AccountSummary)
+def account() -> AccountSummary:
+    """Total account value and cash available to trade, from IOL."""
+    status = get_iol().account_status()
+    pesos = [c for c in status.cuentas if c.moneda == "peso_Argentino"]
+    dollars = [c for c in status.cuentas if c.moneda == "dolar_Estadounidense"]
+    return AccountSummary(
+        total_value=status.total_en_pesos,
+        cash_ars=sum(c.disponible for c in pesos),
+        cash_usd=sum(c.disponible for c in dollars),
+    )
+
+
+@app.get("/tickers/{ticker}/bars", response_model=list[DailyBar])
+def ticker_bars(ticker: str, days: int = Query(90, ge=10, le=365)) -> list[DailyBar]:
+    """Closed daily candles, oldest first (cached in Supabase)."""
+    return prices.daily_bars(ticker, days=days)
+
+
 @app.get("/tickers/{ticker}/plan", response_model=TradePlan)
 def trade_plan(
     ticker: str,
-    portfolio_value: float = Query(gt=0),
-    cash: float = Query(gt=0),
+    portfolio_value: float | None = Query(None, gt=0, description="defaults to the IOL account total"),
+    cash: float | None = Query(None, gt=0, description="defaults to the peso cash available"),
     entry: float | None = Query(None, gt=0, description="defaults to the last IOL price"),
 ) -> TradePlan:
     """SL/TP and quantity for a one-click buy, sized from the ticker's ATR."""
     ticker = ticker.upper()
+    settings = get_settings()
+    if portfolio_value is None or cash is None:
+        acct = account()
+        portfolio_value = portfolio_value or acct.total_value
+        # Paper trades spend a simulated budget, not the account's real cash.
+        cash = cash or (acct.cash_ars if settings.iol_live_trading else settings.paper_cash)
+    if cash <= 0:
+        raise HTTPException(422, "no peso cash available to buy with")
     bars = prices.daily_bars(ticker)
     if len(bars) < 15:
         raise HTTPException(422, f"not enough price history for {ticker}")
@@ -174,7 +214,7 @@ def trade_plan(
         entry=price,
         atr_value=risk.atr([b.high for b in bars], [b.low for b in bars], [b.close for b in bars]),
         portfolio_value=portfolio_value,
-        risk_per_trade=get_settings().risk_per_trade,
+        risk_per_trade=settings.risk_per_trade,
         cash_available=cash,
     )
     return TradePlan(**plan.__dict__, market_open=market_hours.is_open())
@@ -208,13 +248,15 @@ def close_trade(trade_id: str) -> TradeRow:
 @app.get("/recommendations", response_model=list[RecommendationRow])
 def list_recommendations(
     kind: Literal["live", "daily"] = "live", action: Action | None = None,
-    held: bool | None = None,
+    held: bool | None = None, ticker: str | None = None,
 ) -> list[RecommendationRow]:
     """Latest recommendation per ticker for the next close."""
     q = (
         get_db().table("recommendations").select("*").eq("kind", kind)
         .eq("target_date", market_hours.next_close_date().isoformat())
     )
+    if ticker:
+        q = q.eq("ticker", ticker.upper())
     if action:
         q = q.eq("action", action)
     if held is not None:
