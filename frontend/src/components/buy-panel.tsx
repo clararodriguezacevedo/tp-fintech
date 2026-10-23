@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 
-import { buyAction, type BuyState } from "@/app/actions";
+import { buyAction, type BuyState } from "@/app/(site)/actions";
 import type { TradePlan } from "@/lib/api/client";
 import { money, price } from "@/lib/format";
 

@@ -1,7 +1,9 @@
 import Link from "next/link";
 
+import { logout } from "@/app/login/actions";
 import { api, type Recommendation } from "@/lib/api/client";
 import { nameOf } from "@/lib/names";
+import { authEnabled } from "@/lib/session";
 
 import { NavLinks } from "./nav";
 import { attempt } from "./ui";
@@ -51,7 +53,14 @@ export function Header() {
     <header className="border-b border-border">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-3">
         <Link href="/" className="text-lg font-semibold tracking-tight">El Parqué</Link>
-        <NavLinks />
+        <div className="flex items-center gap-2">
+          <NavLinks />
+          {authEnabled() && (
+            <form action={logout}>
+              <button className="rounded-md px-3 py-1.5 text-sm text-text-3 hover:text-text">Salir</button>
+            </form>
+          )}
+        </div>
       </div>
       <Tape />
     </header>

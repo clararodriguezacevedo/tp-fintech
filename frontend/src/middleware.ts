@@ -1,32 +1,19 @@
-// Password-protects the whole site with HTTP Basic Auth: the pages show the owner's real IOL
-// portfolio, so they can't be public. The browser asks once and remembers it. Any user name
-// works; the password is SITE_PASSWORD. Only enforced in production builds, so `npm run dev` stays open.
+// Every page shows the owner's real IOL portfolio, so the site requires logging in. Without a
+// valid session cookie, requests go to /login (which then sends you back where you were going).
+// Only enforced in production builds with SITE_PASSWORD set, so `npm run dev` stays open.
 import { NextResponse, type NextRequest } from "next/server";
 
-function safeEqual(a: string, b: string) {
-  let diff = a.length ^ b.length;
-  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
-  return diff === 0;
-}
+import { authEnabled, isValidSessionToken, SESSION_COOKIE } from "@/lib/session";
 
-export function middleware(req: NextRequest) {
-  const password = process.env.SITE_PASSWORD;
-  if (!password || process.env.NODE_ENV !== "production") return NextResponse.next();
+export async function middleware(req: NextRequest) {
+  if (!authEnabled() || req.nextUrl.pathname === "/login") return NextResponse.next();
 
-  const header = req.headers.get("authorization");
-  if (header?.startsWith("Basic ")) {
-    try {
-      const decoded = atob(header.slice(6));
-      const given = decoded.slice(decoded.indexOf(":") + 1);
-      if (safeEqual(given, password)) return NextResponse.next();
-    } catch {
-      // malformed header: fall through to the challenge
-    }
-  }
-  return new NextResponse("Acceso restringido.", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="El Parque", charset="UTF-8"' },
-  });
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  if (await isValidSessionToken(token, process.env.SITE_PASSWORD!)) return NextResponse.next();
+
+  const login = new URL("/login", req.url);
+  if (req.nextUrl.pathname !== "/") login.searchParams.set("next", req.nextUrl.pathname);
+  return NextResponse.redirect(login);
 }
 
 export const config = {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { closeTradeAction } from "@/app/actions";
+import { closeTradeAction } from "@/app/(site)/actions";
 import { ApiFailure, attempt, Delta, Notice, PageTitle } from "@/components/ui";
 import { api, type Trade } from "@/lib/api/client";
 import { dateTime, money, price } from "@/lib/format";

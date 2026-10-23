@@ -90,10 +90,11 @@ para alguien sin experiencia: primero qué hacer, después por qué y al final e
 
 Arriba de todo hay una cinta con las recomendaciones del día.
 
-El sitio está en **https://tp-fintech-web.vercel.app** y pide contraseña (la ventana de login del
-navegador, cualquier usuario): muestra la cartera real de IOL, así que no puede ser público. La
-contraseña es `SITE_PASSWORD`, en `frontend/.env.local` y en las variables del proyecto
-`tp-fintech-web` de Vercel. Sin esa variable (desarrollo local) el sitio queda abierto.
+El sitio está en **https://tp-fintech-web.vercel.app** y pide contraseña en `/login`, porque
+muestra la cartera real de IOL. Al entrar queda una cookie firmada (`httpOnly`) por 30 días; "Salir"
+la borra. La contraseña es `SITE_PASSWORD`, en `frontend/.env.local` y en las variables del
+proyecto `tp-fintech-web` de Vercel; cambiarla cierra todas las sesiones. En `npm run dev` el
+login está apagado.
 
 La API se llama solo desde el servidor de Next.js (server components y server actions), así
 que `API_KEY` nunca llega al navegador. Comprar, vender y mantener usan azul, naranja y gris
