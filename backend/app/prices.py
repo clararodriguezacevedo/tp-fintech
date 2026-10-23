@@ -41,15 +41,15 @@ def _stored(ticker: str, start: date) -> list[DailyBar]:
 
 
 def daily_bars(
-    ticker: str, days: int = 45, now: datetime | None = None, market: str = "bCBA"
+    ticker: str, days: int = 45, now: datetime | None = None, market: str = "BCBA"
 ) -> list[DailyBar]:
     """Closed daily candles for the last `days` calendar days, oldest first.
 
-    market="nYSE" gives the US listing (stored as "nYSE:TICKER")."""
+    market="US" gives the US listing (stored as "US:TICKER")."""
     symbol = ticker.upper()
-    ticker = symbol if market == "bCBA" else f"{market}:{symbol}"
+    ticker = symbol if market == "BCBA" else f"{market}:{symbol}"
     start = date.today() - timedelta(days=days)
-    last_closed = last_closed_day(now, market_hours.CLOSE if market == "bCBA" else US_CLOSE)
+    last_closed = last_closed_day(now, market_hours.CLOSE if market == "BCBA" else US_CLOSE)
     bars = _stored(ticker, start)
     # Backfill when asked for more history than is cached (e.g. a backtest).
     if bars and bars[0].day > start + timedelta(days=7):

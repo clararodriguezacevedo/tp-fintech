@@ -7,7 +7,9 @@ Day by day, starting from the real portfolio of the day each batch of recommenda
                      overnight gap) and sit in cash for the day; every "buy" gets BUY_ALLOCATION
                      of the portfolio at the next open (earning open -> close), taken pro rata
                      from the rest; "keep" changes nothing
-  costs              COMMISSION per operation, charged only when something changes versus the
+  costs              the account's real cost per operation (commission + VAT + market fee, from
+                     IOL's order estimate; COMMISSION if IOL can't answer), charged only when
+                     something changes versus the
                      previous day (entering or leaving a buy, selling or buying back)
 
 Both values compound from the same starting value, so the difference is the effect of
@@ -19,11 +21,12 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
+from app.brokers.iol import trade_cost_rate
 from app.db import get_db, rows_as
 from app.models.db import RecommendationRow
 
 BUY_ALLOCATION = 0.05
-COMMISSION = 0.006
+COMMISSION = 0.006  # fallback when IOL's order estimate is unavailable
 
 
 class SimDay(BaseModel):
@@ -76,6 +79,9 @@ def simulate() -> Simulation:
     for r in recs:
         by_day[r.target_date].append(r)
 
+    real_rate = trade_cost_rate()
+    cost_rate = COMMISSION if real_rate is None else real_rate
+
     base_value = follow_value = start_value = 0.0
     start_day: date | None = None
     prev_buys: set[str] = set()
@@ -111,7 +117,7 @@ def simulate() -> Simulation:
             BUY_ALLOCATION * (len(buys - prev_buys) + len(prev_buys - buys))
             + sum(weights.get(t, 0.0) for t in sells ^ prev_sells)
         )
-        follow_r -= trades * COMMISSION
+        follow_r -= trades * cost_rate
 
         base_value *= 1 + base_r
         follow_value *= 1 + follow_r
@@ -124,6 +130,6 @@ def simulate() -> Simulation:
 
     return Simulation(
         start_day=start_day, start_value=round(start_value, 2), base_value=round(base_value, 2),
-        follow_value=round(follow_value, 2), buy_allocation=BUY_ALLOCATION, commission=COMMISSION,
+        follow_value=round(follow_value, 2), buy_allocation=BUY_ALLOCATION, commission=cost_rate,
         days=days,
     )

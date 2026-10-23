@@ -113,7 +113,11 @@ const PortfolioOut = z
   })
   .passthrough();
 const PortfolioValuePoint = z
-  .object({ t: z.string().datetime({ offset: true }), value: z.number() })
+  .object({
+    t: z.string().datetime({ offset: true }),
+    value: z.number(),
+    value_usd_mep: z.union([z.number(), z.null()]).optional(),
+  })
   .passthrough();
 const AccountSummary = z
   .object({
@@ -140,6 +144,7 @@ const TradePlan = z
     quantity: z.number().int(),
     max_loss: z.number(),
     market_open: z.boolean(),
+    fees: z.union([z.number(), z.null()]).optional(),
   })
   .passthrough();
 const BuyRequest = z

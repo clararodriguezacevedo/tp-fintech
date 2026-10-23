@@ -529,7 +529,7 @@
     "/portfolio/history": {
       "get": {
         "summary": "Portfolio History",
-        "description": "Total portfolio value at each saved snapshot.",
+        "description": "Account value per day from IOL (pesos and dollar MEP), plus today's live value.\nFalls back to the app's own snapshots if IOL's history is unavailable.",
         "operationId": "portfolio_history",
         "parameters": [
           {
@@ -1485,7 +1485,7 @@
           "close"
         ],
         "title": "DailyBar",
-        "description": "Our own daily candle, built from HistoryPoint rows."
+        "description": "Our own daily candle, built from Bar rows."
       },
       "Evidence": {
         "properties": {
@@ -2108,6 +2108,17 @@
           "value": {
             "type": "number",
             "title": "Value"
+          },
+          "value_usd_mep": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Usd Mep"
           }
         },
         "type": "object",
@@ -2663,6 +2674,17 @@
           "market_open": {
             "type": "boolean",
             "title": "Market Open"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fees"
           }
         },
         "type": "object",

@@ -23,7 +23,8 @@ DISPLAY_MAX_AGE = timedelta(minutes=5)
 # Background jobs (scoring, tagging) tolerate older data.
 MAX_AGE = timedelta(hours=2)
 
-# IOL's titulo.tipo values grouped by what broad tags apply to them.
+# IOL's instrument types, normalized to the names the rest of the app (and stored snapshots) use.
+TYPES = {"TIT. PUBLICOS": "TitulosPublicos", "OBLIGACIONES NEGOCIABLES": "ObligacionesNegociables"}
 EQUITY_TYPES = {"ACCIONES", "Acciones"}
 BOND_TYPES = {"TitulosPublicos", "ObligacionesNegociables"}
 
@@ -50,19 +51,19 @@ class Snapshot(BaseModel):
 def _fetch_from_iol() -> list[Holding]:
     return [
         Holding(
-            ticker=a.titulo.simbolo.upper(),
-            description=a.titulo.descripcion,
-            type=a.titulo.tipo,
-            currency="USD" if a.titulo.moneda.startswith("dolar") else "ARS",
-            quantity=a.cantidad,
-            last_price=a.ultimo_precio,
-            avg_price=a.ppc,
-            value=a.valorizado,
-            gain_pct=a.ganancia_porcentaje,
-            gain_amount=a.ganancia_dinero,
-            day_change_pct=a.variacion_diaria,
+            ticker=p.instrument.symbol.upper(),
+            description=p.instrument.name,
+            type=TYPES.get(p.instrument.type, p.instrument.type),
+            currency="USD" if p.instrument.currency == "USD" else "ARS",
+            quantity=p.quantity,
+            last_price=p.market_value.current_price,
+            avg_price=p.cost_basis.average_entry_price,
+            value=p.value,
+            gain_pct=p.profit_loss.unrealized_pl_percent,
+            gain_amount=p.gain_amount,
+            day_change_pct=p.market_value.price_change_percent,
         )
-        for a in get_iol().holdings()
+        for p in get_iol().positions().positions
     ]
 
 

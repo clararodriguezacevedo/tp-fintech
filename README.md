@@ -1,7 +1,7 @@
 # Tecnología para las Finanzas: portfolio advisor
 
 Combina noticias recientes, mercados de predicción (Polymarket y Kalshi) y la API de
-InvertirOnline (IOL) para recomendar **comprar / vender / mantener** sobre los tickers del
+IOL Inversiones (https://developers.iolinversiones.com) para recomendar **comprar / vender / mantener** sobre los tickers del
 mercado argentino (acciones, CEDEARs, bonos).
 
 ## Flujo
@@ -99,6 +99,26 @@ login está apagado.
 La API se llama solo desde el servidor de Next.js (server components y server actions), así
 que `API_KEY` nunca llega al navegador. Comprar, vender y mantener usan azul, naranja y gris
 (validados para daltonismo) y siempre van con la palabra y un símbolo.
+
+## IOL Inversiones
+
+El cliente (`backend/app/brokers/iol.py`) usa la API de https://developers.iolinversiones.com
+(`https://api.iolinversiones.com`), con el mismo usuario y contraseña de IOL. Lo que usa la app:
+
+| Para qué | Endpoint |
+| --- | --- |
+| Cartera | `GET /broker/accounts/AR/positions` |
+| Saldos | `GET /broker/accounts/AR/balances` |
+| Valor de la cuenta día por día, en pesos y dólar MEP | `GET /broker/accounts/AR/portfolio/history` |
+| Cotizaciones (BYMA, NYSE, NASDAQ) | `GET /broker/market-data/{símbolo}/quote` |
+| Velas diarias | `GET /broker/market-data/{símbolo}/bars` |
+| Panel Merval | `GET /broker/market-data/screener?panel=argaccionesmerval` |
+| Costos reales de una orden | `POST /broker/orders/estimate` |
+| Órdenes reales (solo con `IOL_LIVE_TRADING=true`) | `POST /broker/orders`, `DELETE /broker/orders/{id}` |
+
+Detalles que maneja el cliente: cada acción de EE.UU. está en un solo mercado (AAPL en NASDAQ,
+XOM en NYSE), así que se prueba uno y otro; los bonos cotizan cada 100 nominales; y si IOL no
+responde (pasa de noche) se usan los datos guardados.
 
 ## API desplegada (Vercel)
 

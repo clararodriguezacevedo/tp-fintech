@@ -1,7 +1,7 @@
 import logging
 import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 import httpx
@@ -31,6 +31,7 @@ from app.sources import polymarket
 from app.trading import paper
 
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -217,20 +218,40 @@ def portfolio() -> PortfolioOut:
 
 @app.get("/portfolio/history", response_model=list[PortfolioValuePoint])
 def portfolio_history(days: int = Query(90, ge=1, le=365)) -> list[PortfolioValuePoint]:
-    """Total portfolio value at each saved snapshot."""
-    return [PortfolioValuePoint(t=t, value=v) for t, v in value_history(days)]
+    """Account value per day from IOL (pesos and dollar MEP), plus today's live value.
+    Falls back to the app's own snapshots if IOL's history is unavailable."""
+    today = date.today()
+    try:
+        history = get_iol().account_history(today - timedelta(days=days), today - timedelta(days=1))
+    except Exception:
+        return [PortfolioValuePoint(t=t, value=v) for t, v in value_history(days)]
+    points = [
+        PortfolioValuePoint(
+            t=datetime.combine(d.date, market_hours.CLOSE, tzinfo=market_hours.ART),
+            value=d.equity.ars, value_usd_mep=d.equity.usd_mep,
+        )
+        for d in history.history if d.equity.ars > 0
+    ]
+    try:
+        snap = current_holdings()
+        cash = get_iol().balances().ars.totals.t0
+        live = sum(h.value for h in snap.holdings if h.currency == "ARS") + cash
+        mep = history.history[-1].exchange_rate.mep if history.history else None
+        points.append(PortfolioValuePoint(t=snap.captured_at, value=live, value_usd_mep=live / mep if mep else None))
+    except Exception:
+        log.warning("no live value for today's point")
+    return points
 
 
 @app.get("/account", response_model=AccountSummary)
 def account() -> AccountSummary:
     """Total account value and cash available to trade, from IOL."""
-    status = get_iol().account_status()
-    pesos = [c for c in status.cuentas if c.moneda == "peso_Argentino"]
-    dollars = [c for c in status.cuentas if c.moneda == "dolar_Estadounidense"]
+    iol = get_iol()
+    balances = iol.balances()
     return AccountSummary(
-        total_value=status.total_en_pesos,
-        cash_ars=sum(c.disponible for c in pesos),
-        cash_usd=sum(c.disponible for c in dollars),
+        total_value=iol.positions().total_market_value + balances.ars.totals.t0,
+        cash_ars=balances.ars.available.t0,
+        cash_usd=balances.usd.available.t0,
     )
 
 
@@ -275,7 +296,13 @@ def trade_plan(
         risk_per_trade=settings.risk_per_trade,
         cash_available=cash,
     )
-    return TradePlan(**plan.__dict__, market_open=market_hours.is_open())
+    fees = None
+    if plan.quantity > 0:
+        try:
+            fees = get_iol().estimate_order("buy", ticker, plan.quantity, price).total_cost
+        except Exception:
+            log.warning("no fee estimate for %s", ticker)
+    return TradePlan(**plan.__dict__, market_open=market_hours.is_open(), fees=fees)
 
 
 @app.post("/trades", response_model=TradeRow)

@@ -69,7 +69,7 @@ export default async function HistoryPage() {
           </Card>
         </div>
         <p className="mt-3 text-sm text-text-3">
-          Arranca de tu cartera real. Cada compra sugerida se hace a la apertura del día siguiente con el {Math.round(s.buy_allocation * 100)}% de la cartera, lo que dice vender se vende a la apertura, y cada operación paga {String(s.commission * 100).replace(".", ",")}% de comisión.
+          Arranca de tu cartera real. Cada compra sugerida se hace a la apertura del día siguiente con el {Math.round(s.buy_allocation * 100)}% de la cartera, lo que dice vender se vende a la apertura, y cada operación paga tus costos reales de IOL ({(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%).
         </p>
       </section>
 

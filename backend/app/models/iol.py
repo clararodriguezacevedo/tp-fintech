@@ -1,76 +1,202 @@
-"""InvertirOnline API v2 responses, typed from real responses captured on 2026-10-21.
+"""IOL Inversiones API responses (https://developers.iolinversiones.com), typed from real
+responses captured on 2026-10-23.
 
-Only the fields we use are declared; unknown fields are ignored so a new field from IOL
-doesn't break parsing, but a missing or retyped field we rely on fails loudly.
+Every response is wrapped as {"meta": ..., "data": ..., "error": ...}; the client unwraps
+`data`. Only the fields we use are declared; unknown fields are ignored so a new field doesn't
+break parsing, but a missing or retyped field we rely on fails loudly.
 """
 
 from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
 
 
 class IOLModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
-
-
-class Token(BaseModel):
-    """POST /token. expires_in comes as a string ("899")."""
-
     model_config = ConfigDict(extra="ignore")
+
+
+class ApiError(IOLModel):
+    message: str
+    code: str | int | None = None
+
+
+class Token(IOLModel):
+    """POST /auth/token"""
+
     access_token: str
-    token_type: str
-    expires_in: int
     refresh_token: str
+    expires_in: int
+    expires_at: datetime
+    token_type: str
 
 
-class Punta(IOLModel):
-    """Best bid and ask."""
+# Accounts
 
-    cantidad_compra: float
-    precio_compra: float
-    precio_venta: float
-    cantidad_venta: float
+class BySettlement(IOLModel):
+    t0: float
+    t1: float = 0
+    t2: float = 0
+    t3: float = 0
+
+
+class CurrencyBalance(IOLModel):
+    currency: str
+    totals: BySettlement
+    available: BySettlement
+    committed: BySettlement
+
+
+class Balances(IOLModel):
+    """GET /broker/accounts/AR/balances"""
+
+    ars: CurrencyBalance
+    usd: CurrencyBalance
+
+
+class Instrument(IOLModel):
+    symbol: str
+    name: str
+    type: str  # "ACCIONES", "CEDEARS", "TIT. PUBLICOS", ...
+    asset_class: str
+    exchange: str
+    currency: str  # "ARS" or "USD"
+
+
+class MarketValue(IOLModel):
+    current_price: float
+    price_change: float
+    price_change_percent: float
+
+
+class ProfitLoss(IOLModel):
+    unrealized_pl: float
+    unrealized_pl_percent: float
+
+
+class CostBasis(IOLModel):
+    average_entry_price: float
+    total_cost: float
+
+
+class Position(IOLModel):
+    instrument: Instrument
+    quantity: float
+    market_value: MarketValue
+    profit_loss: ProfitLoss
+    cost_basis: CostBasis
+    portfolio_weight_percent: float
+
+    @property
+    def price_unit(self) -> int:
+        """Bonds are quoted per 100 nominal (the API's total_cost doesn't divide by it)."""
+        return 100 if "PUBLICOS" in self.instrument.type.upper() or "OBLIGACIONES" in self.instrument.type.upper() else 1
+
+    @property
+    def value(self) -> float:
+        return self.quantity * self.market_value.current_price / self.price_unit
+
+    @property
+    def gain_amount(self) -> float:
+        """From value and percent, which are right for bonds too."""
+        return self.value - self.value / (1 + self.profit_loss.unrealized_pl_percent / 100)
+
+
+class Positions(IOLModel):
+    """GET /broker/accounts/AR/positions?valuation_currency=ARS"""
+
+    account: str
+    currency: str
+    total_market_value: float
+    positions: list[Position]
+
+
+class Equity(IOLModel):
+    ars: float
+    usd_mep: float
+    usd_ccl: float
+
+
+class ExchangeRate(IOLModel):
+    mep: float
+    ccl: float
+
+
+class HistoryDay(IOLModel):
+    date: date
+    equity: Equity
+    exchange_rate: ExchangeRate
+
+
+class AccountHistory(IOLModel):
+    """GET /broker/accounts/AR/portfolio/history (end date must be before today)"""
+
+    status: Literal["complete", "partial"]
+    history: list[HistoryDay]
+
+
+class Trade(IOLModel):
+    """One item of GET /broker/accounts/activities/operations"""
+
+    order_id: str | int
+    order_date: datetime
+    type: str
+    status: str
+    symbol: str
+    currency: str
+
+
+# Market data
+
+class Prices(IOLModel):
+    current: float
+    open: float
+    close: float
+    high: float
+    low: float
+    previous_close: float
+
+
+class Change(IOLModel):
+    amount: float
+    percent: float
 
 
 class Quote(IOLModel):
-    """GET /api/v2/{mercado}/Titulos/{simbolo}/Cotizacion"""
+    """GET /broker/market-data/{symbol}/quote?market=BCBA|NYSE|NASDAQ&term=T1"""
 
-    ultimo_precio: float
-    variacion: float
-    apertura: float
-    maximo: float
-    minimo: float
-    fecha_hora: datetime
-    cierre_anterior: float
-    monto_operado: float
-    volumen_nominal: float
-    moneda: str
-    puntas: list[Punta] | None = None
-    cantidad_operaciones: int
-    descripcion_titulo: str | None = None
-    plazo: str | None = None
+    symbol: str
+    market: str
+    currency: str
+    prices: Prices
+    change: Change
+    last_updated: datetime
+
+    @property
+    def price(self) -> float:
+        return self.prices.current
 
 
-class HistoryPoint(IOLModel):
-    """One row of GET .../Cotizacion/seriehistorica/{desde}/{hasta}/{ajustada|sinAjustar}.
+class Bar(IOLModel):
+    """One row of GET /broker/market-data/{symbol}/bars. Some symbols come one row per day,
+    others several per day, each carrying the day's open/high/low so far."""
 
-    "ajustada" gives one row per day but only for local stocks; "sinAjustar" covers CEDEARs
-    and bonds too but returns several intraday rows per day.
-    """
+    datetime: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
 
-    ultimo_precio: float
-    apertura: float
-    maximo: float
-    minimo: float
-    fecha_hora: datetime
-    monto_operado: float
-    volumen_nominal: float
+
+class Bars(IOLModel):
+    symbol: str
+    market: str
+    bars: list[Bar]
 
 
 class DailyBar(BaseModel):
-    """Our own daily candle, built from HistoryPoint rows."""
+    """Our own daily candle, built from Bar rows."""
 
     day: date
     open: float
@@ -79,132 +205,98 @@ class DailyBar(BaseModel):
     close: float
 
 
-class Titulo(IOLModel):
-    simbolo: str
-    descripcion: str
-    pais: str
-    mercado: str
-    tipo: str  # "ACCIONES", "CEDEARS", "TitulosPublicos", ...
-    plazo: str
-    moneda: str
+class BookSide(IOLModel):
+    price: float
+    size: float
 
 
-class Activo(IOLModel):
-    cantidad: float
-    comprometido: float
-    ultimo_precio: float
-    ppc: float  # average purchase price
-    ganancia_porcentaje: float
-    ganancia_dinero: float
-    valorizado: float
-    variacion_diaria: float
-    titulo: Titulo
+class Book(IOLModel):
+    bid: BookSide
+    ask: BookSide
 
 
-class Portafolio(IOLModel):
-    """GET /api/v2/portafolio/{pais}"""
-
-    pais: str
-    activos: list[Activo]
-
-
-class Saldo(IOLModel):
-    liquidacion: str
-    saldo: float
-    comprometido: float
-    disponible: float
-    disponible_operar: float
+class ScreenerQuotes(IOLModel):
+    last: float
+    open: float
+    close: float
+    high: float
+    low: float
+    change_percent: float
+    volume: float
 
 
-class Cuenta(IOLModel):
-    numero: str
-    tipo: str
-    moneda: str
-    disponible: float
-    comprometido: float
-    saldo: float
-    titulos_valorizados: float
-    total: float
-    saldos: list[Saldo]
-    estado: str
+class ScreenerInstrument(IOLModel):
+    symbol: str
+    name: str
+    market: str
+    currency: str
 
 
-class EstadoCuenta(IOLModel):
-    """GET /api/v2/estadocuenta"""
+class ScreenerRow(IOLModel):
+    """One item of GET /broker/market-data/screener?panel=argaccionesmerval"""
 
-    cuentas: list[Cuenta]
-    total_en_pesos: float
-
-
-class Operacion(IOLModel):
-    """GET /api/v2/operaciones"""
-
-    numero: int
-    fecha_orden: datetime
-    tipo: str  # "Compra", "Venta", "Pago de Dividendos", "Rescate FCI", ...
-    estado: str
-    mercado: str
-    simbolo: str
-    cantidad: float | None = None
-    monto: float | None = None
-    modalidad: str
-    precio: float | None = None
-    fecha_operada: datetime | None = None
-    cantidad_operada: float | None = None
-    precio_operado: float | None = None
-    monto_operado: float | None = None
-    plazo: str
+    instrument: ScreenerInstrument
+    quotes: ScreenerQuotes
+    book: Book
 
 
-class OptionQuote(IOLModel):
-    ultimo_precio: float
-    variacion: float
-    fecha_hora: datetime
-    volumen_nominal: float
-    cantidad_operaciones: int
+class OptionInfo(IOLModel):
+    type: Literal["call", "put"]
+    strike_price: float
+    state: str
 
 
-class Opcion(IOLModel):
-    """GET /api/v2/{mercado}/Titulos/{simbolo}/Opciones"""
+class OptionRow(IOLModel):
+    """One item of GET /broker/market-data/{symbol}/options"""
 
-    cotizacion: OptionQuote
-    simbolo_subyacente: str
-    fecha_vencimiento: datetime
-    tipo_opcion: Literal["Call", "Put"]
-    simbolo: str
-    descripcion: str
+    symbol: str
+    option: OptionInfo
+    quotes: ScreenerQuotes
+    book: Book
 
 
-class PanelTitulo(IOLModel):
-    simbolo: str
-    descripcion: str
-    puntas: Punta | None = None
-    ultimo_precio: float
-    variacion_porcentual: float
-    apertura: float
-    maximo: float
-    minimo: float
-    ultimo_cierre: float
-    volumen: float
-    cantidad_operaciones: float
-    fecha: datetime
-    moneda: str
+class RepoTerm(IOLModel):
+    """One item of GET /broker/market-data/repos/terms (cauciones)"""
+
+    term_id: int
+    term_days: int
+    min_amount: float
+    max_amount: float
+    due_date: datetime
 
 
-class Panel(IOLModel):
-    """GET /api/v2/Cotizaciones/{instrumento}/{panel}/{pais}, e.g. acciones/merval, bonos/todos."""
+# Orders
 
-    titulos: list[PanelTitulo]
-
-
-class CaucionRate(IOLModel):
-    plazo: int  # days
-    monto_contado: float
-    tasa_promedio: float  # annual %, e.g. 19.4
-    fecha_vencimiento: datetime
+class Money(IOLModel):
+    currency: str
+    value: float
 
 
-class CaucionPanel(IOLModel):
-    """GET /api/v2/Cotizaciones/cauciones/todas/argentina"""
+class RegulatoryFees(IOLModel):
+    vat: Money
+    market_fee: Money
 
-    titulos: list[CaucionRate]
+
+class OrderEstimate(IOLModel):
+    """POST /broker/orders/estimate: previews costs, places nothing."""
+
+    amount: Money
+    commission: Money
+    regulatory_fees: RegulatoryFees
+
+    @property
+    def total_cost(self) -> float:
+        return self.commission.value + self.regulatory_fees.vat.value + self.regulatory_fees.market_fee.value
+
+    @property
+    def cost_rate(self) -> float:
+        return self.total_cost / self.amount.value if self.amount.value else 0.0
+
+
+class OrderResult(BaseModel):
+    """POST /broker/orders. Not captured yet (no real order has been sent), so every field is
+    optional and the raw body is kept."""
+
+    model_config = ConfigDict(extra="allow")
+    order_id: str | int | None = None
+    status: str | None = None

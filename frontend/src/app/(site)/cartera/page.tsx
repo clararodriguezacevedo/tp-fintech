@@ -39,6 +39,8 @@ export default async function PortfolioPage() {
   const adviceBy = new Map<string, Recommendation>(advice.ok ? advice.data.map((r) => [r.ticker, r]) : []);
   const sells = all.filter((h) => adviceBy.get(h.ticker)?.action === "sell");
   const warning = concentration(ars, total);
+  const lastPoint = history.ok ? history.data.at(-1) : undefined;
+  const usdMep = lastPoint?.value_usd_mep != null && lastPoint.value ? (total / lastPoint.value) * lastPoint.value_usd_mep : null;
 
   return (
     <div className="space-y-10">
@@ -49,6 +51,7 @@ export default async function PortfolioPage() {
           <span><Delta value={today}>{money(Math.abs(today))}</Delta> hoy</span>
           <span><Delta value={gain}>{money(Math.abs(gain))} ({pctPoints(cost ? (gain / cost) * 100 : 0)})</Delta> desde que compraste</span>
         </p>
+        {usdMep != null && <p className="num mt-1 text-text-2">≈ {usd(usdMep)} al dólar MEP</p>}
         <p className="mt-2 text-sm text-text-3">
           En pesos argentinos, con precios de IOL de las {time(portfolio.data.captured_at)}.
           {dollars.length > 0 && ` Además tenés ${dollars.length} posición${dollars.length > 1 ? "es" : ""} en dólares, que no se suman al total.`}
@@ -114,12 +117,12 @@ export default async function PortfolioPage() {
 
       {history.ok && history.data.length >= 2 && (
         <section>
-          <SectionTitle>Valor en el tiempo</SectionTitle>
+          <SectionTitle>Valor de tu cuenta en los últimos 3 meses</SectionTitle>
           <LineChart
-            label="Valor total de la cartera en pesos"
+            label="Valor total de la cuenta en pesos, día por día"
             points={history.data.map((p) => ({ t: p.t, v: p.value }))}
             valueFormat="moneyCompact"
-            timeFormat="dateTime"
+            timeFormat="dayShort"
           />
         </section>
       )}

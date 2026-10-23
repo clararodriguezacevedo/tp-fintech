@@ -1,11 +1,12 @@
-"""InvertirOnline API v2 client.
+"""IOL Inversiones API client (https://developers.iolinversiones.com).
 
-Auth: POST /token with a password grant returns a bearer token valid for 15 minutes plus a
-refresh token. Reads always use the real API (IOL's sandbox is not available). buy() and
-sell() refuse to run unless IOL_LIVE_TRADING=true; otherwise trades are simulated by
-app.trading.paper.
+Auth: POST /auth/token with a password grant returns a bearer token valid for 15 minutes and a
+refresh token valid for 30 days. Every response is {"meta", "data", "error"}; this client
+returns the validated `data`. buy(), sell() and cancel_order() refuse to run unless
+IOL_LIVE_TRADING=true; otherwise trades are simulated by app.trading.paper.
 
-Every response is validated into the models in app.models.iol.
+Markets: "BCBA" for Buenos Aires, or "US" for a US listing, which the client resolves to NYSE
+or NASDAQ (each symbol only answers on one of them) and remembers.
 """
 
 import logging
@@ -15,15 +16,19 @@ from datetime import date, timedelta
 from typing import Protocol, TypeVar
 
 import httpx
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from app.config import get_settings
 from app.models.iol import (
-    Activo, CaucionPanel, DailyBar, EstadoCuenta, HistoryPoint, Opcion, Operacion, Panel,
-    Portafolio, Quote, Token,
+    AccountHistory, ApiError, Balances, Bars, DailyBar, OptionRow, OrderEstimate, OrderResult,
+    Positions, Quote, RepoTerm, ScreenerRow, Token, Trade,
 )
 
-BASE_URL = "https://api.invertironline.com"
+BASE_URL = "https://api.iolinversiones.com"
+TERM = "T1"  # settlement term used for quotes and orders
+MERVAL_PANEL = "argaccionesmerval"
+US_MARKETS = ("NYSE", "NASDAQ")
+US_SYMBOLS = {"BRKB": "BRK.B"}  # CEDEAR ticker -> US ticker, where they differ
 
 log = logging.getLogger(__name__)
 
@@ -35,16 +40,11 @@ class LiveTradingDisabled(RuntimeError):
 
 
 class IOLUnavailable(RuntimeError):
-    """IOL sometimes answers 200 with only {"message": "En estos momentos no podemos..."}."""
+    """IOL answered with a server error, or with an error body instead of data."""
 
 
-class OrderResult(BaseModel):
-    """POST /api/v2/operar/{Comprar|Vender}. Not captured yet (no real order has been sent),
-    so every field is optional and the raw body is kept."""
-
-    model_config = ConfigDict(extra="allow")
-    ok: bool | None = None
-    numeroOperacion: int | None = None
+class IOLNotFound(RuntimeError):
+    pass
 
 
 class Session(BaseModel):
@@ -54,7 +54,7 @@ class Session(BaseModel):
 
 
 class SessionStore(Protocol):
-    """Somewhere to keep the IOL session between processes (serverless functions, CI runs)."""
+    """Somewhere to keep the IOL session between processes (serverless functions, cron runs)."""
 
     def load(self) -> Session | None: ...
     def save(self, session: Session) -> None: ...
@@ -73,17 +73,17 @@ class IOLClient:
         self._refresh: str | None = None
         self._expires_at = 0.0
         self._loaded = False
-        self._http = httpx.Client(base_url=self.base, timeout=20)
+        self._us_market: dict[str, str] = {}
+        self._http = httpx.Client(base_url=self.base, timeout=30)
 
     # Auth
 
-    def _auth(self, data: dict[str, str]) -> None:
-        log.info("IOL auth: %s grant", data["grant_type"])
-        r = self._http.post("/token", data=data)
+    def _auth(self, body: dict[str, str]) -> None:
+        log.info("IOL auth: %s grant", body["grant_type"])
+        r = self._http.post("/auth/token", json=body)
         r.raise_for_status()
-        token = Token.model_validate(r.json())
-        self._token = token.access_token
-        self._refresh = token.refresh_token
+        token = Token.model_validate(r.json()["data"])
+        self._token, self._refresh = token.access_token, token.refresh_token
         # Renew a minute early so a request never goes out with an expired token.
         self._expires_at = time.time() + token.expires_in - 60
         if self._store:
@@ -110,138 +110,166 @@ class IOLClient:
                 return
             except httpx.HTTPStatusError:
                 pass
-        self._auth(
-            {"grant_type": "password", "username": self._username, "password": self._password}
-        )
+        self._auth({"grant_type": "password", "username": self._username, "password": self._password})
 
     def _recover_from_401(self) -> None:
+        """Another process may have renewed the session; take its token, or renew ourselves."""
         log.info("IOL answered 401; recovering the session")
-        """IOL keeps one live token per user, so another process renewing the session (an Actions
-        run, a different Vercel instance) revokes ours before it expires. Take the newer session
-        from the store if there is one; otherwise renew it ourselves."""
         stale = self._token
         self._load_session()
         if self._token and self._token != stale and time.time() < self._expires_at:
             return
-        self._expires_at = 0.0  # force _ensure_token to renew
+        self._expires_at = 0.0
         self._ensure_token()
 
     def _request(self, method: str, path: str, **kwargs) -> object:
         self._ensure_token()
-        r = self._http.request(
+        send = lambda: self._http.request(
             method, path, headers={"Authorization": f"Bearer {self._token}"}, **kwargs
         )
+        r = send()
         if r.status_code == 401:
             self._recover_from_401()
-            r = self._http.request(
-                method, path, headers={"Authorization": f"Bearer {self._token}"}, **kwargs
-            )
+            r = send()
+        try:
+            body = r.json()
+        except ValueError:
+            r.raise_for_status()
+            raise IOLUnavailable(f"IOL answered {r.status_code} without JSON")
+        error = ApiError.model_validate(body["error"]) if body.get("error") else None
+        if r.status_code == 404:
+            raise IOLNotFound(error.message if error else path)
+        if r.status_code >= 500 or (error and r.status_code < 400):
+            raise IOLUnavailable(error.message if error else f"IOL answered {r.status_code}")
+        if error:
+            raise httpx.HTTPStatusError(f"IOL {r.status_code}: {error.message}", request=r.request, response=r)
         r.raise_for_status()
-        return r.json()
+        return body.get("data")
 
-    def _get(self, path: str, type_: type[T]) -> T:
-        data = self._request("GET", path)
-        if isinstance(data, dict) and set(data) == {"message"}:
-            raise IOLUnavailable(str(data["message"]))
-        return TypeAdapter(type_).validate_python(data)
+    def _get(self, path: str, type_: type[T], **params: object) -> T:
+        return TypeAdapter(type_).validate_python(self._request("GET", path, params=params))
+
+    def _market_for(self, symbol: str, market: str, probe: str) -> tuple[str, str]:
+        """(symbol, market) to send: resolves "US" to NYSE or NASDAQ by trying `probe`."""
+        if market != "US":
+            return symbol, market
+        us_symbol = US_SYMBOLS.get(symbol, symbol)
+        if symbol in self._us_market:
+            return us_symbol, self._us_market[symbol]
+        for candidate in US_MARKETS:
+            try:
+                self._request("GET", probe.format(symbol=us_symbol), params={"market": candidate, "term": TERM})
+                self._us_market[symbol] = candidate
+                return us_symbol, candidate
+            except IOLNotFound:
+                continue
+        raise IOLNotFound(f"{symbol} is not listed on NYSE or NASDAQ")
 
     # Account
 
-    def account_status(self) -> EstadoCuenta:
-        return self._get("/api/v2/estadocuenta", EstadoCuenta)
+    def balances(self) -> Balances:
+        return self._get("/broker/accounts/AR/balances", Balances)
 
-    def portfolio(self, country: str = "argentina") -> Portafolio:
-        return self._get(f"/api/v2/portafolio/{country}", Portafolio)
+    def positions(self, valuation_currency: str = "ARS") -> Positions:
+        return self._get("/broker/accounts/AR/positions", Positions, valuation_currency=valuation_currency)
 
-    def holdings(self) -> list[Activo]:
-        return self.portfolio().activos
+    def account_history(self, start: date, end: date) -> AccountHistory:
+        """Daily equity (ARS, USD MEP, USD CCL) and exchange rates. `end` must be before today."""
+        return self._get(
+            "/broker/accounts/AR/portfolio/history", AccountHistory,
+            start_date=start.isoformat(), end_date=end.isoformat(),
+        )
 
-    def operations(self) -> list[Operacion]:
-        return self._get("/api/v2/operaciones", list[Operacion])
-
-    def operation(self, number: int) -> Operacion:
-        return self._get(f"/api/v2/operaciones/{number}", Operacion)
-
-    def cancel_operation(self, number: int) -> object:
-        if not self.live:
-            raise LiveTradingDisabled("real orders are off; set IOL_LIVE_TRADING=true to enable")
-        return self._request("DELETE", f"/api/v2/operaciones/{number}")
+    def operations(self, start: date, end: date) -> list[Trade]:
+        return self._get(
+            "/broker/accounts/activities/operations", list[Trade],
+            start_date=start.isoformat(), end_date=end.isoformat(), country="all", state="all",
+        )
 
     # Market data
 
-    def quote(self, symbol: str, market: str = "bCBA") -> Quote:
-        return self._get(f"/api/v2/{market}/Titulos/{symbol}/Cotizacion", Quote)
+    def quote(self, symbol: str, market: str = "BCBA") -> Quote:
+        symbol, market = self._market_for(symbol, market, "/broker/market-data/{symbol}/quote")
+        return self._get(f"/broker/market-data/{symbol}/quote", Quote, market=market, term=TERM)
 
-    def history(
-        self, symbol: str, start: date, end: date, market: str = "bCBA", adjusted: bool = False
-    ) -> list[HistoryPoint]:
-        """Raw history rows. adjusted=True gives daily rows but only works for local stocks."""
-        mode = "ajustada" if adjusted else "sinAjustar"
+    def daily_history(self, symbol: str, start: date, end: date, market: str = "BCBA") -> list[DailyBar]:
+        """One candle per trading day, oldest first, for stocks, CEDEARs, bonds and US shares.
+
+        Some symbols come with one row per day and others with several; each row carries the
+        day's open/high/low so far, so the last row of a day has its close.
+        """
+        symbol, market = self._market_for(symbol, market, "/broker/market-data/{symbol}/quote")
+        bars = self._get(
+            f"/broker/market-data/{symbol}/bars", Bars, market=market,
+            **{"from": f"{start.isoformat()} 00:00:00", "to": f"{end.isoformat()} 23:59:59"},
+        )
+        by_day: dict[date, list] = defaultdict(list)
+        for b in bars.bars:
+            if b.close > 0:
+                # IOL's timestamps are UTC; trading days are in Argentina (UTC-3).
+                by_day[(b.datetime - timedelta(hours=3)).date()].append(b)
+        out = []
+        for day in sorted(by_day):
+            rows = sorted(by_day[day], key=lambda b: b.datetime)
+            out.append(DailyBar(
+                day=day,
+                open=next((b.open for b in rows if b.open > 0), rows[0].close),
+                high=max(b.high or b.close for b in rows),
+                low=min(b.low or b.close for b in rows),
+                close=rows[-1].close,
+            ))
+        return out
+
+    def options(self, symbol: str, market: str = "BCBA") -> list[OptionRow]:
+        return self._get(f"/broker/market-data/{symbol}/options", list[OptionRow], market=market)
+
+    def merval_panel(self) -> list[ScreenerRow]:
+        """The Merval leaders with today's quotes, in one call."""
         return self._get(
-            f"/api/v2/{market}/Titulos/{symbol}/Cotizacion/seriehistorica/"
-            f"{start.isoformat()}/{end.isoformat()}/{mode}",
-            list[HistoryPoint],
+            "/broker/market-data/screener", list[ScreenerRow],
+            country="AR", asset_type="acciones", panel=MERVAL_PANEL, term=TERM,
         )
 
-    def daily_history(
-        self, symbol: str, start: date, end: date, market: str = "bCBA"
-    ) -> list[DailyBar]:
-        """One candle per trading day, oldest first, for stocks, CEDEARs and bonds alike.
-
-        Built from the unadjusted series, which has several intraday rows per day: the last row
-        of each day carries the close and that day's high and low so far.
-        """
-        by_day: dict[date, list[HistoryPoint]] = defaultdict(list)
-        for p in self.history(symbol, start, end, market):
-            if p.ultimo_precio > 0:
-                by_day[p.fecha_hora.date()].append(p)
-        bars = []
-        for day in sorted(by_day):
-            rows = sorted(by_day[day], key=lambda p: p.fecha_hora)
-            prices = [p.ultimo_precio for p in rows]
-            highs = [p.maximo for p in rows if p.maximo > 0] or prices
-            lows = [p.minimo for p in rows if p.minimo > 0] or prices
-            opens = [p.apertura for p in rows if p.apertura > 0] or prices
-            bars.append(DailyBar(
-                day=day, open=opens[0], high=max(highs), low=min(lows), close=prices[-1],
-            ))
-        return bars
-
-    def options(self, symbol: str, market: str = "bCBA") -> list[Opcion]:
-        return self._get(f"/api/v2/{market}/Titulos/{symbol}/Opciones", list[Opcion])
-
-    def panel(self, instrument: str, panel: str, country: str = "argentina") -> Panel:
-        """Working panels: ("acciones", "merval"), ("bonos", "todos")."""
-        return self._get(f"/api/v2/Cotizaciones/{instrument}/{panel}/{country}", Panel)
-
-    def cauciones(self) -> CaucionPanel:
-        return self._get("/api/v2/Cotizaciones/cauciones/todas/argentina", CaucionPanel)
+    def repo_terms(self, currency: str = "ARS") -> list[RepoTerm]:
+        return self._get("/broker/market-data/repos/terms", list[RepoTerm], currency=currency)
 
     # Orders
 
-    def _order(
-        self, side: str, symbol: str, quantity: int, price: float, market: str
-    ) -> OrderResult:
+    def _order_body(self, side: str, symbol: str, quantity: int, price: float, market: str) -> dict:
+        return {
+            "symbol": symbol,
+            "market_id": market,
+            "side": side,
+            "order_type": "limit",
+            "quantity": quantity,
+            "limit_price": price,
+            "due_date": (date.today() + timedelta(days=1)).isoformat(),
+            "settlement_term": TERM,
+        }
+
+    def estimate_order(
+        self, side: str, symbol: str, quantity: int, price: float, market: str = "BCBA"
+    ) -> OrderEstimate:
+        """Commission and fees for an order, without placing it."""
+        body = self._order_body(side, symbol, quantity, price, market)
+        return OrderEstimate.model_validate(self._request("POST", "/broker/orders/estimate", json=body))
+
+    def _order(self, side: str, symbol: str, quantity: int, price: float, market: str) -> OrderResult:
         if not self.live:
             raise LiveTradingDisabled("real orders are off; set IOL_LIVE_TRADING=true to enable")
-        body = {
-            "mercado": market,
-            "simbolo": symbol,
-            "cantidad": quantity,
-            "precio": price,
-            "plazo": "t1",
-            "validez": (date.today() + timedelta(days=1)).isoformat(),
-            "tipoOrden": "precioLimite",
-        }
-        return OrderResult.model_validate(
-            self._request("POST", f"/api/v2/operar/{side}", json=body)
-        )
+        body = self._order_body(side, symbol, quantity, price, market)
+        return OrderResult.model_validate(self._request("POST", "/broker/orders", json=body) or {})
 
-    def buy(self, symbol: str, quantity: int, price: float, market: str = "bCBA") -> OrderResult:
-        return self._order("Comprar", symbol, quantity, price, market)
+    def buy(self, symbol: str, quantity: int, price: float, market: str = "BCBA") -> OrderResult:
+        return self._order("buy", symbol, quantity, price, market)
 
-    def sell(self, symbol: str, quantity: int, price: float, market: str = "bCBA") -> OrderResult:
-        return self._order("Vender", symbol, quantity, price, market)
+    def sell(self, symbol: str, quantity: int, price: float, market: str = "BCBA") -> OrderResult:
+        return self._order("sell", symbol, quantity, price, market)
+
+    def cancel_order(self, order_id: str | int) -> object:
+        if not self.live:
+            raise LiveTradingDisabled("real orders are off; set IOL_LIVE_TRADING=true to enable")
+        return self._request("DELETE", f"/broker/orders/{order_id}")
 
 
 _client: IOLClient | None = None
@@ -260,3 +288,14 @@ def get_iol() -> IOLClient:
             session_store=SupabaseSessionStore(),
         )
     return _client
+
+
+def trade_cost_rate(symbol: str = "GGAL", price: float = 1000.0) -> float | None:
+    """The account's real cost of trading (commission + VAT + market fee) as a share of the
+    amount, from IOL's order estimate. None if IOL can't estimate right now."""
+    try:
+        return get_iol().estimate_order("buy", symbol, 100, price).cost_rate
+    except Exception:
+        log.warning("could not estimate trading costs")
+        return None
+

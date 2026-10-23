@@ -253,9 +253,9 @@ def market_context() -> dict[str, float]:
 
     us = 0.0
     try:
-        spy = prices.daily_bars("SPY", market="nYSE")
+        spy = prices.daily_bars("SPY", market="US")
         if spy:
-            us = trend_score(spy, get_iol().quote("SPY", "nYSE").ultimo_precio or spy[-1].close)
+            us = trend_score(spy, get_iol().quote("SPY", "US").price or spy[-1].close)
     except Exception:
         log.warning("no S&P 500 data for market context")
     return {
@@ -272,9 +272,9 @@ def cedear_gaps(local_prices: dict[str, float]) -> dict[str, float]:
     for ticker, price in local_prices.items():
         try:
             local = {b.day: b.close for b in prices.daily_bars(ticker) if b.close > 0}
-            us_bars = prices.daily_bars(ticker, market="nYSE")
+            us_bars = prices.daily_bars(ticker, market="US")
             ratios = [local[b.day] / b.close for b in us_bars if b.day in local and b.close > 0][-20:]
-            us_now = get_iol().quote(ticker, "nYSE").ultimo_precio
+            us_now = get_iol().quote(ticker, "US").price
             if len(ratios) < 10 or not us_now:
                 continue
             premiums[ticker] = (price / us_now) / statistics.median(ratios) - 1
@@ -391,7 +391,7 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
             log.warning("no history for %s", ticker)
         price: float | None = None
         try:
-            price = get_iol().quote(ticker).ultimo_precio or None
+            price = get_iol().quote(ticker).price or None
         except Exception:
             log.warning("no live price for %s; using the last close", ticker)
         if not price and bars:

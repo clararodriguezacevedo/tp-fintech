@@ -50,7 +50,8 @@ class AccountSummary(BaseModel):
 
 class PortfolioValuePoint(BaseModel):
     t: datetime
-    value: float
+    value: float  # pesos
+    value_usd_mep: float | None = None  # same value in dollars at that day's MEP rate
 
 
 class TradePlan(BaseModel):
@@ -60,6 +61,7 @@ class TradePlan(BaseModel):
     quantity: int
     max_loss: float
     market_open: bool
+    fees: float | None = None  # commission + VAT + market fee IOL estimates for this order
 
 
 class BuyRequest(BaseModel):

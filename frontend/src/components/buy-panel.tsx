@@ -81,6 +81,9 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
           </div>
           <dl className="mt-5 space-y-1 border-t border-border pt-4">
             <div className="flex justify-between"><dt className="text-text-2">Total</dt><dd className="num font-semibold">{money(total)}</dd></div>
+            {plan.fees != null && quantity === plan.quantity && (
+              <div className="flex justify-between"><dt className="text-text-2">Costos de IOL</dt><dd className="num">{money(plan.fees)}</dd></div>
+            )}
             <div className="flex justify-between"><dt className="text-text-2">Si toca el stop loss</dt><dd className="num">−{money(maxLoss)}</dd></div>
             <div className="flex justify-between"><dt className="text-text-2">Si toca el take profit</dt><dd className="num">+{money(maxGain)}</dd></div>
           </dl>

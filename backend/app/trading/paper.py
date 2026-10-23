@@ -29,10 +29,10 @@ OPEN_STATUSES: list[TradeStatus] = ["queued", "filled"]
 PriceFn = Callable[[str, str], float]
 
 
-def last_price(ticker: str, market: str = "bCBA") -> float:
+def last_price(ticker: str, market: str = "BCBA") -> float:
     """Live price from IOL, or the last close when IOL doesn't answer (it happens at night)."""
     try:
-        price = get_iol().quote(ticker, market).ultimo_precio
+        price = get_iol().quote(ticker, market).price
         if price:
             return price
     except Exception:
@@ -65,14 +65,14 @@ def _fill(trade: TradeRow, price: float) -> TradeRow:
     fields: dict[str, Any] = {"status": "filled", "fill_price": price, "filled_at": _now(), "live": live}
     if live:
         order = get_iol().buy(trade.ticker, trade.quantity, price, trade.market)
-        fields["iol_order_number"] = order.numeroOperacion
+        fields["iol_order_number"] = order.order_id
     return _update(trade.id, **fields)
 
 
 def _close(trade: TradeRow, price: float, status: TradeStatus) -> TradeRow:
     exit_number = None
     if trade.live:
-        exit_number = get_iol().sell(trade.ticker, trade.quantity, price, trade.market).numeroOperacion
+        exit_number = get_iol().sell(trade.ticker, trade.quantity, price, trade.market).order_id
     assert trade.fill_price is not None, "only filled trades can be closed"
     pnl = (price - trade.fill_price) * trade.quantity
     return _update(
@@ -87,7 +87,7 @@ def create_buy(
     stop_loss: float,
     take_profit: float,
     recommendation_id: str | None = None,
-    market: str = "bCBA",
+    market: str = "BCBA",
     price_fn: PriceFn = last_price,
     is_open: Callable[[], bool] = market_hours.is_open,
 ) -> TradeRow:
