@@ -1,44 +1,39 @@
 // Layout pieces shared by every page.
 import type { ReactNode } from "react";
 
-export function SectionHead({ kicker, title, aside }: { kicker?: string; title: string; aside?: ReactNode }) {
+export function PageTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <header className="rule-double mb-4 flex items-end justify-between gap-4 pt-3">
-      <div>
-        {kicker && <p className="kicker mb-1">{kicker}</p>}
-        <h2 className="font-display text-2xl leading-tight">{title}</h2>
-      </div>
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <h1 className="text-3xl font-semibold tracking-tight">{children}</h1>
       {aside}
-    </header>
-  );
-}
-
-export function Stat({ label, value, note }: { label: string; value: ReactNode; note?: ReactNode }) {
-  return (
-    <div className="border-t border-rule pt-2">
-      <p className="kicker">{label}</p>
-      <p className="num mt-1 text-2xl text-ink">{value}</p>
-      {note && <p className="mt-0.5 text-xs text-ink-3">{note}</p>}
     </div>
   );
 }
 
-export function Notice({ title, children }: { title: string; children?: ReactNode }) {
+export function SectionTitle({ children }: { children: ReactNode }) {
+  return <h2 className="mb-4 text-lg font-semibold">{children}</h2>;
+}
+
+export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`rounded-xl border border-border p-5 ${className}`}>{children}</div>;
+}
+
+export function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="border border-rule bg-paper-2 px-4 py-3">
-      <p className="font-medium">{title}</p>
-      {children && <div className="mt-1 text-sm text-ink-2">{children}</div>}
+    <div>
+      <p className="text-sm text-text-2">{label}</p>
+      <p className="num mt-1 text-2xl font-semibold">{value}</p>
     </div>
   );
+}
+
+export function Notice({ children }: { children: ReactNode }) {
+  return <div className="rounded-xl bg-surface px-5 py-4 text-text-2">{children}</div>;
 }
 
 export function ApiFailure({ error }: { error: unknown }) {
-  const msg = error instanceof Error ? error.message : String(error);
-  return (
-    <Notice title="No se pudo cargar esta sección">
-      El backend no respondió como se esperaba ({msg}). Probá recargar en un minuto.
-    </Notice>
-  );
+  console.error(error);
+  return <Notice>No pudimos cargar esta información. Probá de nuevo en un minuto.</Notice>;
 }
 
 /** Run a server-side fetch and keep the error instead of crashing the whole page. */
@@ -48,4 +43,13 @@ export async function attempt<T>(fn: () => Promise<T>): Promise<{ ok: true; data
   } catch (error) {
     return { ok: false, error };
   }
+}
+
+/** A colored ▲/▼ next to a signed value, e.g. a gain. */
+export function Delta({ value, children }: { value: number; children: ReactNode }) {
+  return (
+    <span className="num">
+      <span aria-hidden style={{ color: value >= 0 ? "var(--buy)" : "var(--sell)" }}>{value >= 0 ? "▲" : "▼"}</span> {children}
+    </span>
+  );
 }

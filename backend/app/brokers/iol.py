@@ -34,6 +34,10 @@ class LiveTradingDisabled(RuntimeError):
     pass
 
 
+class IOLUnavailable(RuntimeError):
+    """IOL sometimes answers 200 with only {"message": "En estos momentos no podemos..."}."""
+
+
 class OrderResult(BaseModel):
     """POST /api/v2/operar/{Comprar|Vender}. Not captured yet (no real order has been sent),
     so every field is optional and the raw body is kept."""
@@ -136,7 +140,10 @@ class IOLClient:
         return r.json()
 
     def _get(self, path: str, type_: type[T]) -> T:
-        return TypeAdapter(type_).validate_python(self._request("GET", path))
+        data = self._request("GET", path)
+        if isinstance(data, dict) and set(data) == {"message"}:
+            raise IOLUnavailable(str(data["message"]))
+        return TypeAdapter(type_).validate_python(data)
 
     # Account
 

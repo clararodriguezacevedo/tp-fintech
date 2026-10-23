@@ -76,16 +76,19 @@ cd backend && uv run python scripts/migrate.py
 
 ## Frontend
 
-"El Parqué": Next.js (App Router) con páginas renderizadas en el servidor.
+"El Parqué": Next.js (App Router) con páginas renderizadas en el servidor. Diseño simple, pensado
+para alguien sin experiencia: primero qué hacer, después por qué y al final el detalle.
 
 | Página | Qué muestra |
 | --- | --- |
-| `/` Portada | la recomendación principal con su evidencia, otras compras, lo que pasa con tu cartera y los tickers cerca del umbral |
-| `/cartera` | valor, vender o mantener por posición, treemap de composición, alertas de concentración y evolución del valor |
-| `/ticker/[símbolo]` | precio de 90 días con stop loss y take profit, por qué la señal, y la compra en un click (revisar y confirmar) |
-| `/operaciones` | compras en práctica con su estado y resultado, cancelar o cerrar |
-| `/historial` | tasa de acierto por acción, señal y confianza, y cada recomendación calificada |
-| `/noticias` | últimas noticias y los mercados de predicción que mueven algún ticker |
+| `/` Hoy | qué comprar (con la razón principal) y qué hacer con cada posición de la cartera |
+| `/cartera` | valor, qué vender, posiciones con su peso en la cartera y valor en el tiempo |
+| `/ticker/[símbolo]` | recomendación, por qué, compra en un click con stop loss y take profit, y precio de 3 meses |
+| `/operaciones` | mis compras (simuladas): estado, resultado, cancelar o vender |
+| `/historial` | cuántas recomendaciones acertaron y el detalle día por día |
+| `/noticias` | últimas noticias y lo que esperan los mercados de predicción |
+
+Arriba de todo hay una cinta con las recomendaciones del día.
 
 El sitio está en **https://tp-fintech-web.vercel.app** y pide contraseña (la ventana de login del
 navegador, cualquier usuario): muestra la cartera real de IOL, así que no puede ser público. La

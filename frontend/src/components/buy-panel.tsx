@@ -1,7 +1,7 @@
 "use client";
 
-// One-click buy: the plan arrives pre-filled (quantity, stop loss and take profit sized from the
-// ticker's volatility), the user can adjust it, reviews a plain-language summary, then confirms.
+// One-click buy: the plan arrives pre-filled (quantity, stop loss and take profit sized from how
+// much the stock usually moves), the user can adjust it, reviews a summary, then confirms.
 import Link from "next/link";
 import { useActionState, useState } from "react";
 
@@ -9,23 +9,29 @@ import { buyAction, type BuyState } from "@/app/actions";
 import type { TradePlan } from "@/lib/api/client";
 import { money, price } from "@/lib/format";
 
-const field = "num w-full border border-rule bg-paper px-2 py-1.5 text-right text-ink focus:border-ink";
+const input = "num w-32 rounded-lg border border-border bg-bg px-3 py-2 text-right focus:border-text";
 
-export function BuyPanel({
-  ticker,
-  plan,
-  mode,
-  recommendationId,
-}: {
-  ticker: string;
-  plan: TradePlan;
-  mode: "paper" | "live";
-  recommendationId?: string;
+function Field({ id, label, hint, value, onChange, step }: {
+  id: string; label: string; hint?: string; value: number; onChange: (v: number) => void; step: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <label htmlFor={id}>
+        <span className="block">{label}</span>
+        {hint && <span className="block text-sm text-text-3">{hint}</span>}
+      </label>
+      <input id={id} type="number" step={step} min={0} value={value} onChange={(e) => onChange(+e.target.value)} className={input} />
+    </div>
+  );
+}
+
+export function BuyPanel({ ticker, plan, mode, recommendationId }: {
+  ticker: string; plan: TradePlan; mode: "paper" | "live"; recommendationId?: string;
 }) {
   const [quantity, setQuantity] = useState(plan.quantity);
   const [stopLoss, setStopLoss] = useState(plan.stop_loss);
   const [takeProfit, setTakeProfit] = useState(plan.take_profit);
-  const [step, setStep] = useState<"edit" | "review">("edit");
+  const [review, setReview] = useState(false);
   const [state, action, pending] = useActionState<BuyState, FormData>(buyAction, { status: "idle" });
 
   const entry = plan.entry;
@@ -34,88 +40,73 @@ export function BuyPanel({
   const maxGain = quantity * (takeProfit - entry);
   const problem =
     quantity < 1 ? "La cantidad tiene que ser al menos 1."
-    : stopLoss >= entry ? "El stop loss tiene que estar por debajo del precio actual."
-    : takeProfit <= entry ? "El take profit tiene que estar por encima del precio actual."
+    : stopLoss >= entry ? "El stop loss tiene que ser menor al precio actual."
+    : takeProfit <= entry ? "El take profit tiene que ser mayor al precio actual."
     : null;
 
   if (state.status === "ok") {
     const t = state.trade;
     return (
-      <div className="border border-ink p-5">
-        <p className="kicker mb-1">{mode === "paper" ? "Compra simulada registrada" : "Orden enviada"}</p>
-        <p className="font-display text-2xl leading-tight">
+      <div className="rounded-xl border border-border p-5">
+        <p className="text-lg font-semibold">
+          {t.status === "queued" ? "Compra programada" : "Compra hecha"}
+        </p>
+        <p className="mt-2 text-text-2">
           {t.status === "queued"
-            ? `${t.quantity} ${t.ticker} en cola para la apertura.`
+            ? `${t.quantity} ${t.ticker} se compran cuando abra el mercado, a las 11:00.`
             : `Compraste ${t.quantity} ${t.ticker} a ${money(t.fill_price)}.`}
         </p>
-        <p className="mt-2 text-sm text-ink-2">
-          Se vende sola si baja a <span className="num">{price(t.stop_loss)}</span> o si sube a <span className="num">{price(t.take_profit)}</span>.
-        </p>
-        <Link href="/operaciones" className="mt-4 inline-block text-sm underline">Ver mis operaciones</Link>
+        <Link href="/operaciones" className="mt-4 inline-block text-sm underline">Ver mis compras</Link>
       </div>
     );
   }
 
   return (
-    <form action={action} className="border border-ink p-5">
+    <form action={action} className="rounded-xl border border-border p-5">
       <input type="hidden" name="ticker" value={ticker} />
       <input type="hidden" name="quantity" value={quantity} />
       <input type="hidden" name="stop_loss" value={stopLoss} />
       <input type="hidden" name="take_profit" value={takeProfit} />
       {recommendationId && <input type="hidden" name="recommendation_id" value={recommendationId} />}
 
-      <div className="flex items-baseline justify-between">
-        <p className="font-display text-2xl">Comprar {ticker}</p>
-        <span className="kicker">{mode === "paper" ? "Práctica" : "Real"}</span>
-      </div>
-      <p className="mt-1 text-sm text-ink-2">Precio actual <span className="num text-ink">{money(entry)}</span></p>
+      <p className="text-lg font-semibold">Comprar {ticker}</p>
+      {mode === "paper" && <p className="text-sm text-text-3">Simulación, sin plata real</p>}
 
-      {step === "edit" ? (
+      {!review ? (
         <>
-          <div className="mt-4 grid grid-cols-[1fr_8rem] items-center gap-x-3 gap-y-2 text-sm">
-            <label htmlFor="qty">Cantidad</label>
-            <input id="qty" type="number" min={1} step={1} value={quantity} onChange={(e) => setQuantity(Math.max(0, Math.floor(+e.target.value)))} className={field} />
-            <label htmlFor="sl">Stop loss <span className="text-ink-3">(vende si baja a)</span></label>
-            <input id="sl" type="number" step="0.01" value={stopLoss} onChange={(e) => setStopLoss(+e.target.value)} className={field} />
-            <label htmlFor="tp">Take profit <span className="text-ink-3">(vende si sube a)</span></label>
-            <input id="tp" type="number" step="0.01" value={takeProfit} onChange={(e) => setTakeProfit(+e.target.value)} className={field} />
+          <div className="mt-5 space-y-4">
+            <Field id="qty" label="Cantidad" step="1" value={quantity} onChange={(v) => setQuantity(Math.max(0, Math.floor(v)))} />
+            <Field id="sl" label="Stop loss" hint="Vende solo si baja a este precio" step="0.01" value={stopLoss} onChange={setStopLoss} />
+            <Field id="tp" label="Take profit" hint="Vende solo si sube a este precio" step="0.01" value={takeProfit} onChange={setTakeProfit} />
           </div>
-          <dl className="mt-4 grid grid-cols-2 gap-y-1 border-t border-rule pt-3 text-sm">
-            <dt className="text-ink-2">Total</dt><dd className="num text-right">{money(total)}</dd>
-            <dt className="text-ink-2">Pérdida máxima</dt><dd className="num text-right">{money(maxLoss)}</dd>
-            <dt className="text-ink-2">Ganancia objetivo</dt><dd className="num text-right">{money(maxGain)}</dd>
+          <dl className="mt-5 space-y-1 border-t border-border pt-4">
+            <div className="flex justify-between"><dt className="text-text-2">Total</dt><dd className="num font-semibold">{money(total)}</dd></div>
+            <div className="flex justify-between"><dt className="text-text-2">Si toca el stop loss</dt><dd className="num">−{money(maxLoss)}</dd></div>
+            <div className="flex justify-between"><dt className="text-text-2">Si toca el take profit</dt><dd className="num">+{money(maxGain)}</dd></div>
           </dl>
-          <p className="mt-3 text-xs text-ink-3">
-            Sugerido: arriesgar el 1% de tu cartera ({money(plan.max_loss)}), con el stop a dos veces la volatilidad diaria y el objetivo al doble de esa distancia.
-          </p>
-          {problem && <p className="mt-3 text-sm" role="alert"><span style={{ color: "var(--sell)" }}>▼</span> {problem}</p>}
+          {problem && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{problem}</p>}
           <button
             type="button"
             disabled={!!problem}
-            onClick={() => setStep("review")}
-            className="mt-4 w-full border border-ink bg-ink px-4 py-2.5 text-sm font-medium text-paper transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => setReview(true)}
+            className="mt-5 w-full rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Revisar compra
+            Continuar
           </button>
         </>
       ) : (
         <>
-          <p className="mt-4 leading-relaxed">
-            Vas a comprar <strong className="num">{quantity}</strong> {ticker} por unos <strong className="num">{money(total)}</strong>.
-            {" "}Si el precio baja a <span className="num">{price(stopLoss)}</span> se vende sola y perdés como máximo <span className="num">{money(maxLoss)}</span>.
-            {" "}Si sube a <span className="num">{price(takeProfit)}</span> se vende sola y ganás unos <span className="num">{money(maxGain)}</span>.
+          <p className="mt-5 leading-relaxed">
+            Vas a comprar <strong>{quantity} {ticker}</strong> por <strong className="num">{money(total)}</strong>.
+            Se vende sola si baja a <span className="num">{price(stopLoss)}</span> (stop loss) o si sube a{" "}
+            <span className="num">{price(takeProfit)}</span> (take profit).
           </p>
-          <p className="mt-3 text-sm text-ink-2">
-            {plan.market_open ? "BYMA está abierto: se ejecuta ahora al último precio." : "BYMA está cerrado: la compra queda en cola y se ejecuta en la apertura (11:00)."}
-            {mode === "paper" && " Es una operación de práctica: no se envía ninguna orden real a IOL."}
-          </p>
-          {state.status === "error" && <p className="mt-3 text-sm" role="alert"><span style={{ color: "var(--sell)" }}>▼</span> {state.message}</p>}
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <button type="button" onClick={() => setStep("edit")} className="border border-rule px-4 py-2.5 text-sm hover:border-ink">
-              Volver
-            </button>
-            <button type="submit" disabled={pending} className="border border-ink bg-ink px-4 py-2.5 text-sm font-medium text-paper hover:opacity-85 disabled:opacity-50">
-              {pending ? "Enviando..." : "Confirmar compra"}
+          {!plan.market_open && <p className="mt-3 text-sm text-text-2">El mercado está cerrado: la compra se hace cuando abra, a las 11:00.</p>}
+          {state.status === "error" && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <button type="button" onClick={() => setReview(false)} className="rounded-lg border border-border px-4 py-2.5 hover:border-text">Volver</button>
+            <button type="submit" disabled={pending} className="rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:opacity-50">
+              {pending ? "Comprando..." : "Confirmar"}
             </button>
           </div>
         </>

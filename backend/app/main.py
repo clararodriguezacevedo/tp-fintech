@@ -8,11 +8,12 @@ import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app import jobs, prices
 from app.analysis import market_hours, risk, track_record
-from app.brokers.iol import get_iol
+from app.brokers.iol import IOLUnavailable, get_iol
 from app.config import get_settings
 from app.db import get_db, rows_as
 from app.models.db import (
@@ -73,6 +74,11 @@ app = FastAPI(
     redoc_url="/redoc" if _public_docs else None,
     openapi_url="/openapi.json" if _public_docs else None,
 )
+@app.exception_handler(IOLUnavailable)
+def iol_unavailable(_: Request, exc: IOLUnavailable) -> JSONResponse:
+    return JSONResponse({"detail": "IOL no está respondiendo; probá en unos minutos"}, status_code=503)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in get_settings().allowed_origins.split(",") if o.strip()],
@@ -200,10 +206,17 @@ def trade_plan(
     ticker = ticker.upper()
     settings = get_settings()
     if portfolio_value is None or cash is None:
-        acct = account()
-        portfolio_value = portfolio_value or acct.total_value
+        try:
+            acct = account()
+            total, real_cash = acct.total_value, acct.cash_ars
+        except IOLUnavailable:
+            # IOL's account endpoint is down now and then; the saved holdings are close enough.
+            if settings.iol_live_trading:
+                raise HTTPException(503, "IOL no está respondiendo; probá en unos minutos")
+            total, real_cash = sum(h.value for h in get_holdings()), 0.0
+        portfolio_value = portfolio_value or total
         # Paper trades spend a simulated budget, not the account's real cash.
-        cash = cash or (acct.cash_ars if settings.iol_live_trading else settings.paper_cash)
+        cash = cash or (real_cash if settings.iol_live_trading else settings.paper_cash)
     if cash <= 0:
         raise HTTPException(422, "no peso cash available to buy with")
     bars = prices.daily_bars(ticker)

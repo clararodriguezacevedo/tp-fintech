@@ -1,142 +1,88 @@
 @import "tailwindcss";
 
-/* "El Parqué": a trading-floor broadsheet. Paper and ink, a serif masthead, mono numerals.
-   Buy/sell colors were validated for colour-blind separation and contrast against each
-   surface (dataviz validator, light and dark run separately). Keep is the neutral midpoint. */
+/* Plain and modern: one sans-serif family, neutral surfaces, color only where it means something.
+   Buy/sell colors are the validated colour-blind-safe pair (blue/orange); keep is neutral gray. */
 
 :root {
-  --paper: #f4efe6;
-  --paper-2: #ebe3d4;
-  --paper-3: #e2d8c5;
-  --ink: #15130f;
-  --ink-2: #4a453c;
-  --ink-3: #776f61;
-  --rule: #cdc2ae;
-  --rule-strong: #15130f;
-  --grid: #ddd3c1;
+  --bg: #ffffff;
+  --surface: #f6f7f9;
+  --border: #e4e7ec;
+  --text: #111827;
+  --text-2: #4b5563;
+  --text-3: #8a93a2;
+  --grid: #eceff3;
   --buy: #1d5fa8;
   --sell: #c4501a;
-  --keep: #8a8273;
-  --focus: #1d5fa8;
+  --keep: #8a93a2;
+  --buy-soft: #e8f0fa;
+  --sell-soft: #fbeee7;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #17150f;
-    --paper-2: #211e17;
-    --paper-3: #2b271f;
-    --ink: #efe8da;
-    --ink-2: #bdb4a3;
-    --ink-3: #8c8475;
-    --rule: #3a352b;
-    --rule-strong: #efe8da;
-    --grid: #2e2a22;
+    --bg: #0f1115;
+    --surface: #181b21;
+    --border: #2a2f38;
+    --text: #f3f4f6;
+    --text-2: #b4bac5;
+    --text-3: #7d8593;
+    --grid: #232831;
     --buy: #4f8fe0;
     --sell: #d9692f;
-    --keep: #8c8475;
-    --focus: #4f8fe0;
+    --keep: #7d8593;
+    --buy-soft: #16243a;
+    --sell-soft: #33200f;
   }
 }
 
 @theme inline {
-  --color-paper: var(--paper);
-  --color-paper-2: var(--paper-2);
-  --color-paper-3: var(--paper-3);
-  --color-ink: var(--ink);
-  --color-ink-2: var(--ink-2);
-  --color-ink-3: var(--ink-3);
-  --color-rule: var(--rule);
-  --color-rule-strong: var(--rule-strong);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
   --color-buy: var(--buy);
   --color-sell: var(--sell);
   --color-keep: var(--keep);
-  --font-display: var(--font-fraunces);
-  --font-sans: var(--font-plex-sans);
-  --font-mono: var(--font-plex-mono);
+  --color-buy-soft: var(--buy-soft);
+  --color-sell-soft: var(--sell-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 html {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--text);
 }
 
 body {
-  font-family: var(--font-plex-sans), sans-serif;
-  background:
-    radial-gradient(ellipse at top, color-mix(in oklab, var(--paper-2) 70%, transparent), transparent 60%),
-    var(--paper);
-  min-height: 100vh;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Faint paper grain over everything; purely decorative. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-
-.font-display {
-  font-family: var(--font-fraunces), serif;
-  font-variation-settings: "SOFT" 30, "WONK" 0;
-}
-
+/* Numbers line up in columns. */
 .num {
-  font-family: var(--font-plex-mono), monospace;
   font-variant-numeric: tabular-nums;
 }
 
-.kicker {
-  font-family: var(--font-plex-mono), monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-
-/* Double rule under the masthead and section heads, like a newspaper. */
-.rule-double {
-  border-top: 3px double var(--rule-strong);
-}
-
 :focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--buy);
   outline-offset: 2px;
 }
 
-a {
-  text-underline-offset: 3px;
-}
-
-/* Ticker tape */
+/* Recommendations strip: scrolls slowly, pauses on hover, stays still with reduced motion. */
 @keyframes tape {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
 .tape-track {
-  animation: tape 60s linear infinite;
   width: max-content;
+  animation: tape 70s linear infinite;
 }
 .tape:hover .tape-track {
   animation-play-state: paused;
 }
-
-/* Staggered reveal on page load. */
-@keyframes rise {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
-}
-.rise {
-  animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .tape-track,
-  .rise {
-    animation: none;
-  }
+  .tape-track { animation: none; }
 }
