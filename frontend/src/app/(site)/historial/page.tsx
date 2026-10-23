@@ -13,8 +13,20 @@ const relevant = (r: Recommendation) => r.held || r.action !== "keep";
 
 const asDay = (d: string) => d + "T12:00:00";
 
+const SIGNAL: Record<string, string> = {
+  news: "Noticias",
+  markets: "Mercados de predicción",
+  trend: "Tendencia del precio",
+  context: "Contexto del mercado",
+  gap: "Brecha del CEDEAR",
+};
+
 export default async function HistoryPage() {
-  const [sim, history] = await Promise.all([attempt(api.simulation), attempt(() => api.trackRecordHistory(1000))]);
+  const [sim, history, signals] = await Promise.all([
+    attempt(api.simulation),
+    attempt(() => api.trackRecordHistory(1000)),
+    attempt(api.signals),
+  ]);
   if (!sim.ok) return <ApiFailure error={sim.error} />;
   const s = sim.data;
   const recs = history.ok ? history.data.filter((r) => relevant(r) && r.hit != null) : [];
@@ -57,9 +69,29 @@ export default async function HistoryPage() {
           </Card>
         </div>
         <p className="mt-3 text-sm text-text-3">
-          Arranca de tu cartera real. Cada compra sugerida usa el {Math.round(s.buy_allocation * 100)}% de la cartera, lo que dice vender se pasa a pesos ese día, y cada operación paga {String(s.commission * 100).replace(".", ",")}% de comisión.
+          Arranca de tu cartera real. Cada compra sugerida se hace a la apertura del día siguiente con el {Math.round(s.buy_allocation * 100)}% de la cartera, lo que dice vender se vende a la apertura, y cada operación paga {String(s.commission * 100).replace(".", ",")}% de comisión.
         </p>
       </section>
+
+      {signals.ok && signals.data.some((x) => x.n > 0) && (
+        <section>
+          <SectionTitle>Qué señal funciona</SectionTitle>
+          <ul className="divide-y divide-border border-y border-border">
+            {signals.data.filter((x) => x.n > 0).map((x) => (
+              <li key={x.signal} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <span>{SIGNAL[x.signal]}</span>
+                <span className="flex items-center gap-4">
+                  <span className="num text-sm text-text-2">{x.hits} de {x.n}</span>
+                  <span className="num w-14 text-right font-semibold">{Math.round((x.hit_rate ?? 0) * 100)}%</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-sm text-text-3">
+            Cuántas veces cada señal anticipó bien si el precio iba a subir o bajar al día siguiente. 50% es lo mismo que tirar una moneda. Con pocos días todavía no es concluyente.
+          </p>
+        </section>
+      )}
 
       <section>
         <SectionTitle>Día por día</SectionTitle>
@@ -98,7 +130,7 @@ export default async function HistoryPage() {
           })}
         </ul>
         <p className="mt-3 text-sm text-text-3">
-          Comprar acierta si sube. Vender acierta si baja. Mantener algo que tenés acierta si no cae más de 1,5%.
+          Se mide desde la apertura del día siguiente, que es cuando se puede comprar o vender. Comprar acierta si sube. Vender acierta si baja. Mantener algo que tenés acierta si no cae más de 1,5%.
           Las fechas son del día en que se midió el resultado ({dayShort(asDay(s.days[0].day))} es el primero).
         </p>
       </section>

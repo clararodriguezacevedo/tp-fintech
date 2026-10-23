@@ -1,5 +1,8 @@
 """One-click buys with stop loss and take profit.
 
+Paper buys fill immediately at the last price, also outside market hours (the last close);
+real buys placed while BYMA is closed wait in the queue for the open.
+
 With IOL_LIVE_TRADING=false (the default) everything is simulated: fills and exits happen at
 the real last price from IOL, and the result is stored in trade_intents. With it on, the same
 flow sends real orders to IOL.
@@ -12,6 +15,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from app import prices
 from app.analysis import market_hours
 from app.brokers.iol import get_iol
 from app.config import get_settings
@@ -26,7 +30,17 @@ PriceFn = Callable[[str, str], float]
 
 
 def last_price(ticker: str, market: str = "bCBA") -> float:
-    return get_iol().quote(ticker, market).ultimo_precio
+    """Live price from IOL, or the last close when IOL doesn't answer (it happens at night)."""
+    try:
+        price = get_iol().quote(ticker, market).ultimo_precio
+        if price:
+            return price
+    except Exception:
+        log.warning("no live price for %s; using the last close", ticker)
+    bars = prices.daily_bars(ticker)
+    if not bars:
+        raise ValueError(f"no price available for {ticker}")
+    return bars[-1].close
 
 
 def _now() -> str:
@@ -97,7 +111,9 @@ def create_buy(
         "live": get_settings().iol_live_trading,
     }).execute().data
     trade = rows_as(TradeRow, data)[0]
-    if is_open():
+    # Paper trades fill right away at the last price, even with the market closed (that price
+    # is the last close); real orders wait for the open.
+    if is_open() or not get_settings().iol_live_trading:
         trade = _fill(trade, entry)
     return trade
 

@@ -6,7 +6,7 @@ IOL. Today's candle is never stored before the close, since it is still changing
 """
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from app.analysis import market_hours
 from app.brokers.iol import get_iol
@@ -16,11 +16,16 @@ from app.models.iol import DailyBar
 log = logging.getLogger(__name__)
 
 
-def last_closed_day(now: datetime | None = None) -> date:
+# US markets close at 17:00 or 18:00 Argentina time depending on US daylight saving; waiting
+# until 18:00 means a still-open US session is never stored as a closed day.
+US_CLOSE = time(18, 0)
+
+
+def last_closed_day(now: datetime | None = None, close: time = market_hours.CLOSE) -> date:
     """The most recent weekday whose session has already closed (holidays not handled)."""
     now = (now or market_hours.now_art()).astimezone(market_hours.ART)
     day = now.date()
-    if now.weekday() >= 5 or now.time() < market_hours.CLOSE:
+    if now.weekday() >= 5 or now.time() < close:
         day -= timedelta(days=1)
     while day.weekday() >= 5:
         day -= timedelta(days=1)
@@ -35,20 +40,46 @@ def _stored(ticker: str, start: date) -> list[DailyBar]:
     )
 
 
-def daily_bars(ticker: str, days: int = 45, now: datetime | None = None) -> list[DailyBar]:
-    """Closed daily candles for the last `days` calendar days, oldest first."""
-    ticker = ticker.upper()
+def daily_bars(
+    ticker: str, days: int = 45, now: datetime | None = None, market: str = "bCBA"
+) -> list[DailyBar]:
+    """Closed daily candles for the last `days` calendar days, oldest first.
+
+    market="nYSE" gives the US listing (stored as "nYSE:TICKER")."""
+    symbol = ticker.upper()
+    ticker = symbol if market == "bCBA" else f"{market}:{symbol}"
     start = date.today() - timedelta(days=days)
-    last_closed = last_closed_day(now)
+    last_closed = last_closed_day(now, market_hours.CLOSE if market == "bCBA" else US_CLOSE)
     bars = _stored(ticker, start)
+    # Backfill when asked for more history than is cached (e.g. a backtest).
+    if bars and bars[0].day > start + timedelta(days=7):
+        try:
+            older = [
+                b for b in get_iol().daily_history(symbol, start, bars[0].day - timedelta(days=1), market)
+                if start <= b.day < bars[0].day
+            ]
+        except Exception:
+            log.warning("IOL history unavailable for %s; no backfill", ticker)
+            older = []
+        if older:
+            get_db().table("daily_bars").upsert(
+                [{"ticker": ticker, **b.model_dump(mode="json")} for b in older],
+                on_conflict="ticker,day",
+            ).execute()
+            bars = older + bars
     if bars and bars[-1].day >= last_closed:
         return bars
 
     fetch_from = bars[-1].day + timedelta(days=1) if bars else start
-    fetched = [
-        b for b in get_iol().daily_history(ticker, fetch_from, last_closed + timedelta(days=1))
-        if fetch_from <= b.day <= last_closed
-    ]
+    try:
+        history = get_iol().daily_history(symbol, fetch_from, last_closed + timedelta(days=1), market)
+    except Exception:
+        if not bars:
+            raise
+        # IOL is down now and then (often at night); what's cached is still useful.
+        log.warning("IOL history unavailable for %s; using cached bars", ticker)
+        return bars
+    fetched = [b for b in history if fetch_from <= b.day <= last_closed]
     if fetched:
         get_db().table("daily_bars").upsert(
             [{"ticker": ticker, **b.model_dump(mode="json")} for b in fetched],
@@ -57,9 +88,14 @@ def daily_bars(ticker: str, days: int = 45, now: datetime | None = None) -> list
     return bars + fetched
 
 
-def close_on(ticker: str, day: date) -> float | None:
-    """Closing price of one day, from the cache or IOL."""
+def bar_on(ticker: str, day: date) -> DailyBar | None:
+    """The candle of one closed day, from the cache or IOL."""
     for bar in daily_bars(ticker, days=max(7, (date.today() - day).days + 7)):
         if bar.day == day:
-            return bar.close
+            return bar
     return None
+
+
+def close_on(ticker: str, day: date) -> float | None:
+    bar = bar_on(ticker, day)
+    return bar.close if bar else None

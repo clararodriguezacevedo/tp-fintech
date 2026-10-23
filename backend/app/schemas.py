@@ -96,6 +96,15 @@ class HitStats(BaseModel):
     avg_return: float | None
 
 
+class SignalStats(BaseModel):
+    signal: Literal["news", "markets", "trend", "context", "gap"]
+    n: int  # graded recommendations where this signal pointed somewhere
+    hits: int  # ... and the price moved that way (open -> close)
+    hit_rate: float | None
+    avg_when_up: float | None  # average move when the signal said up
+    avg_when_down: float | None  # average move when it said down
+
+
 class TrackRecordSummary(BaseModel):
     overall: HitStats
     action: dict[Action, HitStats]

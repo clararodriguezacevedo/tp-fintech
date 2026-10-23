@@ -24,7 +24,7 @@ from app.models.db import (
 from app.portfolio import current_holdings, get_holdings, value_history
 from app.models.iol import DailyBar
 from app.schemas import (
-    AccountSummary, BuyRequest, Health, HoldingOut, Impact, JobResult, MarketOut, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, TrackRecordSummary,
+    AccountSummary, BuyRequest, Health, HoldingOut, Impact, SignalStats, JobResult, MarketOut, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, TrackRecordSummary,
     TradePlan,
 )
 from app.sources import polymarket
@@ -267,7 +267,7 @@ def trade_plan(
     bars = prices.daily_bars(ticker)
     if len(bars) < 15:
         raise HTTPException(422, f"not enough price history for {ticker}")
-    price = entry or get_iol().quote(ticker).ultimo_precio
+    price = entry or paper.last_price(ticker)
     plan = risk.plan_buy(
         entry=price,
         atr_value=risk.atr([b.high for b in bars], [b.low for b in bars], [b.close for b in bars]),
@@ -331,6 +331,12 @@ def portfolio_advice() -> list[RecommendationRow]:
 @app.get("/track-record", response_model=TrackRecordSummary)
 def track_record_summary() -> TrackRecordSummary:
     return track_record.summary()
+
+
+@app.get("/track-record/signals", response_model=list[SignalStats])
+def track_record_signals() -> list[SignalStats]:
+    """How often each signal (news, markets, trend, context, CEDEAR gap) called the direction."""
+    return track_record.signal_stats()
 
 
 @app.get("/track-record/simulation", response_model=Simulation)

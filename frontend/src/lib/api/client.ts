@@ -19,6 +19,7 @@ export type TickerImpact = z.infer<typeof schemas.TickerImpactRow>;
 export type Holding = z.infer<typeof schemas.HoldingOut>;
 export type Portfolio = z.infer<typeof schemas.PortfolioOut>;
 export type Simulation = z.infer<typeof schemas.Simulation>;
+export type SignalStats = z.infer<typeof schemas.SignalStats>;
 export type PortfolioValuePoint = z.infer<typeof schemas.PortfolioValuePoint>;
 export type TradePlan = z.infer<typeof schemas.TradePlan>;
 export type AccountSummary = z.infer<typeof schemas.AccountSummary>;
@@ -91,6 +92,7 @@ export const api = {
   closeTrade: (tradeId: string) => request(schemas.TradeRow, `/trades/${tradeId}/close`, { method: "POST" }),
   trackRecord: () => request(schemas.TrackRecordSummary, "/track-record"),
   simulation: () => request(schemas.Simulation, "/track-record/simulation"),
+  signals: () => request(z.array(schemas.SignalStats), "/track-record/signals"),
   trackRecordHistory: (limit = 100) =>
     request(z.array(schemas.RecommendationRow), "/track-record/history", { query: { limit } }),
 };

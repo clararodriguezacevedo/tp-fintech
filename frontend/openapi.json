@@ -1222,6 +1222,57 @@
         }
       }
     },
+    "/track-record/signals": {
+      "get": {
+        "summary": "Track Record Signals",
+        "description": "How often each signal (news, markets, trend, context, CEDEAR gap) called the direction.",
+        "operationId": "track_record_signals",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SignalStats"
+                  },
+                  "title": "Response Track Record Signals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/track-record/simulation": {
       "get": {
         "summary": "Track Record Simulation",
@@ -1499,6 +1550,39 @@
             "type": "boolean",
             "title": "Broad",
             "default": false
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "move_since": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Since"
+          },
+          "priced_in": {
+            "type": "number",
+            "title": "Priced In",
+            "default": 0.0
+          },
+          "sources": {
+            "type": "integer",
+            "title": "Sources",
+            "default": 1
           }
         },
         "type": "object",
@@ -2096,7 +2180,9 @@
                 "enum": [
                   "news",
                   "markets",
-                  "trend"
+                  "trend",
+                  "context",
+                  "gap"
                 ]
               },
               {
@@ -2135,6 +2221,17 @@
             "format": "date",
             "title": "Target Date"
           },
+          "open_on_target": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open On Target"
+          },
           "close_on_target": {
             "anyOf": [
               {
@@ -2156,6 +2253,17 @@
               }
             ],
             "title": "Realized Return"
+          },
+          "close_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close Return"
           },
           "hit": {
             "anyOf": [
@@ -2221,6 +2329,16 @@
           "trend": {
             "type": "number",
             "title": "Trend"
+          },
+          "context": {
+            "type": "number",
+            "title": "Context",
+            "default": 0.0
+          },
+          "gap": {
+            "type": "number",
+            "title": "Gap",
+            "default": 0.0
           }
         },
         "type": "object",
@@ -2230,6 +2348,72 @@
           "trend"
         ],
         "title": "SignalBreakdown"
+      },
+      "SignalStats": {
+        "properties": {
+          "signal": {
+            "type": "string",
+            "enum": [
+              "news",
+              "markets",
+              "trend",
+              "context",
+              "gap"
+            ],
+            "title": "Signal"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "hits": {
+            "type": "integer",
+            "title": "Hits"
+          },
+          "hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate"
+          },
+          "avg_when_up": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg When Up"
+          },
+          "avg_when_down": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg When Down"
+          }
+        },
+        "type": "object",
+        "required": [
+          "signal",
+          "n",
+          "hits",
+          "hit_rate",
+          "avg_when_up",
+          "avg_when_down"
+        ],
+        "title": "SignalStats"
       },
       "SimDay": {
         "properties": {

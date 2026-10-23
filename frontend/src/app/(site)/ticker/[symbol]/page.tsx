@@ -52,7 +52,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section className="min-w-0">
           <SectionTitle>Por qué</SectionTitle>
-          {rec ? <Reasons items={rec.evidence} limit={6} /> : <Notice>Hoy no hay una recomendación para esta acción.</Notice>}
+          {rec ? <Reasons items={rec.evidence} breakdown={rec.signal_breakdown} limit={6} /> : <Notice>Hoy no hay una recomendación para esta acción.</Notice>}
         </section>
 
         <aside className="space-y-4">

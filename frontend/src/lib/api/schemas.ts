@@ -202,7 +202,13 @@ const status = z
 const action = z.union([z.enum(["buy", "sell", "keep"]), z.null()]).optional();
 const held = z.union([z.boolean(), z.null()]).optional();
 const SignalBreakdown = z
-  .object({ news: z.number(), markets: z.number(), trend: z.number() })
+  .object({
+    news: z.number(),
+    markets: z.number(),
+    trend: z.number(),
+    context: z.number().optional().default(0),
+    gap: z.number().optional().default(0),
+  })
   .passthrough();
 const Evidence = z
   .object({
@@ -216,6 +222,10 @@ const Evidence = z
     contribution: z.number(),
     detail: z.string().optional().default(""),
     broad: z.boolean().optional().default(false),
+    since: z.union([z.string(), z.null()]).optional(),
+    move_since: z.union([z.number(), z.null()]).optional(),
+    priced_in: z.number().optional().default(0),
+    sources: z.number().int().optional().default(1),
   })
   .passthrough();
 const RecommendationRow = z
@@ -227,15 +237,17 @@ const RecommendationRow = z
     score: z.number(),
     confidence: z.number(),
     driver: z
-      .union([z.enum(["news", "markets", "trend"]), z.null()])
+      .union([z.enum(["news", "markets", "trend", "context", "gap"]), z.null()])
       .optional(),
     held: z.boolean(),
     signal_breakdown: SignalBreakdown,
     evidence: z.array(Evidence),
     price_at_rec: z.union([z.number(), z.null()]).optional(),
     target_date: z.string(),
+    open_on_target: z.union([z.number(), z.null()]).optional(),
     close_on_target: z.union([z.number(), z.null()]).optional(),
     realized_return: z.union([z.number(), z.null()]).optional(),
+    close_return: z.union([z.number(), z.null()]).optional(),
     hit: z.union([z.boolean(), z.null()]).optional(),
     evaluated_at: z.union([z.string(), z.null()]).optional(),
     created_at: z.string().datetime({ offset: true }),
@@ -257,6 +269,16 @@ const TrackRecordSummary = z
     driver: z.record(HitStats),
     confidence: z.record(HitStats),
     held: z.record(HitStats),
+  })
+  .passthrough();
+const SignalStats = z
+  .object({
+    signal: z.enum(["news", "markets", "trend", "context", "gap"]),
+    n: z.number().int(),
+    hits: z.number().int(),
+    hit_rate: z.union([z.number(), z.null()]),
+    avg_when_up: z.union([z.number(), z.null()]),
+    avg_when_down: z.union([z.number(), z.null()]),
   })
   .passthrough();
 const SimDay = z
@@ -311,6 +333,7 @@ export const schemas = {
   RecommendationRow,
   HitStats,
   TrackRecordSummary,
+  SignalStats,
   SimDay,
   Simulation,
 };

@@ -1,7 +1,8 @@
-"""Grades each daily recommendation against the close of its target day.
+"""Grades each daily recommendation against its target day.
 
-A recommendation made after the close of day D is priced at D's close and graded on D+1's
-close (realized_return = close(D+1) / close(D) - 1):
+A recommendation made after the close of day D can only be acted on at the open of D+1, so it
+is graded on that day's open -> close (realized_return = close(D+1) / open(D+1) - 1). The
+close -> close move is kept too (close_return), for positions already held overnight.
 
   buy   right if the price went up
   sell  right if the price went down
@@ -19,7 +20,8 @@ from app.analysis import market_hours
 from app import prices
 from app.db import get_db, rows_as
 from app.models.db import Action, RecommendationRow
-from app.schemas import HitStats, TrackRecordSummary
+from app.models.iol import DailyBar
+from app.schemas import HitStats, SignalStats, TrackRecordSummary
 
 log = logging.getLogger(__name__)
 
@@ -29,8 +31,8 @@ KEEP_BAND = 0.015
 GIVE_UP_AFTER_DAYS = 5
 
 
-def close_on(ticker: str, day: date) -> float | None:
-    return prices.close_on(ticker, day)
+def bar_on(ticker: str, day: date) -> DailyBar | None:
+    return prices.bar_on(ticker, day)
 
 
 def is_hit(action: Action, ret: float, held: bool) -> bool:
@@ -41,25 +43,36 @@ def is_hit(action: Action, ret: float, held: bool) -> bool:
     return ret > -KEEP_BAND if held else ret < KEEP_BAND
 
 
-def regrade_all() -> int:
-    """Re-apply is_hit to every graded recommendation (after a rule change)."""
+def _grade(rec: RecommendationRow, bar: DailyBar) -> dict[str, str | float | bool | None]:
+    ret = bar.close / bar.open - 1 if bar.open else 0.0
+    return {
+        "open_on_target": bar.open,
+        "close_on_target": bar.close,
+        "realized_return": round(ret, 6),
+        "close_return": round(bar.close / rec.price_at_rec - 1, 6) if rec.price_at_rec else None,
+        "hit": is_hit(rec.action, ret, rec.held),
+    }
+
+
+def regrade_all(bar_fn: Callable[[str, date], DailyBar | None] = bar_on) -> int:
+    """Re-grade every graded recommendation with the current rules."""
     db = get_db()
     rows = rows_as(
         RecommendationRow,
         db.table("recommendations").select("*").eq("kind", "daily")
-        .not_.is_("realized_return", "null").execute().data,
+        .not_.is_("evaluated_at", "null").execute().data,
     )
     changed = 0
     for r in rows:
-        hit = is_hit(r.action, r.realized_return or 0, r.held)
-        if hit != r.hit:
-            db.table("recommendations").update({"hit": hit}).eq("id", r.id).execute()
+        bar = bar_fn(r.ticker, r.target_date)
+        if bar:
+            db.table("recommendations").update(_grade(r, bar)).eq("id", r.id).execute()
             changed += 1
     return changed
 
 
 def evaluate_pending(
-    now: datetime | None = None, close_fn: Callable[[str, date], float | None] = close_on
+    now: datetime | None = None, bar_fn: Callable[[str, date], DailyBar | None] = bar_on
 ) -> int:
     """Grade daily recommendations whose target day has closed. Returns how many were graded."""
     now = (now or market_hours.now_art()).astimezone(market_hours.ART)
@@ -74,20 +87,15 @@ def evaluate_pending(
     for rec in pending:
         fields: dict[str, str | float | bool | None] = {"evaluated_at": datetime.now(timezone.utc).isoformat()}
         try:
-            close = close_fn(rec.ticker, rec.target_date)
+            bar = bar_fn(rec.ticker, rec.target_date)
         except Exception:
-            log.exception("no close for %s on %s", rec.ticker, rec.target_date)
-            close = None
-        if close is None or not rec.price_at_rec:
+            log.exception("no prices for %s on %s", rec.ticker, rec.target_date)
+            bar = None
+        if bar is None:
             if (now.date() - rec.target_date).days < GIVE_UP_AFTER_DAYS:
                 continue  # try again on the next run
         else:
-            ret = close / rec.price_at_rec - 1
-            fields |= {
-                "close_on_target": close,
-                "realized_return": round(ret, 6),
-                "hit": is_hit(rec.action, ret, rec.held),
-            }
+            fields |= _grade(rec, bar)
             graded += 1
         db.table("recommendations").update(fields).eq("id", rec.id).execute()
     log.info("graded %d recommendations", graded)
@@ -131,3 +139,33 @@ def summary() -> TrackRecordSummary:
         confidence={k: _stats(v) for k, v in confidence.items()},
         held={k: _stats(v) for k, v in held.items()},
     )
+
+
+SIGNALS = ("news", "markets", "trend", "context", "gap")
+SIGNAL_MIN = 0.05  # a component smaller than this didn't really point anywhere
+
+
+def signal_stats() -> list[SignalStats]:
+    """For each score component: how often its sign matched the next day's open -> close move."""
+    rows = rows_as(
+        RecommendationRow,
+        get_db().table("recommendations").select("*").eq("kind", "daily")
+        .not_.is_("realized_return", "null").execute().data,
+    )
+    out = []
+    for name in SIGNALS:
+        ups: list[float] = []
+        downs: list[float] = []
+        for r in rows:
+            value = getattr(r.signal_breakdown, name)
+            if abs(value) < SIGNAL_MIN or r.realized_return is None:
+                continue
+            (ups if value > 0 else downs).append(r.realized_return)
+        n = len(ups) + len(downs)
+        hits = sum(1 for x in ups if x > 0) + sum(1 for x in downs if x < 0)
+        out.append(SignalStats(
+            signal=name, n=n, hits=hits, hit_rate=round(hits / n, 3) if n else None,
+            avg_when_up=round(sum(ups) / len(ups), 5) if ups else None,
+            avg_when_down=round(sum(downs) / len(downs), 5) if downs else None,
+        ))
+    return out

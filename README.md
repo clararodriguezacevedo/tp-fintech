@@ -154,24 +154,43 @@ cd backend && uv run pyright
 
 ## Recomendaciones y track record
 
-Cada ciclo calcula un puntaje por ticker (ver `backend/app/analysis/scoring.py`) que combina
-noticias (con decaimiento por antigüedad), el movimiento en 24 h de los mercados de predicción
-(contando cada evento una sola vez) y la tendencia del precio. Los tickers en cartera solo
-pueden recibir vender o mantener; el resto, comprar o mantener.
+Cada ciclo calcula un puntaje entre -1 y +1 por ticker (`backend/app/analysis/scoring.py`):
 
-A las 17:30 se califican las recomendaciones del día contra el cierre y se emiten las del día
-siguiente. Comprar acierta si el precio sube, vender si baja; mantener algo que tenés acierta si
-no cae más de 1,5%, y no comprar algo que no tenés acierta si no sube más de 1,5%.
+| Señal | Qué mide | Peso |
+| --- | --- | --- |
+| Noticias y mercados de predicción | noticias de las últimas 36 h (pierden la mitad del peso cada 12 h) y el movimiento en 24 h de los mercados de predicción, contando cada evento y cada noticia repetida en varios medios una sola vez | 70% |
+| Tendencia | precio contra su promedio de 20 días | 10% |
+| Contexto | tendencia de todo el mercado: líderes del Merval, bonos o S&P 500 | 10% |
+| Brecha del CEDEAR | si el CEDEAR está caro o barato frente a la acción en EE.UU., descontando el dólar | 10% |
 
-`GET /track-record/simulation` calcula cuánto valdría la cartera si se hubieran seguido todas las
-recomendaciones, contra no seguirlas: cada compra sugerida usa el 5% de la cartera, lo que dice
-vender pasa a pesos ese día y cada operación paga 0,6% de comisión (ver
-`backend/app/analysis/simulation.py`). `GET /track-record` muestra la tasa de acierto por acción, por señal dominante, por
-confianza y por si el ticker estaba en cartera.
+**Ya está en el precio**: cada noticia o mercado se descuenta según cuánto se movió el precio en
+su dirección desde que apareció, medido en "días típicos" de esa acción; después de 1,5 días
+típicos deja de contar.
+
+Los tickers en cartera solo pueden recibir vender o mantener; el resto, comprar o mantener.
+
+A las 17:30 se califican las recomendaciones del día y se emiten las del día siguiente. Como una
+recomendación hecha después del cierre recién se puede ejecutar a la apertura, se mide de
+**apertura a cierre** del día siguiente (también se guarda cierre a cierre). Comprar acierta si
+sube, vender si baja; mantener algo que tenés acierta si no cae más de 1,5%.
+
+- `GET /track-record/simulation`: cuánto valdría la cartera siguiendo todas las recomendaciones
+  (compras y ventas a la apertura, 5% de la cartera por compra, 0,6% de comisión por operación).
+- `GET /track-record/signals`: cuántas veces acertó cada señal por separado.
+
+### Validación
+
+- `uv run python -m scripts.backtest_trend 180`: la tendencia, probada en 6 meses de 40 tickers
+  (3.936 días), acertó la dirección del día siguiente el 49,0% de las veces (correlación +0,003),
+  o sea nada. Por eso pesa 10%.
+- `uv run python -m scripts.fit_weights`: cuando haya al menos 300 recomendaciones calificadas en
+  8 días, ajusta los pesos con una regresión logística entrenada con los días viejos y probada
+  con los recientes. No cambia nada solo; sugiere.
 
 ## Paper trading
 
 IOL no ofrece un sandbox utilizable, así que con `IOL_LIVE_TRADING=false` (el valor por
-defecto) las compras se simulan: se registran en `trade_intents`, se llenan al último precio
-real de IOL si BYMA está abierto (si no, quedan en cola hasta la apertura) y un job revisa cada
-minuto el stop loss y el take profit. El resultado de cada operación alimenta el track record.
+defecto) las compras se simulan: se registran en `trade_intents` y se ejecutan en el momento al
+último precio de IOL, también con el mercado cerrado (en ese caso, el último cierre). Si IOL no
+responde, se usa el último cierre guardado. Con el mercado abierto, un job revisa cada 5 minutos
+el stop loss y el take profit.

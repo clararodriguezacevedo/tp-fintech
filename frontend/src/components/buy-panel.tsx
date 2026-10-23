@@ -101,7 +101,13 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
             Se vende sola si baja a <span className="num">{price(stopLoss)}</span> (stop loss) o si sube a{" "}
             <span className="num">{price(takeProfit)}</span> (take profit).
           </p>
-          {!plan.market_open && <p className="mt-3 text-sm text-text-2">El mercado está cerrado: la compra se hace cuando abra, a las 11:00.</p>}
+          {!plan.market_open && (
+            <p className="mt-3 text-sm text-text-2">
+              {mode === "paper"
+                ? "El mercado está cerrado: la simulación compra al último precio de cierre."
+                : "El mercado está cerrado: la compra se hace cuando abra, a las 11:00."}
+            </p>
+          )}
           {state.status === "error" && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}
           <div className="mt-5 grid grid-cols-2 gap-3">
             <button type="button" onClick={() => setReview(false)} className="rounded-lg border border-border px-4 py-2.5 hover:border-text">Volver</button>

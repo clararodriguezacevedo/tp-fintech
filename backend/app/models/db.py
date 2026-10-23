@@ -77,15 +77,21 @@ class Evidence(BaseModel):
     direction: Direction
     strength: Strength
     reason: str
-    contribution: float
+    contribution: float  # after discounting what the price already did
     detail: str = ""
     broad: bool = False  # came from a MERVAL / BONOS tag, applied at half weight
+    since: datetime | None = None  # news: published; market: start of its 24h move
+    move_since: float | None = None  # price move of the ticker since `since`
+    priced_in: float = 0.0  # 0..1, share of the signal the price already reflected
+    sources: int = 1  # how many outlets ran the same story
 
 
 class SignalBreakdown(BaseModel):
     news: float
     markets: float
     trend: float
+    context: float = 0.0  # whole market's trend (Merval leaders, bonds or S&P 500)
+    gap: float = 0.0  # CEDEAR cheap (+) or expensive (-) versus its US share and the dollar
 
 
 class RecommendationRow(Row):
@@ -95,14 +101,16 @@ class RecommendationRow(Row):
     kind: Literal["live", "daily"]
     score: float
     confidence: float
-    driver: Literal["news", "markets", "trend"] | None = None
+    driver: Literal["news", "markets", "trend", "context", "gap"] | None = None
     held: bool
     signal_breakdown: SignalBreakdown
     evidence: list[Evidence]
     price_at_rec: float | None = None
     target_date: date
+    open_on_target: float | None = None
     close_on_target: float | None = None
-    realized_return: float | None = None
+    realized_return: float | None = None  # open -> close of the target day
+    close_return: float | None = None  # previous close -> close
     hit: bool | None = None
     evaluated_at: datetime | None = None
     created_at: datetime

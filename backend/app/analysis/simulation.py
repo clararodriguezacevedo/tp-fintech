@@ -2,10 +2,11 @@
 
 Day by day, starting from the real portfolio of the day each batch of recommendations was made:
 
-  without following  every position earns its own next-day move (realized_return)
-  following          positions marked "sell" are sold at the close and sit in cash for the day;
-                     every "buy" gets BUY_ALLOCATION of the portfolio, taken pro rata from the
-                     rest; "keep" changes nothing
+  without following  every position earns its close -> close move (close_return)
+  following          positions marked "sell" are sold at the next open (so they still take the
+                     overnight gap) and sit in cash for the day; every "buy" gets BUY_ALLOCATION
+                     of the portfolio at the next open (earning open -> close), taken pro rata
+                     from the rest; "keep" changes nothing
   costs              COMMISSION per operation, charged only when something changes versus the
                      previous day (entering or leaving a buy, selling or buying back)
 
@@ -90,16 +91,20 @@ def simulate() -> Simulation:
             start_day, start_value = day, total
             base_value = follow_value = total
 
-        moves = {r.ticker: r.realized_return or 0.0 for r in batch}
+        close_to_close = {r.ticker: r.close_return or 0.0 for r in batch}
+        open_to_close = {r.ticker: r.realized_return or 0.0 for r in batch}
+        # Overnight gap: what a position goes through before it can be sold at the open.
+        gap = {t: (1 + close_to_close[t]) / (1 + open_to_close[t]) - 1 for t in close_to_close}
         buys = {r.ticker for r in batch if r.action == "buy" and r.ticker not in weights}
         sells = {r.ticker for r in batch if r.action == "sell" and r.ticker in weights}
 
-        base_r = sum(w * moves.get(t, 0.0) for t, w in weights.items())
+        base_r = sum(w * close_to_close.get(t, 0.0) for t, w in weights.items())
 
-        # Following: sold weight earns nothing today; buys are funded pro rata from the rest.
-        kept_r = base_r - sum(weights[t] * moves.get(t, 0.0) for t in sells)
+        # Following: sold positions only take the overnight gap; buys enter at the open and are
+        # funded pro rata from the rest.
+        kept_r = base_r - sum(weights[t] * (close_to_close.get(t, 0.0) - gap.get(t, 0.0)) for t in sells)
         invested = BUY_ALLOCATION * len(buys)
-        follow_r = (1 - invested) * kept_r + sum(BUY_ALLOCATION * moves.get(t, 0.0) for t in buys)
+        follow_r = (1 - invested) * kept_r + sum(BUY_ALLOCATION * open_to_close.get(t, 0.0) for t in buys)
 
         # Commissions only on changes versus yesterday.
         trades = (
