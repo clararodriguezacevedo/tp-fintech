@@ -1,3 +1,4 @@
+import { ImpactList } from "@/components/signals";
 import { ApiFailure, attempt, PageTitle, SectionTitle } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { prob, timeAgo } from "@/lib/format";
@@ -5,11 +6,14 @@ import { prob, timeAgo } from "@/lib/format";
 export const metadata = { title: "Noticias | El Parqué" };
 
 export default async function NewsPage() {
-  const [news, markets] = await Promise.all([attempt(() => api.news(30)), attempt(() => api.markets({ limit: 20, relevant: true }))]);
+  const [news, markets] = await Promise.all([attempt(() => api.news(40)), attempt(() => api.markets({ limit: 20, relevant: true }))]);
 
   return (
     <div>
       <PageTitle>Noticias</PageTitle>
+      <p className="-mt-3 mb-6 text-sm text-text-2">
+        <span style={{ color: "var(--buy)" }}>▲</span> podría subir, <span style={{ color: "var(--sell)" }}>▼</span> podría bajar.
+      </p>
       <div className="grid gap-12 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section>
           {!news.ok ? <ApiFailure error={news.error} /> : (
@@ -18,7 +22,8 @@ export default async function NewsPage() {
                 <li key={n.id} className="py-4 first:pt-0">
                   <a href={n.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{n.title}</a>
                   {n.ai_summary && <p className="mt-1 text-text-2">{n.ai_summary}</p>}
-                  <p className="mt-1 text-sm text-text-3">{n.source}{n.published_at && `, ${timeAgo(n.published_at)}`}</p>
+                  <ImpactList impacts={n.impacts} />
+                  <p className="mt-2 text-sm text-text-3">{n.source}{n.published_at && `, ${timeAgo(n.published_at)}`}</p>
                 </li>
               ))}
             </ul>
@@ -29,12 +34,13 @@ export default async function NewsPage() {
           {!markets.ok ? <ApiFailure error={markets.error} /> : (
             <ul className="divide-y divide-border">
               {markets.data.map((m) => (
-                <li key={m.id} className="flex items-start justify-between gap-4 py-3">
-                  <div>
+                <li key={m.id} className="py-3">
+                  <div className="flex items-start justify-between gap-4">
                     <a href={m.url ?? undefined} target="_blank" rel="noreferrer" className="hover:underline">{m.title}</a>
-                    {m.ai_summary && <p className="mt-1 text-sm text-text-2">{m.ai_summary}</p>}
+                    <span className="num shrink-0 text-lg font-semibold" title="Probabilidad de que pase">{prob(m.probability)}</span>
                   </div>
-                  <span className="num shrink-0 text-lg font-semibold" title="Probabilidad de que pase">{prob(m.probability)}</span>
+                  {m.ai_summary && <p className="mt-1 text-sm text-text-2">{m.ai_summary}</p>}
+                  <ImpactList impacts={m.impacts} />
                 </li>
               ))}
             </ul>

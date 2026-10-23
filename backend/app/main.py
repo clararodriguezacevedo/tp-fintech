@@ -12,7 +12,8 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app import jobs, prices
-from app.analysis import market_hours, risk, track_record
+from app.analysis import market_hours, risk, simulation, track_record
+from app.analysis.simulation import Simulation
 from app.brokers.iol import IOLUnavailable, get_iol
 from app.config import get_settings
 from app.db import get_db, rows_as
@@ -20,10 +21,10 @@ from app.models.db import (
     Action, MarketRow, NewsRow, RecommendationRow, SnapshotRow, TickerImpactRow, TradeRow,
     TradeStatus,
 )
-from app.portfolio import get_holdings, value_history
+from app.portfolio import current_holdings, get_holdings, value_history
 from app.models.iol import DailyBar
 from app.schemas import (
-    AccountSummary, BuyRequest, Health, HoldingOut, PortfolioValuePoint, ProbabilityPoint, TrackRecordSummary,
+    AccountSummary, BuyRequest, Health, HoldingOut, Impact, JobResult, MarketOut, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, TrackRecordSummary,
     TradePlan,
 )
 from app.sources import polymarket
@@ -98,28 +99,65 @@ def health() -> Health:
     )
 
 
-@app.post("/jobs/run", response_model=Health)
-def run_jobs_now() -> Health:
-    """Run one collection cycle right away instead of waiting for the timer."""
-    jobs.run_cycle()
-    return health()
+# Scheduled jobs. Supabase pg_cron calls these on a timer (see supabase/migrations); they can
+# also be run by hand. Each returns the names of the steps that failed.
+
+@app.post("/jobs/run", response_model=JobResult)
+def run_jobs_now() -> JobResult:
+    """Collection cycle: holdings, markets, news, tagging, live recommendations."""
+    return JobResult(failed=jobs.run_cycle())
 
 
-@app.get("/news", response_model=list[NewsRow])
-def list_news(limit: int = Query(50, ge=1, le=500)) -> list[NewsRow]:
-    return rows_as(
+@app.post("/jobs/trades", response_model=JobResult)
+def run_trades_job() -> JobResult:
+    """Fill queued paper trades and check stop loss / take profit (only while BYMA is open)."""
+    if not market_hours.is_open():
+        return JobResult(failed=[], skipped=True)
+    paper.check_open_trades()
+    return JobResult(failed=[])
+
+
+@app.post("/jobs/after-close", response_model=JobResult)
+def run_after_close_job() -> JobResult:
+    """Grade today's daily recommendations and issue tomorrow's."""
+    return JobResult(failed=jobs.after_close())
+
+
+def _impacts_for(kind: Literal["news", "market"], ids: list[str]) -> dict[str, list[Impact]]:
+    """Tickers each item is expected to move, strongest first, one entry per ticker."""
+    out: dict[str, dict[str, Impact]] = {}
+    rank = {"high": 3, "medium": 2, "low": 1}
+    for i in range(0, len(ids), 100):
+        rows = rows_as(
+            TickerImpactRow,
+            get_db().table("ticker_impacts").select("*").eq("item_kind", kind)
+            .in_("item_id", ids[i : i + 100]).execute().data,
+        )
+        for r in rows:
+            per_item = out.setdefault(r.item_id, {})
+            current = per_item.get(r.ticker)
+            if current is None or rank[r.strength] > rank[current.strength]:
+                per_item[r.ticker] = Impact(ticker=r.ticker, direction=r.direction, strength=r.strength)
+    return {k: sorted(v.values(), key=lambda x: -rank[x.strength]) for k, v in out.items()}
+
+
+@app.get("/news", response_model=list[NewsOut])
+def list_news(limit: int = Query(50, ge=1, le=500)) -> list[NewsOut]:
+    rows = rows_as(
         NewsRow,
         get_db().table("news_items").select("*").order("published_at", desc=True)
         .limit(limit).execute().data,
     )
+    impacts = _impacts_for("news", [r.id for r in rows])
+    return [NewsOut(**r.model_dump(), impacts=impacts.get(r.id, [])) for r in rows]
 
 
-@app.get("/markets", response_model=list[MarketRow])
+@app.get("/markets", response_model=list[MarketOut])
 def list_markets(
     source: Literal["polymarket", "kalshi"] | None = None,
     limit: int = Query(50, ge=1, le=500),
     relevant: bool = Query(False, description="only markets linked to at least one ticker"),
-) -> list[MarketRow]:
+) -> list[MarketOut]:
     db = get_db()
     q = db.table("prediction_markets").select("*")
     if source:
@@ -133,7 +171,9 @@ def list_markets(
         if not linked:
             return []
         q = q.in_("id", sorted(linked)[:300])
-    return rows_as(MarketRow, q.order("volume_24h", desc=True).limit(limit).execute().data)
+    rows = rows_as(MarketRow, q.order("volume_24h", desc=True).limit(limit).execute().data)
+    impacts = _impacts_for("market", [r.id for r in rows])
+    return [MarketOut(**r.model_dump(), impacts=impacts.get(r.id, [])) for r in rows]
 
 
 @app.get("/markets/{market_id}/history", response_model=list[ProbabilityPoint])
@@ -165,9 +205,14 @@ def ticker_impacts(ticker: str, limit: int = Query(50, ge=1, le=500)) -> list[Ti
     )
 
 
-@app.get("/portfolio", response_model=list[HoldingOut])
-def portfolio() -> list[HoldingOut]:
-    return [HoldingOut.model_validate(h.model_dump()) for h in get_holdings()]
+@app.get("/portfolio", response_model=PortfolioOut)
+def portfolio() -> PortfolioOut:
+    """The IOL positions, at most a few minutes old while the market is open."""
+    snap = current_holdings()
+    return PortfolioOut(
+        captured_at=snap.captured_at,
+        holdings=[HoldingOut.model_validate(h.model_dump()) for h in snap.holdings],
+    )
 
 
 @app.get("/portfolio/history", response_model=list[PortfolioValuePoint])
@@ -286,6 +331,12 @@ def portfolio_advice() -> list[RecommendationRow]:
 @app.get("/track-record", response_model=TrackRecordSummary)
 def track_record_summary() -> TrackRecordSummary:
     return track_record.summary()
+
+
+@app.get("/track-record/simulation", response_model=Simulation)
+def track_record_simulation() -> Simulation:
+    """Portfolio value had every daily recommendation been followed, versus not following."""
+    return simulation.simulate()
 
 
 @app.get("/track-record/history", response_model=list[RecommendationRow])

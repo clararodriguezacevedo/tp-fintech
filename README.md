@@ -116,25 +116,22 @@ La API corre en Vercel como función serverless: **https://tp-fintech-api.vercel
 
 Para redesplegar a mano: `cd backend && npx vercel deploy --prod`.
 
-## Tareas programadas (GitHub Actions)
+## Tareas programadas (Supabase pg_cron)
 
-Los jobs corren en GitHub Actions, no en el proceso de la API (`.github/workflows/`):
+Los jobs los dispara `pg_cron` adentro de Supabase, que llama a la API en Vercel con `pg_net`
+(migración `supabase/migrations/20261023010000_pg_cron_jobs.sql`). Primero se usó el cron de
+GitHub Actions, pero en la práctica corría cada ~5 horas en vez de cada 10 minutos.
 
-| Workflow | Cuándo (hora Argentina) | Qué hace |
-| --- | --- | --- |
-| `collect` | cada 10 minutos | junta mercados y noticias, los etiqueta con Gemini, actualiza las recomendaciones live |
-| `trades` | cada 5 minutos, lunes a viernes de 11 a 17 | llena compras en cola y revisa stop loss / take profit del paper trading |
-| `after close` | 17:30, lunes a viernes | califica las recomendaciones del día y emite las del día siguiente |
+| Job | Cuándo (hora Argentina) | Endpoint | Qué hace |
+| --- | --- | --- | --- |
+| `collect` | cada 10 minutos | `POST /jobs/run` | cartera, mercados y noticias, etiquetado con Gemini, recomendaciones live |
+| `trades` | cada 5 minutos, lunes a viernes de 11 a 17 | `POST /jobs/trades` | llena compras en cola y revisa stop loss / take profit |
+| `after-close` | 17:30, lunes a viernes | `POST /jobs/after-close` | califica las recomendaciones del día y emite las del día siguiente |
 
-Las claves están en los Secrets del repo (`SUPABASE_URL`, `SUPABASE_KEY`, `GEMINI_API_KEY`,
-`IOL_USERNAME`, `IOL_PASSWORD`). Las órdenes reales siguen bloqueadas salvo que se cree la
-variable de repo `IOL_LIVE_TRADING=true`.
-
-Para correr un job a mano: pestaña Actions del repo > workflow > *Run workflow*, o localmente
+La API key que usan está en Supabase Vault (`api_key`); se carga o actualiza con
+`cd backend && uv run python -m scripts.set_cron_secret`. Los workflows de `.github/workflows/`
+quedan solo para correr un job a mano (pestaña Actions > *Run workflow*), o localmente
 `cd backend && uv run python -m scripts.run_job {cycle|trades|after-close}`.
-
-GitHub demora los crons a veces (de unos minutos a media hora en horas pico) y desactiva los
-workflows programados de un repo público después de 60 días sin commits.
 
 ## Tipado
 
@@ -163,8 +160,13 @@ noticias (con decaimiento por antigüedad), el movimiento en 24 h de los mercado
 pueden recibir vender o mantener; el resto, comprar o mantener.
 
 A las 17:30 se califican las recomendaciones del día contra el cierre y se emiten las del día
-siguiente. Comprar acierta si el precio sube, vender si baja, mantener si se mueve menos de
-1,5%. `GET /track-record` muestra la tasa de acierto por acción, por señal dominante, por
+siguiente. Comprar acierta si el precio sube, vender si baja; mantener algo que tenés acierta si
+no cae más de 1,5%, y no comprar algo que no tenés acierta si no sube más de 1,5%.
+
+`GET /track-record/simulation` calcula cuánto valdría la cartera si se hubieran seguido todas las
+recomendaciones, contra no seguirlas: cada compra sugerida usa el 5% de la cartera, lo que dice
+vender pasa a pesos ese día y cada operación paga 0,6% de comisión (ver
+`backend/app/analysis/simulation.py`). `GET /track-record` muestra la tasa de acierto por acción, por señal dominante, por
 confianza y por si el ticker estaba en cartera.
 
 ## Paper trading

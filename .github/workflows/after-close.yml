@@ -1,10 +1,8 @@
-# 17:30 ART (20:30 UTC) on weekdays: grade today's recommendations against the close, then
-# issue tomorrow's.
+# Manual backup only: the schedule runs in Supabase pg_cron.
+# Grade today's recommendations against the close, then issue tomorrow's.
 name: after close
 
 on:
-  schedule:
-    - cron: "30 20 * * 1-5"
   workflow_dispatch:
 
 concurrency:

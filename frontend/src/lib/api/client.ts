@@ -11,11 +11,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const API_KEY = process.env.API_KEY;
 
 export type Health = z.infer<typeof schemas.Health>;
-export type NewsItem = z.infer<typeof schemas.NewsRow>;
-export type Market = z.infer<typeof schemas.MarketRow>;
+export type NewsItem = z.infer<typeof schemas.NewsOut>;
+export type Market = z.infer<typeof schemas.MarketOut>;
+export type Impact = z.infer<typeof schemas.Impact>;
 export type ProbabilityPoint = z.infer<typeof schemas.ProbabilityPoint>;
 export type TickerImpact = z.infer<typeof schemas.TickerImpactRow>;
 export type Holding = z.infer<typeof schemas.HoldingOut>;
+export type Portfolio = z.infer<typeof schemas.PortfolioOut>;
+export type Simulation = z.infer<typeof schemas.Simulation>;
 export type PortfolioValuePoint = z.infer<typeof schemas.PortfolioValuePoint>;
 export type TradePlan = z.infer<typeof schemas.TradePlan>;
 export type AccountSummary = z.infer<typeof schemas.AccountSummary>;
@@ -63,14 +66,14 @@ async function request<S extends z.ZodTypeAny>(
 
 export const api = {
   health: () => request(schemas.Health, "/health"),
-  news: (limit = 50) => request(z.array(schemas.NewsRow), "/news", { query: { limit } }),
+  news: (limit = 50) => request(z.array(schemas.NewsOut), "/news", { query: { limit } }),
   markets: (query: { source?: "polymarket" | "kalshi"; limit?: number; relevant?: boolean } = {}) =>
-    request(z.array(schemas.MarketRow), "/markets", { query }),
+    request(z.array(schemas.MarketOut), "/markets", { query }),
   marketHistory: (marketId: string) =>
     request(z.array(schemas.ProbabilityPoint), `/markets/${marketId}/history`),
   tickerImpacts: (ticker: string) =>
     request(z.array(schemas.TickerImpactRow), `/tickers/${ticker}/impacts`),
-  portfolio: () => request(z.array(schemas.HoldingOut), "/portfolio"),
+  portfolio: () => request(schemas.PortfolioOut, "/portfolio"),
   portfolioHistory: (days = 90) =>
     request(z.array(schemas.PortfolioValuePoint), "/portfolio/history", { query: { days } }),
   portfolioAdvice: () => request(z.array(schemas.RecommendationRow), "/portfolio/advice"),
@@ -87,6 +90,7 @@ export const api = {
     request(schemas.TradeRow, "/trades", { method: "POST", body: JSON.stringify(schemas.BuyRequest.parse(req)) }),
   closeTrade: (tradeId: string) => request(schemas.TradeRow, `/trades/${tradeId}/close`, { method: "POST" }),
   trackRecord: () => request(schemas.TrackRecordSummary, "/track-record"),
+  simulation: () => request(schemas.Simulation, "/track-record/simulation"),
   trackRecordHistory: (limit = 100) =>
     request(z.array(schemas.RecommendationRow), "/track-record/history", { query: { limit } }),
 };

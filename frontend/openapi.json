@@ -54,7 +54,7 @@
     "/jobs/run": {
       "post": {
         "summary": "Run Jobs Now",
-        "description": "Run one collection cycle right away instead of waiting for the timer.",
+        "description": "Collection cycle: holdings, markets, news, tagging, live recommendations.",
         "operationId": "run_jobs_now",
         "parameters": [
           {
@@ -80,7 +80,101 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Health"
+                  "$ref": "#/components/schemas/JobResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/trades": {
+      "post": {
+        "summary": "Run Trades Job",
+        "description": "Fill queued paper trades and check stop loss / take profit (only while BYMA is open).",
+        "operationId": "run_trades_job",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/after-close": {
+      "post": {
+        "summary": "Run After Close Job",
+        "description": "Grade today's daily recommendations and issue tomorrow's.",
+        "operationId": "run_after_close_job",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResult"
                 }
               }
             }
@@ -140,7 +234,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/NewsRow"
+                    "$ref": "#/components/schemas/NewsOut"
                   },
                   "title": "Response List News"
                 }
@@ -234,7 +328,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/MarketRow"
+                    "$ref": "#/components/schemas/MarketOut"
                   },
                   "title": "Response List Markets"
                 }
@@ -388,6 +482,7 @@
     "/portfolio": {
       "get": {
         "summary": "Portfolio",
+        "description": "The IOL positions, at most a few minutes old while the market is open.",
         "operationId": "portfolio",
         "parameters": [
           {
@@ -413,11 +508,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/HoldingOut"
-                  },
-                  "title": "Response Portfolio"
+                  "$ref": "#/components/schemas/PortfolioOut"
                 }
               }
             }
@@ -1131,6 +1222,53 @@
         }
       }
     },
+    "/track-record/simulation": {
+      "get": {
+        "summary": "Track Record Simulation",
+        "description": "Portfolio value had every daily recommendation been followed, versus not following.",
+        "operationId": "track_record_simulation",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Simulation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/track-record/history": {
       "get": {
         "summary": "Track Record History",
@@ -1483,6 +1621,14 @@
             "type": "string",
             "title": "Type"
           },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "ARS",
+              "USD"
+            ],
+            "title": "Currency"
+          },
           "quantity": {
             "type": "number",
             "title": "Quantity"
@@ -1502,6 +1648,14 @@
           "gain_pct": {
             "type": "number",
             "title": "Gain Pct"
+          },
+          "gain_amount": {
+            "type": "number",
+            "title": "Gain Amount"
+          },
+          "day_change_pct": {
+            "type": "number",
+            "title": "Day Change Pct"
           }
         },
         "type": "object",
@@ -1509,15 +1663,71 @@
           "ticker",
           "description",
           "type",
+          "currency",
           "quantity",
           "last_price",
           "avg_price",
           "value",
-          "gain_pct"
+          "gain_pct",
+          "gain_amount",
+          "day_change_pct"
         ],
         "title": "HoldingOut"
       },
-      "MarketRow": {
+      "Impact": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Direction"
+          },
+          "strength": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Strength"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "direction",
+          "strength"
+        ],
+        "title": "Impact"
+      },
+      "JobResult": {
+        "properties": {
+          "failed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failed"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "failed"
+        ],
+        "title": "JobResult"
+      },
+      "MarketOut": {
         "properties": {
           "id": {
             "type": "string",
@@ -1669,6 +1879,13 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "impacts": {
+            "items": {
+              "$ref": "#/components/schemas/Impact"
+            },
+            "type": "array",
+            "title": "Impacts"
           }
         },
         "type": "object",
@@ -1677,11 +1894,12 @@
           "source",
           "external_id",
           "title",
-          "updated_at"
+          "updated_at",
+          "impacts"
         ],
-        "title": "MarketRow"
+        "title": "MarketOut"
       },
-      "NewsRow": {
+      "NewsOut": {
         "properties": {
           "id": {
             "type": "string",
@@ -1753,6 +1971,13 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "impacts": {
+            "items": {
+              "$ref": "#/components/schemas/Impact"
+            },
+            "type": "array",
+            "title": "Impacts"
           }
         },
         "type": "object",
@@ -1762,9 +1987,32 @@
           "source",
           "title",
           "url",
-          "created_at"
+          "created_at",
+          "impacts"
         ],
-        "title": "NewsRow"
+        "title": "NewsOut"
+      },
+      "PortfolioOut": {
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Captured At"
+          },
+          "holdings": {
+            "items": {
+              "$ref": "#/components/schemas/HoldingOut"
+            },
+            "type": "array",
+            "title": "Holdings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "captured_at",
+          "holdings"
+        ],
+        "title": "PortfolioOut"
       },
       "PortfolioValuePoint": {
         "properties": {
@@ -1982,6 +2230,110 @@
           "trend"
         ],
         "title": "SignalBreakdown"
+      },
+      "SimDay": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "bought": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bought"
+          },
+          "sold": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sold"
+          },
+          "base_return": {
+            "type": "number",
+            "title": "Base Return"
+          },
+          "follow_return": {
+            "type": "number",
+            "title": "Follow Return"
+          },
+          "base_value": {
+            "type": "number",
+            "title": "Base Value"
+          },
+          "follow_value": {
+            "type": "number",
+            "title": "Follow Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "bought",
+          "sold",
+          "base_return",
+          "follow_return",
+          "base_value",
+          "follow_value"
+        ],
+        "title": "SimDay"
+      },
+      "Simulation": {
+        "properties": {
+          "start_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Day"
+          },
+          "start_value": {
+            "type": "number",
+            "title": "Start Value"
+          },
+          "base_value": {
+            "type": "number",
+            "title": "Base Value"
+          },
+          "follow_value": {
+            "type": "number",
+            "title": "Follow Value"
+          },
+          "buy_allocation": {
+            "type": "number",
+            "title": "Buy Allocation"
+          },
+          "commission": {
+            "type": "number",
+            "title": "Commission"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/SimDay"
+            },
+            "type": "array",
+            "title": "Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_day",
+          "start_value",
+          "base_value",
+          "follow_value",
+          "buy_allocation",
+          "commission",
+          "days"
+        ],
+        "title": "Simulation"
       },
       "TickerImpactRow": {
         "properties": {

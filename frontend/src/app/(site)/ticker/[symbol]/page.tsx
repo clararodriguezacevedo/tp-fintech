@@ -26,7 +26,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
   const last = closes.at(-1);
   const prev = closes.at(-2);
   const dayChange = last && prev ? last.close / prev.close - 1 : null;
-  const position = holdings.ok ? holdings.data.find((h) => h.ticker === ticker) : undefined;
+  const position = holdings.ok ? holdings.data.holdings.find((h) => h.ticker === ticker) : undefined;
   const mode = health.ok ? health.data.mode : "paper";
   const name = nameOf(ticker, position?.description);
 

@@ -1,5 +1,7 @@
 // How a recommendation is shown: what to do, how sure we are, and why, in plain words.
-import type { Evidence, Recommendation } from "@/lib/api/client";
+import Link from "next/link";
+
+import type { Evidence, Impact, Recommendation } from "@/lib/api/client";
 
 type Action = Recommendation["action"];
 
@@ -57,6 +59,40 @@ export function Reasons({ items, limit = 5 }: { items: Evidence[]; limit?: numbe
                 <p className="text-sm text-text-3">{e.title}</p>
               )}
             </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+const BROAD: Record<string, string> = { MERVAL: "Acciones argentinas", BONOS: "Bonos argentinos" };
+
+/** The tickers a news item or market is expected to move, and which way. */
+export function ImpactList({ impacts }: { impacts: Impact[] }) {
+  if (impacts.length === 0) return null;
+  return (
+    <ul className="mt-2 flex flex-wrap gap-1.5">
+      {impacts.map((i) => {
+        const up = i.direction === "up";
+        const label = (
+          <>
+            <span aria-hidden style={{ color: up ? "var(--buy)" : "var(--sell)" }}>{up ? "▲" : "▼"}</span>
+            <span className="font-medium">{BROAD[i.ticker] ?? i.ticker}</span>
+            <span className="sr-only">{up ? "podría subir" : "podría bajar"}</span>
+          </>
+        );
+        const cls = "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm";
+        const style = { background: up ? "var(--buy-soft)" : "var(--sell-soft)" };
+        return (
+          <li key={i.ticker}>
+            {BROAD[i.ticker] ? (
+              <span className={cls} style={style} title={up ? "Podría subir" : "Podría bajar"}>{label}</span>
+            ) : (
+              <Link href={`/ticker/${i.ticker}`} className={`${cls} hover:underline`} style={style} title={up ? "Podría subir" : "Podría bajar"}>
+                {label}
+              </Link>
+            )}
           </li>
         );
       })}

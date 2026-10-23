@@ -5,7 +5,9 @@ close (realized_return = close(D+1) / close(D) - 1):
 
   buy   right if the price went up
   sell  right if the price went down
-  keep  right if the price moved less than KEEP_BAND either way (no big move missed)
+  keep  for a position the user holds: right unless it fell more than KEEP_BAND (selling
+        would have been better); for one they don't hold: right unless it rose more than
+        KEEP_BAND (buying would have been better)
 """
 
 import logging
@@ -31,12 +33,29 @@ def close_on(ticker: str, day: date) -> float | None:
     return prices.close_on(ticker, day)
 
 
-def is_hit(action: Action, ret: float) -> bool:
+def is_hit(action: Action, ret: float, held: bool) -> bool:
     if action == "buy":
         return ret > 0
     if action == "sell":
         return ret < 0
-    return abs(ret) < KEEP_BAND
+    return ret > -KEEP_BAND if held else ret < KEEP_BAND
+
+
+def regrade_all() -> int:
+    """Re-apply is_hit to every graded recommendation (after a rule change)."""
+    db = get_db()
+    rows = rows_as(
+        RecommendationRow,
+        db.table("recommendations").select("*").eq("kind", "daily")
+        .not_.is_("realized_return", "null").execute().data,
+    )
+    changed = 0
+    for r in rows:
+        hit = is_hit(r.action, r.realized_return or 0, r.held)
+        if hit != r.hit:
+            db.table("recommendations").update({"hit": hit}).eq("id", r.id).execute()
+            changed += 1
+    return changed
 
 
 def evaluate_pending(
@@ -67,7 +86,7 @@ def evaluate_pending(
             fields |= {
                 "close_on_target": close,
                 "realized_return": round(ret, 6),
-                "hit": is_hit(rec.action, ret),
+                "hit": is_hit(rec.action, ret, rec.held),
             }
             graded += 1
         db.table("recommendations").update(fields).eq("id", rec.id).execute()

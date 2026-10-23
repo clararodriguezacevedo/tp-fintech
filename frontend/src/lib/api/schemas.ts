@@ -23,7 +23,20 @@ const HTTPValidationError = z
   .object({ detail: z.array(ValidationError) })
   .partial()
   .passthrough();
-const NewsRow = z
+const JobResult = z
+  .object({
+    failed: z.array(z.string()),
+    skipped: z.boolean().optional().default(false),
+  })
+  .passthrough();
+const Impact = z
+  .object({
+    ticker: z.string(),
+    direction: z.enum(["up", "down"]),
+    strength: z.enum(["low", "medium", "high"]),
+  })
+  .passthrough();
+const NewsOut = z
   .object({
     id: z.string(),
     external_id: z.string(),
@@ -35,10 +48,11 @@ const NewsRow = z
     ai_summary: z.union([z.string(), z.null()]).optional(),
     tagged_at: z.union([z.string(), z.null()]).optional(),
     created_at: z.string().datetime({ offset: true }),
+    impacts: z.array(Impact),
   })
   .passthrough();
 const source = z.union([z.enum(["polymarket", "kalshi"]), z.null()]).optional();
-const MarketRow = z
+const MarketOut = z
   .object({
     id: z.string(),
     source: z.enum(["polymarket", "kalshi"]),
@@ -56,6 +70,7 @@ const MarketRow = z
     ai_summary: z.union([z.string(), z.null()]).optional(),
     tagged_at: z.union([z.string(), z.null()]).optional(),
     updated_at: z.string().datetime({ offset: true }),
+    impacts: z.array(Impact),
   })
   .passthrough();
 const ProbabilityPoint = z
@@ -81,11 +96,20 @@ const HoldingOut = z
     ticker: z.string(),
     description: z.string(),
     type: z.string(),
+    currency: z.enum(["ARS", "USD"]),
     quantity: z.number(),
     last_price: z.number(),
     avg_price: z.number(),
     value: z.number(),
     gain_pct: z.number(),
+    gain_amount: z.number(),
+    day_change_pct: z.number(),
+  })
+  .passthrough();
+const PortfolioOut = z
+  .object({
+    captured_at: z.string().datetime({ offset: true }),
+    holdings: z.array(HoldingOut),
   })
   .passthrough();
 const PortfolioValuePoint = z
@@ -235,18 +259,43 @@ const TrackRecordSummary = z
     held: z.record(HitStats),
   })
   .passthrough();
+const SimDay = z
+  .object({
+    day: z.string(),
+    bought: z.array(z.string()),
+    sold: z.array(z.string()),
+    base_return: z.number(),
+    follow_return: z.number(),
+    base_value: z.number(),
+    follow_value: z.number(),
+  })
+  .passthrough();
+const Simulation = z
+  .object({
+    start_day: z.union([z.string(), z.null()]),
+    start_value: z.number(),
+    base_value: z.number(),
+    follow_value: z.number(),
+    buy_allocation: z.number(),
+    commission: z.number(),
+    days: z.array(SimDay),
+  })
+  .passthrough();
 
 export const schemas = {
   x_api_key,
   Health,
   ValidationError,
   HTTPValidationError,
-  NewsRow,
+  JobResult,
+  Impact,
+  NewsOut,
   source,
-  MarketRow,
+  MarketOut,
   ProbabilityPoint,
   TickerImpactRow,
   HoldingOut,
+  PortfolioOut,
   PortfolioValuePoint,
   AccountSummary,
   DailyBar,
@@ -262,4 +311,6 @@ export const schemas = {
   RecommendationRow,
   HitStats,
   TrackRecordSummary,
+  SimDay,
+  Simulation,
 };

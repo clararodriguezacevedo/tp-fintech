@@ -48,7 +48,7 @@ export async function attempt<T>(fn: () => Promise<T>): Promise<{ ok: true; data
 /** A colored ▲/▼ next to a signed value, e.g. a gain. */
 export function Delta({ value, children }: { value: number; children: ReactNode }) {
   return (
-    <span className="num">
+    <span className="num whitespace-nowrap">
       <span aria-hidden style={{ color: value >= 0 ? "var(--buy)" : "var(--sell)" }}>{value >= 0 ? "▲" : "▼"}</span> {children}
     </span>
   );

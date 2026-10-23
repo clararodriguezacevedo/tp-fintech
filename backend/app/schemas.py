@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.db import Action
+from app.models.db import Action, Direction, MarketRow, NewsRow, Strength
 
 
 class Health(BaseModel):
@@ -16,6 +16,25 @@ class Health(BaseModel):
     next_open: datetime
     live_trading: bool
     mode: Literal["paper", "live"]
+
+
+class Impact(BaseModel):
+    ticker: str
+    direction: Direction
+    strength: Strength
+
+
+class NewsOut(NewsRow):
+    impacts: list[Impact]
+
+
+class MarketOut(MarketRow):
+    impacts: list[Impact]
+
+
+class JobResult(BaseModel):
+    failed: list[str]
+    skipped: bool = False
 
 
 class ProbabilityPoint(BaseModel):
@@ -55,11 +74,19 @@ class HoldingOut(BaseModel):
     ticker: str
     description: str
     type: str
+    currency: Literal["ARS", "USD"]
     quantity: float
     last_price: float
     avg_price: float
     value: float
     gain_pct: float
+    gain_amount: float
+    day_change_pct: float
+
+
+class PortfolioOut(BaseModel):
+    captured_at: datetime  # when these prices were read from IOL
+    holdings: list[HoldingOut]
 
 
 class HitStats(BaseModel):
