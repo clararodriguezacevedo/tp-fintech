@@ -16,10 +16,20 @@ Per ticker:
            share, after removing the move common to all CEDEARs (the dollar). Expensive
            versus usual -> expected to fall.
 
-  score = 0.7 * tanh((news + markets) / 2) + 0.1 * trend + 0.1 * context + 0.1 * gap, in [-1, 1]
+  concentration  buys only: when the portfolio already has more than 40% in the same risk
+           group ("argentina": local stocks, bonds and Argentine CEDEARs like VIST; "exterior":
+           the rest), 2 points off per point above 40% (at most 0.3).
+
+  score = 0.7 * tanh((news + markets) / 2) + 0.1 * trend + 0.1 * context + 0.1 * gap
+          + concentration
+
+Market wrap-ups ("así cerró el mercado", "las acciones subieron hasta 6%") are ignored: they only
+report moves that already happened. A news item tagged both for a ticker and for MERVAL/BONOS
+counts once. Prediction markets resolving more than 6 months out weigh less.
 
 Broad "MERVAL" tags apply at half weight to every stock, "BONOS" tags to every bond.
-Tickers the user holds can only get sell or keep; the rest can only get buy or keep.
+Tickers the user holds can only get sell (from -0.45, a higher bar than buying) or keep; the
+rest can only get buy (from +0.3) or keep.
 The weights are judgment calls until there is enough graded history to fit them
 (scripts/fit_weights.py).
 """
@@ -58,6 +68,12 @@ BUY_THRESHOLD, SELL_THRESHOLD = 0.3, -0.3
 PRICED_IN_FULL = 1.5  # typical daily moves in the expected direction = fully priced in
 SAME_STORY = 0.4  # title word overlap (Jaccard) above which two news items are one story
 GAP_UNIT = 0.01  # a 1% premium versus usual counts as a strong gap signal
+FAR_MARKET_DAYS = 180  # prediction markets resolving later than this weigh less...
+FAR_MARKET_MIN_WEIGHT = 0.25  # ...down to this share
+SELL_THRESHOLD_HELD = -0.45  # selling something you hold needs more evidence than buying
+CONCENTRATION_LIMIT = 0.40  # above this share of the portfolio in one risk group, buys in it are penalized
+CONCENTRATION_PENALTY = 2.0  # score points per unit of share above the limit (48% -> -0.16)
+CONCENTRATION_MAX = 0.3
 MAX_EVIDENCE_SHOWN = 8
 BROAD_TICKERS = ("MERVAL", "BONOS")
 CEDEAR_TYPES = {"CEDEARS", "Cedears"}
@@ -91,7 +107,24 @@ def _all_impacts() -> list[TickerImpactRow]:
         page += 1
 
 
+# Market wrap-ups only report moves that already happened: no new information.
+_RECAP = re.compile(
+    r"jornada financiera|as[ií] cerr[oó]|cierre (del|de) mercado|cierre de la (rueda|jornada)"
+    r"|(acciones|bonos|adrs?|merval)( argentin[oa]s)? (rebotaron|subieron|cayeron|bajaron|treparon|se desplomaron)"
+    r"|(acciones|bonos|adrs?|merval)( argentin[oa]s)? (cotizaron|operaron|cerraron|terminaron) en (alza|baja|rojo|verde)"
+    r"|riesgo pa[ií]s (sube|baja|subi[oó]|baj[oó]) .*(hoy|en la jornada)"
+    r"|stocks? (rose|fell|rallied|slid|closed)|stock market today|markets? wrap",
+    re.IGNORECASE,
+)
+
+
+def is_market_recap(title: str) -> bool:
+    return bool(_RECAP.search(title))
+
+
 def _news_evidence(imp: TickerImpactRow, item: NewsRow, now: datetime) -> Evidence | None:
+    if is_market_recap(item.title):
+        return None
     published = item.published_at or item.created_at
     age_h = (now - published).total_seconds() / 3600
     if age_h > NEWS_MAX_AGE_HOURS:
@@ -111,10 +144,16 @@ def _market_evidence(imp: TickerImpactRow, item: MarketRow, now: datetime) -> Ev
     sign = 1 if imp.direction == "up" else -1
     scaled = max(-MARKET_MOVE_CAP, min(MARKET_MOVE_CAP, item.change_24h / MARKET_MOVE_UNIT))
     prob = f"{item.probability * 100:.0f}% " if item.probability is not None else ""
+    # A market resolving years from now says little about tomorrow: weight falls past 6 months.
+    horizon = 1.0
+    if item.end_date:
+        days_left = (item.end_date - now).days
+        if days_left > FAR_MARKET_DAYS:
+            horizon = max(FAR_MARKET_MIN_WEIGHT, FAR_MARKET_DAYS / days_left)
     return Evidence(
         kind="market", item_id=item.id, title=item.title, url=item.url, direction=imp.direction,
         strength=imp.strength, reason=imp.reason or "",
-        contribution=round(sign * STRENGTH[imp.strength] * scaled, 4),
+        contribution=round(sign * STRENGTH[imp.strength] * scaled * horizon, 4),
         detail=f"{item.source}: {prob}({item.change_24h * 100:+.1f} pts en 24 h)".replace(".", ","),
         since=now - timedelta(hours=24),
     )
@@ -207,12 +246,15 @@ def trend_score(bars: list[DailyBar], last: float) -> float:
 
 
 def _close_before(bars: list[DailyBar], when: datetime) -> float | None:
-    """Close of the last session that had ended before `when`."""
+    """Reference price for "already in the price": the close before the session `when` falls in.
+
+    A note published during or after a trading day (often an after-close wrap-up) may describe
+    that day's whole move, so the reference is the previous day's close, not that day's. Before
+    the open, or on a day without trading, it is simply the last close.
+    """
     local = when.astimezone(market_hours.ART)
-    done = [
-        b for b in bars
-        if b.day < local.date() or (b.day == local.date() and local.time() >= market_hours.CLOSE)
-    ]
+    traded_today = local.weekday() < 5 and local.time() >= market_hours.OPEN
+    done = [b for b in bars if b.day < local.date() or (b.day == local.date() and not traded_today)]
     return done[-1].close if done else None
 
 
@@ -309,21 +351,52 @@ class _Inputs:
     broad: list[Evidence]
     trend: float
     context: float
+    risk_group: str | None = None
+    group_share: float | None = None
+    change_3m: float | None = None
+    from_high: float | None = None
+
+
+# Argentine companies listed abroad: their CEDEARs carry Argentine risk, not foreign.
+ARGENTINE_CEDEARS = {"VIST"}
+
+
+def risk_group(ticker: str, stocks: set[str], bonds: set[str]) -> str:
+    return "argentina" if ticker in stocks or ticker in bonds or ticker in ARGENTINE_CEDEARS else "exterior"
+
+
+def concentration_penalty(share: float | None) -> float:
+    if share is None or share <= CONCENTRATION_LIMIT:
+        return 0.0
+    return -min(CONCENTRATION_MAX, CONCENTRATION_PENALTY * (share - CONCENTRATION_LIMIT))
+
+
+def three_month_context(bars: list[DailyBar], price: float) -> tuple[float | None, float | None]:
+    """(change over ~3 months, distance from the 3-month high), shown next to a signal."""
+    window = [b for b in bars if b.close > 0][-63:]
+    if len(window) < 40 or price <= 0:
+        return None, None
+    high = max(max(b.high for b in window), price)
+    return price / window[0].close - 1, price / high - 1
 
 
 def _combine(i: _Inputs, gap: float) -> Recommendation:
+    # A news item tagged both for this ticker and for the whole market counts once.
+    own_ids = {e.item_id for e in i.own}
     evidence = i.own + [
         e.model_copy(update={"contribution": round(e.contribution * BROAD_WEIGHT, 4), "broad": True})
-        for e in i.broad
+        for e in i.broad if e.item_id not in own_ids
     ]
     news = sum(e.contribution for e in evidence if e.kind == "news")
     markets = sum(e.contribution for e in evidence if e.kind == "market")
     evidence_part = W_EVIDENCE * math.tanh((news + markets) / 2)
-    score = evidence_part + W_TREND * i.trend + W_CONTEXT * i.context + W_GAP * gap
+    # Buying more of a risk the portfolio is already heavy in needs a stronger case.
+    concentration = 0.0 if i.held else concentration_penalty(i.group_share)
+    score = evidence_part + W_TREND * i.trend + W_CONTEXT * i.context + W_GAP * gap + concentration
 
     action: Action
     if i.held:
-        action = "sell" if score <= SELL_THRESHOLD else "keep"
+        action = "sell" if score <= SELL_THRESHOLD_HELD else "keep"
     else:
         action = "buy" if score >= BUY_THRESHOLD else "keep"
 
@@ -344,7 +417,11 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
         driver=max(parts, key=lambda k: parts[k]), held=i.held, price=i.price,
         breakdown=SignalBreakdown(
             news=round(news, 4), markets=round(markets, 4), trend=round(i.trend, 4),
-            context=round(i.context, 4), gap=round(gap, 4),
+            context=round(i.context, 4), gap=round(gap, 4), concentration=round(concentration, 4),
+            risk_group=i.risk_group,
+            group_share=round(i.group_share, 4) if i.group_share is not None else None,
+            change_3m=round(i.change_3m, 4) if i.change_3m is not None else None,
+            from_high=round(i.from_high, 4) if i.from_high is not None else None,
         ),
         evidence=evidence[:MAX_EVIDENCE_SHOWN],
     )
@@ -373,6 +450,14 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     if "BONOS" in signals:
         tickers |= bonds
 
+    # Share of the portfolio in each risk group (positions valued in pesos).
+    peso_holdings = [h for h in holdings.values() if h.currency == "ARS"]
+    total_value = sum(h.value for h in peso_holdings)
+    group_shares: dict[str, float] = {}
+    for h in peso_holdings:
+        g = risk_group(h.ticker, stocks, bonds)
+        group_shares[g] = group_shares.get(g, 0.0) + h.value / total_value
+
     try:
         context = market_context()
     except Exception:
@@ -385,7 +470,7 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
         broad = signals.get("MERVAL") if group == "stocks" else signals.get("BONOS") if group == "bonds" else None
         bars: list[DailyBar] = []
         try:
-            bars = prices.daily_bars(ticker)
+            bars = prices.daily_bars(ticker, days=100)
         except Exception:
             # IOL answers some bonds' history with a 500 (seen with TXMD9).
             log.warning("no history for %s", ticker)
@@ -399,11 +484,15 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
         own = signals[ticker].evidence if ticker in signals else []
         if price:
             own = discount_priced_in(own, bars, price)
+        change_3m, from_high = three_month_context(bars, price) if price else (None, None)
+        rg = risk_group(ticker, stocks, bonds)
         inputs.append(_Inputs(
             ticker=ticker, held=ticker in holdings, price=price, own=own,
             broad=broad.evidence if broad else [],
             trend=trend_score(bars, price) if price else 0.0,
             context=context[group] if group else 0.0,
+            risk_group=rg, group_share=group_shares.get(rg, 0.0) if total_value else None,
+            change_3m=change_3m, from_high=from_high,
         ))
 
     gaps = cedear_gaps({i.ticker: i.price for i in inputs if i.ticker in cedears and i.price})

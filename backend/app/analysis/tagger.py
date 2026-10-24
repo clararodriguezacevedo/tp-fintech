@@ -30,6 +30,9 @@ Use "MERVAL" for broad Argentine equity impact and "BONOS" for broad sovereign b
 For a prediction market, the direction refers to the YES outcome becoming more likely.
 Return an empty ticker list when nothing on the list is plausibly affected; most sports,
 celebrity and weather items fall here.
+Also return an empty ticker list for market wrap-ups that only report how prices already moved
+("así cerró el mercado", "las acciones subieron hasta 6%", "stocks fell on Friday"): they carry
+no new information, the move is already in the price.
 
 Write the summary in Spanish, one or two plain sentences an average investor understands."""
 

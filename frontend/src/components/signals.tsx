@@ -35,10 +35,27 @@ type Breakdown = Recommendation["signal_breakdown"];
 
 const pctText = (x: number) => `${Math.abs(x * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
 
+const GROUP: Record<string, string> = { argentina: "riesgo argentino", exterior: "activos del exterior" };
+
+/** "+12% en 3 meses, 8% debajo de su máximo": where the price stands, to judge if it already ran. */
+export function threeMonths(b: Breakdown | undefined) {
+  if (!b || b.change_3m == null) return null;
+  const change = `${b.change_3m >= 0 ? "+" : "−"}${pctText(b.change_3m)} en 3 meses`;
+  const fromHigh = b.from_high ?? 0;
+  return fromHigh > -0.01 ? `${change}, en su máximo` : `${change}, ${pctText(fromHigh)} debajo de su máximo`;
+}
+
 /** Plain-language reasons from the market-wide signals, when they are strong enough to matter. */
 function marketReasons(b: Breakdown | undefined) {
   const out: { up: boolean; text: string; note: string }[] = [];
   if (!b) return out;
+  if ((b.concentration ?? 0) < 0 && b.group_share != null && b.risk_group) {
+    out.push({
+      up: false,
+      text: `Ya tenés ${pctText(b.group_share)} de tu cartera en ${GROUP[b.risk_group] ?? b.risk_group}.`,
+      note: "Sumar más de lo mismo concentra el riesgo, así que pedimos una razón más fuerte para recomendar comprar.",
+    });
+  }
   if (Math.abs(b.context) >= 0.3) {
     out.push({
       up: b.context > 0,

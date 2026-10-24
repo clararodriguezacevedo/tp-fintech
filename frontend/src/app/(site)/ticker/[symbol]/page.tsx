@@ -1,6 +1,6 @@
 import { BuyPanel } from "@/components/buy-panel";
 import { LineChart } from "@/components/charts";
-import { ActionBadge, Reasons, strength } from "@/components/signals";
+import { ActionBadge, Reasons, strength, threeMonths } from "@/components/signals";
 import { attempt, Card, Delta, Notice, SectionTitle, Stat } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { integer, money, pct, pctPoints } from "@/lib/format";
@@ -39,6 +39,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
           <p className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <span className="num text-2xl font-semibold">{money(plan.ok ? plan.data.entry : last?.close)}</span>
             {dayChange != null && <span className="text-text-2"><Delta value={dayChange}>{pct(dayChange)} hoy</Delta></span>}
+            {threeMonths(rec?.signal_breakdown) && <span className="text-sm text-text-3">{threeMonths(rec?.signal_breakdown)}</span>}
           </p>
         </div>
         {rec && (

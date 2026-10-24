@@ -92,6 +92,11 @@ class SignalBreakdown(BaseModel):
     trend: float
     context: float = 0.0  # whole market's trend (Merval leaders, bonds or S&P 500)
     gap: float = 0.0  # CEDEAR cheap (+) or expensive (-) versus its US share and the dollar
+    concentration: float = 0.0  # penalty (<= 0) for buying more of a risk the portfolio is heavy in
+    risk_group: str | None = None  # "argentina" or "exterior"
+    group_share: float | None = None  # share of the portfolio already in that risk group
+    change_3m: float | None = None  # price change over the last 3 months (shown, not scored)
+    from_high: float | None = None  # distance from the 3-month high, <= 0 (shown, not scored)
 
 
 class RecommendationRow(Row):

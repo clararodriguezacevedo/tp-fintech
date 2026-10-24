@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ActionBadge, strength } from "@/components/signals";
+import { ActionBadge, strength, threeMonths } from "@/components/signals";
 import { ApiFailure, attempt, Card, Notice, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type Recommendation } from "@/lib/api/client";
 import { money, timeAgo } from "@/lib/format";
@@ -17,6 +17,7 @@ function BuyCard({ r }: { r: Recommendation }) {
         <ActionBadge action="buy" />
       </div>
       <p className="mt-4 flex-1 text-text">{r.evidence[0]?.reason ?? "Su precio viene subiendo."}</p>
+      {threeMonths(r.signal_breakdown) && <p className="mt-2 text-sm text-text-3">{threeMonths(r.signal_breakdown)}</p>}
       <div className="mt-4 flex items-end justify-between gap-3">
         <div>
           {r.price_at_rec != null && <p className="num font-semibold">{money(r.price_at_rec)}</p>}

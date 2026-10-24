@@ -2350,6 +2350,55 @@
             "type": "number",
             "title": "Gap",
             "default": 0.0
+          },
+          "concentration": {
+            "type": "number",
+            "title": "Concentration",
+            "default": 0.0
+          },
+          "risk_group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Group"
+          },
+          "group_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Share"
+          },
+          "change_3m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change 3M"
+          },
+          "from_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From High"
           }
         },
         "type": "object",

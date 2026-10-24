@@ -185,9 +185,22 @@ Cada ciclo calcula un puntaje entre -1 y +1 por ticker (`backend/app/analysis/sc
 
 **Ya está en el precio**: cada noticia o mercado se descuenta según cuánto se movió el precio en
 su dirección desde que apareció, medido en "días típicos" de esa acción; después de 1,5 días
-típicos deja de contar.
+típicos deja de contar. Una noticia publicada durante la rueda se compara contra el cierre del
+día anterior, así no queda "sin descontar" un movimiento que ya pasó ese mismo día.
 
-Los tickers en cartera solo pueden recibir vender o mantener; el resto, comprar o mantener.
+**Lo que no cuenta**: las notas de cierre ("así cerró el mercado", "las acciones subieron hasta
+6%") se ignoran porque solo cuentan lo que ya pasó. Una noticia etiquetada para un ticker y para
+todo el Merval cuenta una sola vez. Los mercados de predicción que resuelven en más de 6 meses
+pesan menos.
+
+**Concentración**: si ya tenés más de 40% de la cartera en el mismo riesgo (riesgo argentino:
+acciones locales, bonos y VIST; o activos del exterior), las compras de ese grupo pierden 2 puntos
+de puntaje por cada punto arriba del 40% (como máximo 0,3), y la recomendación lo explica.
+
+Los tickers en cartera solo pueden recibir vender (desde -0,45) o mantener; el resto, comprar
+(desde +0,3) o mantener. Vender pide una señal más fuerte porque implica pagar comisiones y
+desarmar una posición. Junto a cada recomendación se muestra cuánto cambió el precio en 3 meses y
+qué tan lejos está de su máximo.
 
 A las 17:30 se califican las recomendaciones del día y se emiten las del día siguiente. Como una
 recomendación hecha después del cierre recién se puede ejecutar a la apertura, se mide de

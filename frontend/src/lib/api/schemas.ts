@@ -213,6 +213,11 @@ const SignalBreakdown = z
     trend: z.number(),
     context: z.number().optional().default(0),
     gap: z.number().optional().default(0),
+    concentration: z.number().optional().default(0),
+    risk_group: z.union([z.string(), z.null()]).optional(),
+    group_share: z.union([z.number(), z.null()]).optional(),
+    change_3m: z.union([z.number(), z.null()]).optional(),
+    from_high: z.union([z.number(), z.null()]).optional(),
   })
   .passthrough();
 const Evidence = z
