@@ -711,7 +711,7 @@
     "/tickers/{ticker}/plan": {
       "get": {
         "summary": "Trade Plan",
-        "description": "SL/TP and quantity for a one-click buy, sized from the ticker's ATR.",
+        "description": "SL/TP and quantity for a one-click buy: sized from the ticker's volatility, and capped\nby cash, position size, concentration and liquidity.",
         "operationId": "trade_plan",
         "parameters": [
           {
@@ -1273,10 +1273,108 @@
         }
       }
     },
+    "/track-record/calibration": {
+      "get": {
+        "summary": "Track Record Calibration",
+        "description": "Hit rate by action and score size, to say how often scores like a new one were right.",
+        "operationId": "track_record_calibration",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CalibrationBucket"
+                  },
+                  "title": "Response Track Record Calibration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/model": {
+      "get": {
+        "summary": "Model Info",
+        "description": "The scoring model's weights and thresholds.",
+        "operationId": "model_info",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/track-record/simulation": {
       "get": {
         "summary": "Track Record Simulation",
-        "description": "Portfolio value had every daily recommendation been followed, versus not following.",
+        "description": "Portfolio value had every daily recommendation been followed, versus not following,\nkeeping the starting portfolio untouched, and buying the Merval leaders.",
         "operationId": "track_record_simulation",
         "parameters": [
           {
@@ -1452,6 +1550,54 @@
         ],
         "title": "BuyRequest"
       },
+      "CalibrationBucket": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell",
+              "keep"
+            ],
+            "title": "Action"
+          },
+          "held": {
+            "type": "boolean",
+            "title": "Held"
+          },
+          "score_min": {
+            "type": "number",
+            "title": "Score Min"
+          },
+          "score_max": {
+            "type": "number",
+            "title": "Score Max"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "hits": {
+            "type": "integer",
+            "title": "Hits"
+          },
+          "hit_rate": {
+            "type": "number",
+            "title": "Hit Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "held",
+          "score_min",
+          "score_max",
+          "n",
+          "hits",
+          "hit_rate"
+        ],
+        "title": "CalibrationBucket"
+      },
       "DailyBar": {
         "properties": {
           "day": {
@@ -1474,6 +1620,17 @@
           "close": {
             "type": "number",
             "title": "Close"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
           }
         },
         "type": "object",
@@ -1583,6 +1740,17 @@
             "type": "integer",
             "title": "Sources",
             "default": 1
+          },
+          "via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via"
           }
         },
         "type": "object",
@@ -1983,6 +2151,104 @@
         ],
         "title": "MarketOut"
       },
+      "ModelInfo": {
+        "properties": {
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Weights"
+          },
+          "buy_threshold": {
+            "type": "number",
+            "title": "Buy Threshold"
+          },
+          "sell_threshold_held": {
+            "type": "number",
+            "title": "Sell Threshold Held"
+          },
+          "broad_weight": {
+            "type": "number",
+            "title": "Broad Weight"
+          },
+          "sector_weight": {
+            "type": "number",
+            "title": "Sector Weight"
+          },
+          "sectors": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Sectors"
+          },
+          "news_half_life_hours": {
+            "type": "number",
+            "title": "News Half Life Hours"
+          },
+          "news_max_age_hours": {
+            "type": "number",
+            "title": "News Max Age Hours"
+          },
+          "priced_in_full": {
+            "type": "number",
+            "title": "Priced In Full"
+          },
+          "concentration_limit": {
+            "type": "number",
+            "title": "Concentration Limit"
+          },
+          "concentration_penalty": {
+            "type": "number",
+            "title": "Concentration Penalty"
+          },
+          "concentration_max": {
+            "type": "number",
+            "title": "Concentration Max"
+          },
+          "risk_per_trade": {
+            "type": "number",
+            "title": "Risk Per Trade"
+          },
+          "max_position": {
+            "type": "number",
+            "title": "Max Position"
+          },
+          "max_volume_share": {
+            "type": "number",
+            "title": "Max Volume Share"
+          },
+          "calibration_min_cases": {
+            "type": "integer",
+            "title": "Calibration Min Cases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weights",
+          "buy_threshold",
+          "sell_threshold_held",
+          "broad_weight",
+          "sector_weight",
+          "sectors",
+          "news_half_life_hours",
+          "news_max_age_hours",
+          "priced_in_full",
+          "concentration_limit",
+          "concentration_penalty",
+          "concentration_max",
+          "risk_per_trade",
+          "max_position",
+          "max_volume_share",
+          "calibration_min_cases"
+        ],
+        "title": "ModelInfo",
+        "description": "The scoring model's constants, so the \"Cómo decide\" page always matches the code."
+      },
       "NewsOut": {
         "properties": {
           "id": {
@@ -2193,7 +2459,8 @@
                   "markets",
                   "trend",
                   "context",
-                  "gap"
+                  "gap",
+                  "macro"
                 ]
               },
               {
@@ -2275,6 +2542,17 @@
               }
             ],
             "title": "Close Return"
+          },
+          "event_yield": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Yield"
           },
           "hit": {
             "anyOf": [
@@ -2399,6 +2677,86 @@
               }
             ],
             "title": "From High"
+          },
+          "macro": {
+            "type": "number",
+            "title": "Macro",
+            "default": 0.0
+          },
+          "macro_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "riesgo_pais",
+                  "ccl"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Macro Source"
+          },
+          "macro_level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Macro Level"
+          },
+          "macro_change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Macro Change"
+          },
+          "event_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "dividend",
+                  "coupon"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Kind"
+          },
+          "event_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Date"
+          },
+          "event_yield": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Yield"
           }
         },
         "type": "object",
@@ -2418,7 +2776,8 @@
               "markets",
               "trend",
               "context",
-              "gap"
+              "gap",
+              "macro"
             ],
             "title": "Signal"
           },
@@ -2511,6 +2870,28 @@
           "follow_value": {
             "type": "number",
             "title": "Follow Value"
+          },
+          "hold_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hold Value"
+          },
+          "merval_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merval Value"
           }
         },
         "type": "object",
@@ -2550,6 +2931,28 @@
           "follow_value": {
             "type": "number",
             "title": "Follow Value"
+          },
+          "hold_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hold Value"
+          },
+          "merval_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merval Value"
           },
           "buy_allocation": {
             "type": "number",
@@ -2734,6 +3137,52 @@
               }
             ],
             "title": "Fees"
+          },
+          "limits": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "risk",
+                "cash",
+                "position",
+                "concentration",
+                "liquidity"
+              ]
+            },
+            "type": "object",
+            "title": "Limits",
+            "default": {}
+          },
+          "limited_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "risk",
+                  "cash",
+                  "position",
+                  "concentration",
+                  "liquidity"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limited By"
+          },
+          "portfolio_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Portfolio Share"
           }
         },
         "type": "object",

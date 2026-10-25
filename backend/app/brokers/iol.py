@@ -217,6 +217,8 @@ class IOLClient:
                 high=max(b.high or b.close for b in rows),
                 low=min(b.low or b.close for b in rows),
                 close=rows[-1].close,
+                # Like open/high/low, the volume of a row is the day's so far.
+                volume=max(b.volume for b in rows),
             ))
         return out
 

@@ -12,7 +12,8 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app import jobs, prices
-from app.analysis import market_hours, risk, simulation, track_record
+from app.analysis import market_hours, risk, scoring, simulation, track_record
+from app.analysis.tagger import UNIVERSE
 from app.analysis.simulation import Simulation
 from app.brokers.iol import IOLUnavailable, get_iol
 from app.config import get_settings
@@ -21,11 +22,12 @@ from app.models.db import (
     Action, MarketRow, NewsRow, RecommendationRow, SnapshotRow, TickerImpactRow, TradeRow,
     TradeStatus,
 )
-from app.portfolio import current_holdings, get_holdings, value_history
+from app.portfolio import BOND_TYPES, EQUITY_TYPES, current_holdings, get_holdings, value_history
 from app.models.iol import DailyBar
 from app.schemas import (
-    AccountSummary, BuyRequest, Health, HoldingOut, Impact, SignalStats, JobResult, MarketOut, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, TrackRecordSummary,
-    TradePlan,
+    AccountSummary, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
+    ModelInfo, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, SignalStats,
+    TrackRecordSummary, TradePlan,
 )
 from app.sources import polymarket
 from app.trading import paper
@@ -268,9 +270,11 @@ def trade_plan(
     cash: float | None = Query(None, gt=0, description="defaults to the peso cash available"),
     entry: float | None = Query(None, gt=0, description="defaults to the last IOL price"),
 ) -> TradePlan:
-    """SL/TP and quantity for a one-click buy, sized from the ticker's ATR."""
+    """SL/TP and quantity for a one-click buy: sized from the ticker's volatility, and capped
+    by cash, position size, concentration and liquidity."""
     ticker = ticker.upper()
     settings = get_settings()
+    holdings = {h.ticker: h for h in get_holdings()}
     if portfolio_value is None or cash is None:
         try:
             acct = account()
@@ -279,7 +283,7 @@ def trade_plan(
             # IOL's account endpoint is down now and then; the saved holdings are close enough.
             if settings.iol_live_trading:
                 raise HTTPException(503, "IOL no está respondiendo; probá en unos minutos")
-            total, real_cash = sum(h.value for h in get_holdings()), 0.0
+            total, real_cash = sum(h.value for h in holdings.values()), 0.0
         portfolio_value = portfolio_value or total
         # Paper trades spend a simulated budget, not the account's real cash.
         cash = cash or (real_cash if settings.iol_live_trading else settings.paper_cash)
@@ -289,12 +293,23 @@ def trade_plan(
     if len(bars) < 15:
         raise HTTPException(422, f"not enough price history for {ticker}")
     price = entry or paper.last_price(ticker)
+    stocks = set(UNIVERSE["acciones"]) | {t for t, h in holdings.items() if h.type in EQUITY_TYPES}
+    bonds = set(UNIVERSE["bonos"]) | {t for t, h in holdings.items() if h.type in BOND_TYPES}
+    group = scoring.risk_group(ticker, stocks, bonds)
+    volumes = [b.volume for b in bars[-20:] if b.volume]
     plan = risk.plan_buy(
         entry=price,
         atr_value=risk.atr([b.high for b in bars], [b.low for b in bars], [b.close for b in bars]),
         portfolio_value=portfolio_value,
         risk_per_trade=settings.risk_per_trade,
         cash_available=cash,
+        held_value=holdings[ticker].value if ticker in holdings else 0.0,
+        group_value=sum(
+            h.value for h in holdings.values()
+            if h.currency == "ARS" and scoring.risk_group(h.ticker, stocks, bonds) == group
+        ),
+        concentration_limit=scoring.CONCENTRATION_LIMIT,
+        avg_volume=sum(volumes) / len(volumes) if len(volumes) >= 5 else None,
     )
     fees = None
     if plan.quantity > 0:
@@ -366,9 +381,34 @@ def track_record_signals() -> list[SignalStats]:
     return track_record.signal_stats()
 
 
+@app.get("/track-record/calibration", response_model=list[CalibrationBucket])
+def track_record_calibration() -> list[CalibrationBucket]:
+    """Hit rate by action and score size, to say how often scores like a new one were right."""
+    return track_record.calibration()
+
+
+@app.get("/model", response_model=ModelInfo)
+def model_info() -> ModelInfo:
+    """The scoring model's weights and thresholds."""
+    return ModelInfo(
+        weights={
+            "evidence": scoring.W_EVIDENCE, "trend": scoring.W_TREND, "context": scoring.W_CONTEXT,
+            "gap": scoring.W_GAP, "macro": scoring.W_MACRO,
+        },
+        buy_threshold=scoring.BUY_THRESHOLD, sell_threshold_held=scoring.SELL_THRESHOLD_HELD,
+        broad_weight=scoring.BROAD_WEIGHT, sector_weight=scoring.SECTOR_WEIGHT, sectors=scoring.SECTORS,
+        news_half_life_hours=scoring.NEWS_HALF_LIFE_HOURS, news_max_age_hours=scoring.NEWS_MAX_AGE_HOURS,
+        priced_in_full=scoring.PRICED_IN_FULL, concentration_limit=scoring.CONCENTRATION_LIMIT,
+        concentration_penalty=scoring.CONCENTRATION_PENALTY, concentration_max=scoring.CONCENTRATION_MAX,
+        risk_per_trade=get_settings().risk_per_trade, max_position=risk.MAX_POSITION,
+        max_volume_share=risk.MAX_VOLUME_SHARE, calibration_min_cases=track_record.CALIBRATION_MIN_CASES,
+    )
+
+
 @app.get("/track-record/simulation", response_model=Simulation)
 def track_record_simulation() -> Simulation:
-    """Portfolio value had every daily recommendation been followed, versus not following."""
+    """Portfolio value had every daily recommendation been followed, versus not following,
+    keeping the starting portfolio untouched, and buying the Merval leaders."""
     return simulation.simulate()
 
 

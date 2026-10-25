@@ -146,7 +146,7 @@ GitHub Actions, pero en la práctica corría cada ~5 horas en vez de cada 10 min
 | --- | --- | --- | --- |
 | `collect` | cada 10 minutos | `POST /jobs/run` | cartera, mercados y noticias, etiquetado con Gemini, recomendaciones live |
 | `trades` | cada 5 minutos, lunes a viernes de 11 a 17 | `POST /jobs/trades` | llena compras en cola y revisa stop loss / take profit |
-| `after-close` | 17:30, lunes a viernes | `POST /jobs/after-close` | califica las recomendaciones del día y emite las del día siguiente |
+| `after-close` | 17:30, lunes a viernes | `POST /jobs/after-close` | baja dividendos y cupones, califica las recomendaciones del día y emite las del día siguiente |
 
 La API key que usan está en Supabase Vault (`api_key`); se carga o actualiza con
 `cd backend && uv run python -m scripts.set_cron_secret`. Los workflows de `.github/workflows/`
@@ -174,33 +174,54 @@ cd backend && uv run pyright
 
 ## Recomendaciones y track record
 
-Cada ciclo calcula un puntaje entre -1 y +1 por ticker (`backend/app/analysis/scoring.py`):
+Cada ciclo calcula un puntaje entre -1 y +1 por ticker (`backend/app/analysis/scoring.py`). La
+página `/como-decide` lo explica con un ejemplo real del día, y `GET /model` devuelve los pesos y
+umbrales vigentes.
 
 | Señal | Qué mide | Peso |
 | --- | --- | --- |
-| Noticias y mercados de predicción | noticias de las últimas 36 h (pierden la mitad del peso cada 12 h) y el movimiento en 24 h de los mercados de predicción, contando cada evento y cada noticia repetida en varios medios una sola vez | 70% |
-| Tendencia | precio contra su promedio de 20 días | 10% |
+| Noticias y mercados de predicción | noticias de las últimas 36 h (pierden la mitad del peso cada 12 h) y el movimiento en 24 h de los mercados de predicción, contando cada evento y cada noticia repetida en varios medios una sola vez | 65% |
+| Tendencia | precio contra su promedio de 20 días | 5% |
 | Contexto | tendencia de todo el mercado: líderes del Merval, bonos o S&P 500 | 10% |
 | Brecha del CEDEAR | si el CEDEAR está caro o barato frente a la acción en EE.UU., descontando el dólar | 10% |
+| Riesgo país y dólar | cambio de 5 días del riesgo país (bonos y bancos; mitad para las demás acciones locales) o del dólar CCL (CEDEARs), comparado con lo normal del último año. Datos de argentinadatos.com | 10% |
 
 **Ya está en el precio**: cada noticia o mercado se descuenta según cuánto se movió el precio en
 su dirección desde que apareció, medido en "días típicos" de esa acción; después de 1,5 días
 típicos deja de contar. Una noticia publicada durante la rueda se compara contra el cierre del
 día anterior, así no queda "sin descontar" un movimiento que ya pasó ese mismo día.
 
-**Lo que no cuenta**: las notas de cierre ("así cerró el mercado", "las acciones subieron hasta
-6%") se ignoran porque solo cuentan lo que ya pasó. Una noticia etiquetada para un ticker y para
-todo el Merval cuenta una sola vez. Los mercados de predicción que resuelven en más de 6 meses
-pesan menos.
+**Lo que no cuenta, o cuenta menos**: las notas de cierre ("así cerró el mercado", "las acciones
+subieron hasta 6%") se ignoran porque solo cuentan lo que ya pasó. Una noticia etiquetada para un
+ticker, para todo el Merval o para otra empresa del sector cuenta una sola vez, con el peso de la
+etiqueta más directa. Las noticias generales del Merval o de los bonos cuentan 50%; las de otra
+empresa del mismo sector (bancos, petróleo y gas, electricidad, materiales, tecnología) cuentan
+30%. Los mercados de predicción que resuelven en más de 6 meses pesan menos.
 
-**Concentración**: si ya tenés más de 40% de la cartera en el mismo riesgo (riesgo argentino:
+**Concentración**: si ya tenés más de 60% de la cartera en el mismo riesgo (riesgo argentino:
 acciones locales, bonos y VIST; o activos del exterior), las compras de ese grupo pierden 2 puntos
-de puntaje por cada punto arriba del 40% (como máximo 0,3), y la recomendación lo explica.
+de puntaje por cada punto arriba del 60% (como máximo 0,3), y la recomendación lo explica. Como
+hay solo dos grupos, uno siempre está en 50% o más, por eso el límite está arriba de eso.
 
 Los tickers en cartera solo pueden recibir vender (desde -0,45) o mantener; el resto, comprar
 (desde +0,3) o mantener. Vender pide una señal más fuerte porque implica pagar comisiones y
 desarmar una posición. Junto a cada recomendación se muestra cuánto cambió el precio en 3 meses y
 qué tan lejos está de su máximo.
+
+**Dividendos y cupones**: el calendario de ex-dividendos de Nasdaq (gratis, sin key) cubre las
+acciones de EE.UU. de los CEDEARs y los ADRs de las empresas argentinas; los Bonares y Globales
+pagan el 9 de enero y el 9 de julio. Se guardan en `corporate_events` después de cada cierre. No
+son una señal: cada recomendación avisa "el 9/1 corta cupón" y, al medir resultados, el
+dividendo se suma al rendimiento cierre a cierre de ese día.
+
+**Porcentaje de acierto**: con 20 o más recomendaciones calificadas de la misma acción y un
+puntaje parecido (`GET /track-record/calibration`), en vez de "señal fuerte" se muestra "con
+puntajes así acertó 58% de las veces".
+
+**Cuánto comprar** (`GET /tickers/{t}/plan`): la menor de cinco cantidades, y el panel dice cuál
+manda. Arriesgar 1% de la cartera hasta el stop loss (2 ATR), el efectivo disponible, que el
+ticker no pase el 10% de la cartera, que su grupo de riesgo no pase el 60% (si ya lo pasó, como
+mucho 2% más), y no más del 10% del volumen diario promedio.
 
 A las 17:30 se califican las recomendaciones del día y se emiten las del día siguiente. Como una
 recomendación hecha después del cierre recién se puede ejecutar a la apertura, se mide de
@@ -208,14 +229,34 @@ recomendación hecha después del cierre recién se puede ejecutar a la apertura
 sube, vender si baja; mantener algo que tenés acierta si no cae más de 1,5%.
 
 - `GET /track-record/simulation`: cuánto valdría la cartera siguiendo todas las recomendaciones
-  (compras y ventas a la apertura, 5% de la cartera por compra, 0,6% de comisión por operación).
+  (compras del tamaño que propone el panel y ventas, a la apertura, con los costos reales de IOL),
+  comparado con lo que hiciste, con quedarte quieto con la cartera del primer día y con comprar
+  las 20 líderes del Merval en partes iguales (IOL no publica el índice).
 - `GET /track-record/signals`: cuántas veces acertó cada señal por separado.
+
+### Alertas por mail
+
+`backend/app/alerts.py` manda un mail (con [Resend](https://resend.com), gratis) cuando algo que
+tenés pasa a "vender", cuando falla un paso de un job y cuando se agota la cuota gratis de
+Gemini. Cada alerta sale una sola vez (`alerts_sent`). Necesita `RESEND_API_KEY` y
+`ALERT_EMAIL` en el backend; sin ellas solo se registra en el log. El remitente de prueba de
+Resend solo entrega al mail con el que se creó la cuenta.
+
+### Tests
+
+```bash
+cd backend && uv run pytest
+```
+
+Prueban las partes puras del cálculo: el filtro de notas de cierre, "ya está en el precio",
+contar una vez, el contagio por sector, la concentración, los umbrales, la señal de riesgo país y
+dólar, el tamaño de la compra y la calificación con dividendos y cupones.
 
 ### Validación
 
 - `uv run python -m scripts.backtest_trend 180`: la tendencia, probada en 6 meses de 40 tickers
   (3.936 días), acertó la dirección del día siguiente el 49,0% de las veces (correlación +0,003),
-  o sea nada. Por eso pesa 10%.
+  o sea nada. Por eso pesa 5%.
 - `uv run python -m scripts.fit_weights`: cuando haya al menos 300 recomendaciones calificadas en
   8 días, ajusta los pesos con una regresión logística entrenada con los días viejos y probada
   con los recientes. No cambia nada solo; sugiere.

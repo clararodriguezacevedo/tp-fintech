@@ -19,7 +19,10 @@ const SIGNAL: Record<string, string> = {
   trend: "Tendencia del precio",
   context: "Contexto del mercado",
   gap: "Brecha del CEDEAR",
+  macro: "Riesgo país y dólar",
 };
+
+const change = (value: number | null | undefined, start: number) => (value != null && start ? value / start - 1 : null);
 
 export default async function HistoryPage() {
   const [sim, history, signals] = await Promise.all([
@@ -54,7 +57,7 @@ export default async function HistoryPage() {
         <p className="num mt-1 text-4xl font-semibold">{money(s.follow_value)}</p>
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <Card>
-            <p className="text-sm text-text-2">Sin seguirlas</p>
+            <p className="text-sm text-text-2">Lo que hiciste (sin seguirlas)</p>
             <p className="num mt-1 text-xl font-semibold">{money(s.base_value)}</p>
           </Card>
           <Card>
@@ -68,8 +71,34 @@ export default async function HistoryPage() {
             <p className="num mt-1 text-xl font-semibold">{hits} de {recs.length}</p>
           </Card>
         </div>
+
+        <div className="mt-8">
+          <SectionTitle>Contra qué comparar</SectionTitle>
+        </div>
+        <ul className="divide-y divide-border border-y border-border">
+          {[
+            { label: "Siguiendo las recomendaciones", value: s.follow_value, note: "" },
+            { label: "Lo que hiciste", value: s.base_value, note: "tu cartera real de cada día" },
+            { label: "Quedarte quieto", value: s.hold_value, note: "la cartera del primer día, sin tocarla" },
+            { label: "Comprar las líderes del Merval", value: s.merval_value, note: "las 20 en partes iguales" },
+          ].map((x) => {
+            const c = change(x.value, s.start_value);
+            return (
+              <li key={x.label} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <span>
+                  {x.label}
+                  {x.note && <span className="block text-sm text-text-3">{x.note}</span>}
+                </span>
+                <span className="flex items-center gap-4">
+                  <span className="num text-text-2">{money(x.value)}</span>
+                  <span className="num w-16 text-right font-semibold">{c == null ? "-" : <Delta value={c}>{pct(c, 2)}</Delta>}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
         <p className="mt-3 text-sm text-text-3">
-          Arranca de tu cartera real. Cada compra sugerida se hace a la apertura del día siguiente con el {Math.round(s.buy_allocation * 100)}% de la cartera, lo que dice vender se vende a la apertura, y cada operación paga tus costos reales de IOL ({(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%).
+          Todo arranca del mismo valor, tu cartera real del primer día. Cada compra sugerida se hace a la apertura del día siguiente, del tamaño que propone el panel de compra (en promedio {(s.buy_allocation * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}% de la cartera), lo que dice vender se vende a la apertura, y cada operación paga tus costos reales de IOL ({(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%). IOL no publica el índice Merval, por eso la referencia son sus acciones líderes. Los dividendos se suman el día que se cobran.
         </p>
       </section>
 

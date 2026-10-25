@@ -133,6 +133,7 @@ const DailyBar = z
     high: z.number(),
     low: z.number(),
     close: z.number(),
+    volume: z.union([z.number(), z.null()]).optional(),
   })
   .passthrough();
 const portfolio_value = z.union([z.number(), z.null()]).optional();
@@ -145,6 +146,14 @@ const TradePlan = z
     max_loss: z.number(),
     market_open: z.boolean(),
     fees: z.union([z.number(), z.null()]).optional(),
+    limits: z.record(z.number().int()).optional().default({}),
+    limited_by: z
+      .union([
+        z.enum(["risk", "cash", "position", "concentration", "liquidity"]),
+        z.null(),
+      ])
+      .optional(),
+    portfolio_share: z.union([z.number(), z.null()]).optional(),
   })
   .passthrough();
 const BuyRequest = z
@@ -218,6 +227,15 @@ const SignalBreakdown = z
     group_share: z.union([z.number(), z.null()]).optional(),
     change_3m: z.union([z.number(), z.null()]).optional(),
     from_high: z.union([z.number(), z.null()]).optional(),
+    macro: z.number().optional().default(0),
+    macro_source: z
+      .union([z.enum(["riesgo_pais", "ccl"]), z.null()])
+      .optional(),
+    macro_level: z.union([z.number(), z.null()]).optional(),
+    macro_change: z.union([z.number(), z.null()]).optional(),
+    event_kind: z.union([z.enum(["dividend", "coupon"]), z.null()]).optional(),
+    event_date: z.union([z.string(), z.null()]).optional(),
+    event_yield: z.union([z.number(), z.null()]).optional(),
   })
   .passthrough();
 const Evidence = z
@@ -236,6 +254,7 @@ const Evidence = z
     move_since: z.union([z.number(), z.null()]).optional(),
     priced_in: z.number().optional().default(0),
     sources: z.number().int().optional().default(1),
+    via: z.union([z.string(), z.null()]).optional(),
   })
   .passthrough();
 const RecommendationRow = z
@@ -247,7 +266,10 @@ const RecommendationRow = z
     score: z.number(),
     confidence: z.number(),
     driver: z
-      .union([z.enum(["news", "markets", "trend", "context", "gap"]), z.null()])
+      .union([
+        z.enum(["news", "markets", "trend", "context", "gap", "macro"]),
+        z.null(),
+      ])
       .optional(),
     held: z.boolean(),
     signal_breakdown: SignalBreakdown,
@@ -258,6 +280,7 @@ const RecommendationRow = z
     close_on_target: z.union([z.number(), z.null()]).optional(),
     realized_return: z.union([z.number(), z.null()]).optional(),
     close_return: z.union([z.number(), z.null()]).optional(),
+    event_yield: z.union([z.number(), z.null()]).optional(),
     hit: z.union([z.boolean(), z.null()]).optional(),
     evaluated_at: z.union([z.string(), z.null()]).optional(),
     created_at: z.string().datetime({ offset: true }),
@@ -283,12 +306,43 @@ const TrackRecordSummary = z
   .passthrough();
 const SignalStats = z
   .object({
-    signal: z.enum(["news", "markets", "trend", "context", "gap"]),
+    signal: z.enum(["news", "markets", "trend", "context", "gap", "macro"]),
     n: z.number().int(),
     hits: z.number().int(),
     hit_rate: z.union([z.number(), z.null()]),
     avg_when_up: z.union([z.number(), z.null()]),
     avg_when_down: z.union([z.number(), z.null()]),
+  })
+  .passthrough();
+const CalibrationBucket = z
+  .object({
+    action: z.enum(["buy", "sell", "keep"]),
+    held: z.boolean(),
+    score_min: z.number(),
+    score_max: z.number(),
+    n: z.number().int(),
+    hits: z.number().int(),
+    hit_rate: z.number(),
+  })
+  .passthrough();
+const ModelInfo = z
+  .object({
+    weights: z.record(z.number()),
+    buy_threshold: z.number(),
+    sell_threshold_held: z.number(),
+    broad_weight: z.number(),
+    sector_weight: z.number(),
+    sectors: z.record(z.array(z.string())),
+    news_half_life_hours: z.number(),
+    news_max_age_hours: z.number(),
+    priced_in_full: z.number(),
+    concentration_limit: z.number(),
+    concentration_penalty: z.number(),
+    concentration_max: z.number(),
+    risk_per_trade: z.number(),
+    max_position: z.number(),
+    max_volume_share: z.number(),
+    calibration_min_cases: z.number().int(),
   })
   .passthrough();
 const SimDay = z
@@ -300,6 +354,8 @@ const SimDay = z
     follow_return: z.number(),
     base_value: z.number(),
     follow_value: z.number(),
+    hold_value: z.union([z.number(), z.null()]).optional(),
+    merval_value: z.union([z.number(), z.null()]).optional(),
   })
   .passthrough();
 const Simulation = z
@@ -308,6 +364,8 @@ const Simulation = z
     start_value: z.number(),
     base_value: z.number(),
     follow_value: z.number(),
+    hold_value: z.union([z.number(), z.null()]).optional(),
+    merval_value: z.union([z.number(), z.null()]).optional(),
     buy_allocation: z.number(),
     commission: z.number(),
     days: z.array(SimDay),
@@ -344,6 +402,8 @@ export const schemas = {
   HitStats,
   TrackRecordSummary,
   SignalStats,
+  CalibrationBucket,
+  ModelInfo,
   SimDay,
   Simulation,
 };

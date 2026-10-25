@@ -62,6 +62,10 @@ class TradePlan(BaseModel):
     max_loss: float
     market_open: bool
     fees: float | None = None  # commission + VAT + market fee IOL estimates for this order
+    # The quantity each limit allows; quantity is the smallest, and limited_by names it.
+    limits: dict[Literal["risk", "cash", "position", "concentration", "liquidity"], int] = {}
+    limited_by: Literal["risk", "cash", "position", "concentration", "liquidity"] | None = None
+    portfolio_share: float | None = None  # the buy as a share of the portfolio
 
 
 class BuyRequest(BaseModel):
@@ -99,7 +103,7 @@ class HitStats(BaseModel):
 
 
 class SignalStats(BaseModel):
-    signal: Literal["news", "markets", "trend", "context", "gap"]
+    signal: Literal["news", "markets", "trend", "context", "gap", "macro"]
     n: int  # graded recommendations where this signal pointed somewhere
     hits: int  # ... and the price moved that way (open -> close)
     hit_rate: float | None
@@ -113,3 +117,34 @@ class TrackRecordSummary(BaseModel):
     driver: dict[str, HitStats]
     confidence: dict[str, HitStats]
     held: dict[str, HitStats]
+
+
+class CalibrationBucket(BaseModel):
+    action: Action
+    held: bool
+    score_min: float  # |score| range, inclusive
+    score_max: float  # exclusive
+    n: int
+    hits: int
+    hit_rate: float
+
+
+class ModelInfo(BaseModel):
+    """The scoring model's constants, so the "Cómo decide" page always matches the code."""
+
+    weights: dict[str, float]
+    buy_threshold: float
+    sell_threshold_held: float
+    broad_weight: float
+    sector_weight: float
+    sectors: dict[str, list[str]]
+    news_half_life_hours: float
+    news_max_age_hours: float
+    priced_in_full: float
+    concentration_limit: float
+    concentration_penalty: float
+    concentration_max: float
+    risk_per_trade: float
+    max_position: float
+    max_volume_share: float
+    calibration_min_cases: int

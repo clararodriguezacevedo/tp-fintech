@@ -29,6 +29,8 @@ export type Trade = z.infer<typeof schemas.TradeRow>;
 export type Recommendation = z.infer<typeof schemas.RecommendationRow>;
 export type Evidence = z.infer<typeof schemas.Evidence>;
 export type TrackRecordSummary = z.infer<typeof schemas.TrackRecordSummary>;
+export type CalibrationBucket = z.infer<typeof schemas.CalibrationBucket>;
+export type ModelInfo = z.infer<typeof schemas.ModelInfo>;
 
 export class ApiError extends Error {
   constructor(
@@ -93,6 +95,8 @@ export const api = {
   trackRecord: () => request(schemas.TrackRecordSummary, "/track-record"),
   simulation: () => request(schemas.Simulation, "/track-record/simulation"),
   signals: () => request(z.array(schemas.SignalStats), "/track-record/signals"),
+  calibration: () => request(z.array(schemas.CalibrationBucket), "/track-record/calibration"),
+  model: () => request(schemas.ModelInfo, "/model"),
   trackRecordHistory: (limit = 100) =>
     request(z.array(schemas.RecommendationRow), "/track-record/history", { query: { limit } }),
 };

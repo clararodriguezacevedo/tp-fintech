@@ -203,6 +203,7 @@ class DailyBar(BaseModel):
     high: float
     low: float
     close: float
+    volume: float | None = None  # shares traded that day
 
 
 class BookSide(IOLModel):

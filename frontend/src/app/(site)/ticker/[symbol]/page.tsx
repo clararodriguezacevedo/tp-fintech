@@ -1,6 +1,6 @@
 import { BuyPanel } from "@/components/buy-panel";
 import { LineChart } from "@/components/charts";
-import { ActionBadge, Reasons, strength, threeMonths } from "@/components/signals";
+import { ActionBadge, Reasons, threeMonths, track } from "@/components/signals";
 import { attempt, Card, Delta, Notice, SectionTitle, Stat } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { integer, money, pct, pctPoints } from "@/lib/format";
@@ -13,12 +13,13 @@ export async function generateMetadata({ params }: { params: Promise<{ symbol: s
 
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const ticker = (await params).symbol.toUpperCase();
-  const [recs, bars, plan, health, holdings] = await Promise.all([
+  const [recs, bars, plan, health, holdings, calibration] = await Promise.all([
     attempt(() => api.recommendations({ ticker })),
     attempt(() => api.bars(ticker, 90)),
     attempt(() => api.tradePlan(ticker)),
     attempt(api.health),
     attempt(api.portfolio),
+    attempt(api.calibration),
   ]);
 
   const rec = recs.ok ? recs.data[0] : undefined;
@@ -45,7 +46,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
         {rec && (
           <div className="text-right">
             <ActionBadge action={rec.action} large />
-            <p className="mt-2 text-sm text-text-2">{strength(rec.score)}</p>
+            <p className="mt-2 text-sm text-text-2">{track(rec, calibration.ok ? calibration.data : [])}</p>
           </div>
         )}
       </header>

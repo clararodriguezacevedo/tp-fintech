@@ -35,17 +35,57 @@ def last_closed_day(now: datetime | None = None, close: time = market_hours.CLOS
 def _stored(ticker: str, start: date) -> list[DailyBar]:
     return rows_as(
         DailyBar,
-        get_db().table("daily_bars").select("day,open,high,low,close").eq("ticker", ticker)
+        get_db().table("daily_bars").select("day,open,high,low,close,volume").eq("ticker", ticker)
         .gte("day", start.isoformat()).order("day").execute().data,
     )
 
 
+SPLIT_MIN_RATIO = 1.8  # an overnight jump this big, close to a whole ratio, is a split
+SPLIT_TOLERANCE = 0.06
+
+
+def _split_ratio(prev_close: float, open_: float) -> float | None:
+    """10.0 for a 10:1 split (or 0.1 for a 1:10 reverse split), None for a normal gap."""
+    if prev_close <= 0 or open_ <= 0:
+        return None
+    r = prev_close / open_
+    big = r if r >= 1 else 1 / r
+    if big < SPLIT_MIN_RATIO or abs(big - round(big)) > SPLIT_TOLERANCE * big:
+        return None
+    return round(big) if r >= 1 else 1 / round(big)
+
+
+def adjust_splits(bars: list[DailyBar]) -> list[DailyBar]:
+    """Scale candles before a split so prices compare across it. IOL's history is unadjusted
+    (YPFD went from 83.000 to 8.105 overnight with its 10:1 split in August 2026)."""
+    out = list(bars)
+    factor = 1.0
+    for i in range(len(out) - 1, 0, -1):
+        ratio = _split_ratio(bars[i - 1].close, bars[i].open)
+        if ratio:
+            factor /= ratio
+        if factor != 1.0:
+            b = bars[i - 1]
+            out[i - 1] = b.model_copy(update={
+                "open": b.open * factor, "high": b.high * factor, "low": b.low * factor,
+                "close": b.close * factor, "volume": b.volume / factor if b.volume else b.volume,
+            })
+    return out
+
+
 def daily_bars(
-    ticker: str, days: int = 45, now: datetime | None = None, market: str = "BCBA"
+    ticker: str, days: int = 45, now: datetime | None = None, market: str = "BCBA",
+    adjust: bool = True,
 ) -> list[DailyBar]:
-    """Closed daily candles for the last `days` calendar days, oldest first.
+    """Closed daily candles for the last `days` calendar days, oldest first, adjusted for
+    splits unless adjust=False.
 
     market="US" gives the US listing (stored as "US:TICKER")."""
+    bars = _daily_bars(ticker, days, now, market)
+    return adjust_splits(bars) if adjust else bars
+
+
+def _daily_bars(ticker: str, days: int, now: datetime | None, market: str) -> list[DailyBar]:
     symbol = ticker.upper()
     ticker = symbol if market == "BCBA" else f"{market}:{symbol}"
     start = date.today() - timedelta(days=days)
@@ -89,8 +129,8 @@ def daily_bars(
 
 
 def bar_on(ticker: str, day: date) -> DailyBar | None:
-    """The candle of one closed day, from the cache or IOL."""
-    for bar in daily_bars(ticker, days=max(7, (date.today() - day).days + 7)):
+    """The candle of one closed day as it traded (not split-adjusted), from the cache or IOL."""
+    for bar in daily_bars(ticker, days=max(7, (date.today() - day).days + 7), adjust=False):
         if bar.day == day:
             return bar
     return None

@@ -84,6 +84,7 @@ class Evidence(BaseModel):
     move_since: float | None = None  # price move of the ticker since `since`
     priced_in: float = 0.0  # 0..1, share of the signal the price already reflected
     sources: int = 1  # how many outlets ran the same story
+    via: str | None = None  # the sector peer the item was about, when it spread from one
 
 
 class SignalBreakdown(BaseModel):
@@ -97,6 +98,13 @@ class SignalBreakdown(BaseModel):
     group_share: float | None = None  # share of the portfolio already in that risk group
     change_3m: float | None = None  # price change over the last 3 months (shown, not scored)
     from_high: float | None = None  # distance from the 3-month high, <= 0 (shown, not scored)
+    macro: float = 0.0  # riesgo país (bonds, local stocks) or CCL dollar (CEDEARs) moving its way
+    macro_source: Literal["riesgo_pais", "ccl"] | None = None
+    macro_level: float | None = None  # riesgo país points or CCL pesos
+    macro_change: float | None = None  # its change over 5 trading days
+    event_kind: Literal["dividend", "coupon"] | None = None  # next payment detaching soon
+    event_date: date | None = None
+    event_yield: float | None = None
 
 
 class RecommendationRow(Row):
@@ -106,7 +114,7 @@ class RecommendationRow(Row):
     kind: Literal["live", "daily"]
     score: float
     confidence: float
-    driver: Literal["news", "markets", "trend", "context", "gap"] | None = None
+    driver: Literal["news", "markets", "trend", "context", "gap", "macro"] | None = None
     held: bool
     signal_breakdown: SignalBreakdown
     evidence: list[Evidence]
@@ -115,7 +123,8 @@ class RecommendationRow(Row):
     open_on_target: float | None = None
     close_on_target: float | None = None
     realized_return: float | None = None  # open -> close of the target day
-    close_return: float | None = None  # previous close -> close
+    close_return: float | None = None  # previous close -> close, plus any dividend detached
+    event_yield: float | None = None  # dividend added back on an ex-date
     hit: bool | None = None
     evaluated_at: datetime | None = None
     created_at: datetime

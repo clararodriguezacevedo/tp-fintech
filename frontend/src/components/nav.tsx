@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/operaciones", label: "Mis compras" },
   { href: "/historial", label: "Resultados" },
   { href: "/noticias", label: "Noticias" },
+  { href: "/como-decide", label: "Cómo decide" },
 ];
 
 export function NavLinks() {

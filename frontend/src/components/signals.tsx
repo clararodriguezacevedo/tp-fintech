@@ -1,7 +1,8 @@
 // How a recommendation is shown: what to do, how sure we are, and why, in plain words.
 import Link from "next/link";
 
-import type { Evidence, Impact, Recommendation } from "@/lib/api/client";
+import type { CalibrationBucket, Evidence, Impact, Recommendation } from "@/lib/api/client";
+import { dayShort, integer } from "@/lib/format";
 
 type Action = Recommendation["action"];
 
@@ -31,11 +32,35 @@ export function strength(score: number) {
   return s >= 0.6 ? "Señal fuerte" : s >= 0.3 ? "Señal moderada" : "Señal débil";
 }
 
+export const CALIBRATION_MIN_CASES = 20;
+
+/** How often recommendations like this one were right, once there are enough graded cases;
+ * until then, the score's strength in words. */
+export function track(r: Pick<Recommendation, "action" | "held" | "score">, buckets: CalibrationBucket[] = []) {
+  const s = Math.abs(r.score);
+  const b = buckets.find((x) => x.action === r.action && x.held === r.held && s >= x.score_min && s < x.score_max);
+  if (b && b.n >= CALIBRATION_MIN_CASES) {
+    return `Con puntajes así acertó ${Math.round(b.hit_rate * 100)}% de las veces (${b.n} casos)`;
+  }
+  return strength(r.score);
+}
+
 type Breakdown = Recommendation["signal_breakdown"];
 
 const pctText = (x: number) => `${Math.abs(x * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
 
 const GROUP: Record<string, string> = { argentina: "riesgo argentino", exterior: "activos del exterior" };
+const asDay = (d: string) => d + "T12:00:00";
+
+/** A dividend or coupon detaching soon: the price drops that day without it being a loss. */
+function eventNote(b: Breakdown | undefined) {
+  if (!b?.event_kind || !b.event_date) return null;
+  const when = dayShort(asDay(b.event_date));
+  const size = b.event_yield != null ? ` (${pctText(b.event_yield)})` : "";
+  return b.event_kind === "dividend"
+    ? { text: `El ${when} corta dividendo${size}.`, note: "Ese día el precio baja por el pago del dividendo. No es una pérdida: lo cobra quien tenía la acción el día anterior." }
+    : { text: `El ${when} corta cupón.`, note: "Ese día el precio del bono baja por el pago de renta y amortización. No es una pérdida: lo cobra quien tenía el bono el día anterior." };
+}
 
 /** "+12% en 3 meses, 8% debajo de su máximo": where the price stands, to judge if it already ran. */
 export function threeMonths(b: Breakdown | undefined) {
@@ -49,6 +74,22 @@ export function threeMonths(b: Breakdown | undefined) {
 function marketReasons(b: Breakdown | undefined) {
   const out: { up: boolean; text: string; note: string }[] = [];
   if (!b) return out;
+  if (Math.abs(b.macro ?? 0) >= 0.3 && b.macro_source && b.macro_change != null) {
+    const rising = b.macro_change > 0;
+    out.push(b.macro_source === "riesgo_pais"
+      ? {
+          up: !rising,
+          text: `El riesgo país ${rising ? "subió" : "bajó"} ${pctText(b.macro_change)} en la última semana${b.macro_level ? ` (${integer(b.macro_level)} puntos)` : ""}.`,
+          note: rising
+            ? "Cuando sube, los inversores piden más por el riesgo argentino: suelen bajar los bonos y los bancos."
+            : "Cuando baja, los inversores confían más en Argentina: suelen subir los bonos y los bancos.",
+        }
+      : {
+          up: rising,
+          text: `El dólar CCL ${rising ? "subió" : "bajó"} ${pctText(b.macro_change)} en la última semana${b.macro_level ? ` ($ ${integer(b.macro_level)})` : ""}.`,
+          note: "Los CEDEARs cotizan en pesos y siguen al dólar CCL: si el dólar sube, suben con él.",
+        });
+  }
   if ((b.concentration ?? 0) < 0 && b.group_share != null && b.risk_group) {
     out.push({
       up: false,
@@ -93,11 +134,18 @@ function Marker({ up, faded = false }: { up: boolean; faded?: boolean }) {
 /** Why: market-wide reasons first, then the news and markets behind the recommendation. */
 export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; breakdown?: Breakdown; limit?: number }) {
   const market = marketReasons(breakdown);
+  const event = eventNote(breakdown);
   if (items.length === 0 && market.length === 0) {
-    return <p className="text-text-2">No hay noticias recientes sobre esta acción. La recomendación se basa en cómo viene su precio.</p>;
+    return (
+      <div className="space-y-4">
+        {event && <EventItem {...event} />}
+        <p className="text-text-2">No hay noticias recientes sobre esta acción. La recomendación se basa en cómo viene su precio.</p>
+      </div>
+    );
   }
   return (
     <ul className="space-y-4">
+      {event && <li><EventItem {...event} /></li>}
       {market.map((m) => (
         <li key={m.text} className="flex gap-3">
           <Marker up={m.up} />
@@ -130,11 +178,24 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
                 <p className="text-sm text-text-3">{e.title}</p>
               )}
               {e.sources > 1 && <span className="text-sm text-text-3"> (lo publicaron {e.sources} medios)</span>}
+              {e.via && <p className="text-sm text-text-3">Es sobre {e.via}, del mismo sector: cuenta menos que una noticia propia.</p>}
             </div>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+function EventItem({ text, note }: { text: string; note: string }) {
+  return (
+    <div className="flex gap-3">
+      <span aria-hidden className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface text-xs text-text-3">i</span>
+      <div className="min-w-0">
+        <p className="text-text">{text}</p>
+        <p className="text-sm text-text-3">{note}</p>
+      </div>
+    </div>
   );
 }
 

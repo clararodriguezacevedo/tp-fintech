@@ -102,6 +102,10 @@ def tag_items(items: list[TagInput], holdings: dict[str, str] | None = None) -> 
     except errors.APIError as e:
         # Free tier quota errors (429) land here; the items stay untagged for the next cycle.
         log.warning("tagging failed: %s", e)
+        if e.code == 429:
+            from app import alerts  # avoid an import cycle
+
+            alerts.gemini_quota()
         return []
     batch = response.parsed
     if not isinstance(batch, TagBatch):

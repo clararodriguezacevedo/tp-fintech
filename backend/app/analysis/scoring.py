@@ -15,13 +15,17 @@ Per ticker:
   gap      CEDEARs only: how far the CEDEAR's price sits from its usual relation to the US
            share, after removing the move common to all CEDEARs (the dollar). Expensive
            versus usual -> expected to fall.
+  macro    how unusual the 5-day change of riesgo país (bonds and banks; half for other local
+           stocks; falling is good) or of the CCL dollar (CEDEARs; rising is good) is
+  sector   news and markets about a sector peer (GGAL for the other banks) count at 30%
 
-  concentration  buys only: when the portfolio already has more than 40% in the same risk
+  concentration  buys only: when the portfolio already has more than 60% in the same risk
            group ("argentina": local stocks, bonds and Argentine CEDEARs like VIST; "exterior":
-           the rest), 2 points off per point above 40% (at most 0.3).
+           the rest), 2 points off per point above 60% (at most 0.3).
+           With only two groups one is always at 50% or more, so the bar is above that.
 
-  score = 0.7 * tanh((news + markets) / 2) + 0.1 * trend + 0.1 * context + 0.1 * gap
-          + concentration
+  score = 0.65 * tanh((news + markets) / 2) + 0.05 * trend + 0.1 * context + 0.1 * gap
+          + 0.1 * macro + concentration
 
 Market wrap-ups ("así cerró el mercado", "las acciones subieron hasta 6%") are ignored: they only
 report moves that already happened. A news item tagged both for a ticker and for MERVAL/BONOS
@@ -47,6 +51,7 @@ from pydantic import BaseModel
 from app import prices
 from app.analysis import market_hours, risk
 from app.analysis.tagger import UNIVERSE
+from app.sources import corporate_events, macro
 from app.brokers.iol import get_iol
 from app.db import get_db, rows_as
 from app.models.db import Action, Evidence, MarketRow, NewsRow, SignalBreakdown, TickerImpactRow
@@ -63,16 +68,27 @@ MARKET_MOVE_CAP = 1.5
 BROAD_WEIGHT = 0.5
 # Trend got a low weight after scripts/backtest_trend.py found no next-day edge in it
 # (49% right on 3,936 ticker-days, correlation +0.003).
-W_EVIDENCE, W_TREND, W_CONTEXT, W_GAP = 0.7, 0.1, 0.1, 0.1
-BUY_THRESHOLD, SELL_THRESHOLD = 0.3, -0.3
+W_EVIDENCE, W_TREND, W_CONTEXT, W_GAP, W_MACRO = 0.65, 0.05, 0.1, 0.1, 0.1
+SECTOR_WEIGHT = 0.3  # news about a sector peer, versus news about the ticker itself
+# Sectors whose shares tend to move together, each within one risk group.
+SECTORS = {
+    "bancos": ["GGAL", "BMA", "SUPV", "BBAR", "VALO", "BYMA"],
+    "petróleo y gas": ["YPFD", "PAMP", "VIST", "TGSU2", "TGNO4"],
+    "electricidad": ["EDN", "CEPU", "TRAN"],
+    "materiales": ["TXAR", "ALUA", "LOMA"],
+    "tecnología": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META"],
+}
+SECTOR_OF = {t: name for name, members in SECTORS.items() for t in members}
+BANKS = set(SECTORS["bancos"])
+BUY_THRESHOLD = 0.3
 PRICED_IN_FULL = 1.5  # typical daily moves in the expected direction = fully priced in
 SAME_STORY = 0.4  # title word overlap (Jaccard) above which two news items are one story
 GAP_UNIT = 0.01  # a 1% premium versus usual counts as a strong gap signal
 FAR_MARKET_DAYS = 180  # prediction markets resolving later than this weigh less...
 FAR_MARKET_MIN_WEIGHT = 0.25  # ...down to this share
 SELL_THRESHOLD_HELD = -0.45  # selling something you hold needs more evidence than buying
-CONCENTRATION_LIMIT = 0.40  # above this share of the portfolio in one risk group, buys in it are penalized
-CONCENTRATION_PENALTY = 2.0  # score points per unit of share above the limit (48% -> -0.16)
+CONCENTRATION_LIMIT = 0.60  # above this share of the portfolio in one risk group, buys in it are penalized
+CONCENTRATION_PENALTY = 2.0  # score points per unit of share above the limit (70% -> -0.2)
 CONCENTRATION_MAX = 0.3
 MAX_EVIDENCE_SHOWN = 8
 BROAD_TICKERS = ("MERVAL", "BONOS")
@@ -110,8 +126,8 @@ def _all_impacts() -> list[TickerImpactRow]:
 # Market wrap-ups only report moves that already happened: no new information.
 _RECAP = re.compile(
     r"jornada financiera|as[ií] cerr[oó]|cierre (del|de) mercado|cierre de la (rueda|jornada)"
-    r"|(acciones|bonos|adrs?|merval)( argentin[oa]s)? (rebotaron|subieron|cayeron|bajaron|treparon|se desplomaron)"
-    r"|(acciones|bonos|adrs?|merval)( argentin[oa]s)? (cotizaron|operaron|cerraron|terminaron) en (alza|baja|rojo|verde)"
+    r"|(acciones|bonos|adrs?|merval|s&p merval)( argentin[oa]s)? (rebot|sub|ca|baj|trep|se desplom)(aron|ieron|yeron|ó|i[oó]|y[oó])\b"
+    r"|(acciones|bonos|adrs?|merval|s&p merval)( argentin[oa]s)? (cotiz|oper|cerr|termin)(aron|[oó]) en (alza|baja|rojo|verde|positivo|negativo)"
     r"|riesgo pa[ií]s (sube|baja|subi[oó]|baj[oó]) .*(hoy|en la jornada)"
     r"|stocks? (rose|fell|rallied|slid|closed)|stock market today|markets? wrap",
     re.IGNORECASE,
@@ -355,6 +371,42 @@ class _Inputs:
     group_share: float | None = None
     change_3m: float | None = None
     from_high: float | None = None
+    sector: list[Evidence] = field(default_factory=list)
+    macro: float = 0.0
+    macro_source: str | None = None
+    macro_level: float | None = None
+    macro_change: float | None = None
+    event: corporate_events.CorporateEvent | None = None
+
+
+def sector_evidence(ticker: str, signals: dict[str, TickerSignals]) -> list[Evidence]:
+    """Evidence about the ticker's sector peers, strongest per item, tagged with the peer."""
+    sector = SECTOR_OF.get(ticker)
+    if not sector:
+        return []
+    best: dict[str, Evidence] = {}
+    for peer in SECTORS[sector]:
+        if peer == ticker or peer not in signals:
+            continue
+        for e in signals[peer].evidence:
+            if e.item_id not in best or abs(e.contribution) > abs(best[e.item_id].contribution):
+                best[e.item_id] = e.model_copy(update={"via": peer})
+    return list(best.values())
+
+
+def macro_for(ticker: str, group: str | None, signals: dict[str, macro.MacroSignal]) -> tuple[float, str | None]:
+    """(signal, source): riesgo país falling is good for bonds and banks (half for the other
+    local stocks); the CCL rising is good for CEDEARs, priced in pesos."""
+    if group == "us" and ticker not in ARGENTINE_CEDEARS:
+        s = signals.get("ccl")
+        return (s.signal, "ccl") if s else (0.0, None)
+    if group in ("bonds", "stocks") or ticker in ARGENTINE_CEDEARS:
+        s = signals.get("riesgo_pais")
+        if not s:
+            return 0.0, None
+        weight = 1.0 if group == "bonds" or ticker in BANKS else 0.5
+        return -s.signal * weight, "riesgo_pais"
+    return 0.0, None
 
 
 # Argentine companies listed abroad: their CEDEARs carry Argentine risk, not foreign.
@@ -381,18 +433,28 @@ def three_month_context(bars: list[DailyBar], price: float) -> tuple[float | Non
 
 
 def _combine(i: _Inputs, gap: float) -> Recommendation:
-    # A news item tagged both for this ticker and for the whole market counts once.
-    own_ids = {e.item_id for e in i.own}
-    evidence = i.own + [
+    # A news item tagged for this ticker, for the whole market or for a peer counts once,
+    # at the weight of the most direct tag.
+    seen = {e.item_id for e in i.own}
+    broad = [
         e.model_copy(update={"contribution": round(e.contribution * BROAD_WEIGHT, 4), "broad": True})
-        for e in i.broad if e.item_id not in own_ids
+        for e in i.broad if e.item_id not in seen
     ]
+    seen |= {e.item_id for e in broad}
+    sector = [
+        e.model_copy(update={"contribution": round(e.contribution * SECTOR_WEIGHT, 4)})
+        for e in i.sector if e.item_id not in seen
+    ]
+    evidence = i.own + broad + sector
     news = sum(e.contribution for e in evidence if e.kind == "news")
     markets = sum(e.contribution for e in evidence if e.kind == "market")
     evidence_part = W_EVIDENCE * math.tanh((news + markets) / 2)
     # Buying more of a risk the portfolio is already heavy in needs a stronger case.
     concentration = 0.0 if i.held else concentration_penalty(i.group_share)
-    score = evidence_part + W_TREND * i.trend + W_CONTEXT * i.context + W_GAP * gap + concentration
+    score = (
+        evidence_part + W_TREND * i.trend + W_CONTEXT * i.context + W_GAP * gap + W_MACRO * i.macro
+        + concentration
+    )
 
     action: Action
     if i.held:
@@ -410,6 +472,7 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
         "trend": W_TREND * abs(i.trend),
         "context": W_CONTEXT * abs(i.context),
         "gap": W_GAP * abs(gap),
+        "macro": W_MACRO * abs(i.macro),
     }
     evidence.sort(key=lambda e: abs(e.contribution), reverse=True)
     return Recommendation(
@@ -422,6 +485,12 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
             group_share=round(i.group_share, 4) if i.group_share is not None else None,
             change_3m=round(i.change_3m, 4) if i.change_3m is not None else None,
             from_high=round(i.from_high, 4) if i.from_high is not None else None,
+            macro=round(i.macro, 4), macro_source=i.macro_source,  # type: ignore[arg-type]
+            macro_level=i.macro_level,
+            macro_change=round(i.macro_change, 4) if i.macro_change is not None else None,
+            event_kind=i.event.kind if i.event else None,  # type: ignore[arg-type]
+            event_date=i.event.ex_date if i.event else None,
+            event_yield=round(i.event.yield_, 5) if i.event and i.event.yield_ is not None else None,
         ),
         evidence=evidence[:MAX_EVIDENCE_SHOWN],
     )
@@ -445,6 +514,8 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     bonds = set(UNIVERSE["bonos"]) | {t for t, h in holdings.items() if h.type in BOND_TYPES}
     cedears = set(UNIVERSE["cedears"]) | {t for t, h in holdings.items() if h.type in CEDEAR_TYPES}
     tickers = {t for t in signals if t not in BROAD_TICKERS} | set(holdings)
+    # Peers of a ticker with news get scored too, so the news can spread to them.
+    tickers |= {p for t in list(tickers) if t in SECTOR_OF for p in SECTORS[SECTOR_OF[t]]}
     if "MERVAL" in signals:
         tickers |= stocks
     if "BONOS" in signals:
@@ -457,6 +528,17 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     for h in peso_holdings:
         g = risk_group(h.ticker, stocks, bonds)
         group_shares[g] = group_shares.get(g, 0.0) + h.value / total_value
+
+    try:
+        macro_signals = macro.fetch()
+    except Exception:
+        log.exception("macro data failed; left at 0")
+        macro_signals = {}
+    try:
+        events = corporate_events.upcoming(market_hours.now_art().date())
+    except Exception:
+        log.exception("could not load corporate events")
+        events = {}
 
     try:
         context = market_context()
@@ -482,17 +564,26 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
         if not price and bars:
             price = bars[-1].close
         own = signals[ticker].evidence if ticker in signals else []
+        broad_ev = broad.evidence if broad else []
+        peers = sector_evidence(ticker, signals)
         if price:
             own = discount_priced_in(own, bars, price)
+            broad_ev = discount_priced_in(broad_ev, bars, price)
+            peers = discount_priced_in(peers, bars, price)
+        macro_value, macro_source = macro_for(ticker, group, macro_signals)
+        ms = macro_signals.get(macro_source) if macro_source else None
         change_3m, from_high = three_month_context(bars, price) if price else (None, None)
         rg = risk_group(ticker, stocks, bonds)
         inputs.append(_Inputs(
             ticker=ticker, held=ticker in holdings, price=price, own=own,
-            broad=broad.evidence if broad else [],
+            broad=broad_ev, sector=peers,
             trend=trend_score(bars, price) if price else 0.0,
             context=context[group] if group else 0.0,
             risk_group=rg, group_share=group_shares.get(rg, 0.0) if total_value else None,
             change_3m=change_3m, from_high=from_high,
+            macro=macro_value, macro_source=macro_source,
+            macro_level=ms.level if ms else None, macro_change=ms.change if ms else None,
+            event=events.get(ticker),
         ))
 
     gaps = cedear_gaps({i.ticker: i.price for i in inputs if i.ticker in cedears and i.price})

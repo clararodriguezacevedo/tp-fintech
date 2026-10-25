@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     # Fraction of the portfolio a single stop-out is allowed to lose.
     risk_per_trade: float = 0.01
 
+    # E-mail alerts (app/alerts.py). Resend's test sender only delivers to the address the
+    # Resend account was created with.
+    resend_api_key: str = ""
+    alert_email: str = ""
+    alert_from: str = "El Parque <onboarding@resend.dev>"
+    site_url: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

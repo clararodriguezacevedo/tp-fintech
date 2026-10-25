@@ -7,7 +7,19 @@ import { useActionState, useState } from "react";
 
 import { buyAction, type BuyState } from "@/app/(site)/actions";
 import type { TradePlan } from "@/lib/api/client";
-import { money, price } from "@/lib/format";
+import { money, pct, price } from "@/lib/format";
+
+/** Why the suggested quantity is what it is: the limit that binds. */
+function sizeReason(plan: TradePlan, ticker: string) {
+  switch (plan.limited_by) {
+    case "risk": return `Calculada para que, si toca el stop loss, pierdas como máximo ${money(plan.max_loss)}. Cuanto más se mueve el precio, menos se compra.`;
+    case "cash": return "Limitada por el efectivo que tenés disponible.";
+    case "position": return `Limitada para que ${ticker} no pase el 10% de tu cartera.`;
+    case "concentration": return "Limitada para no concentrar todavía más tu cartera en el mismo tipo de riesgo.";
+    case "liquidity": return "Limitada al 10% de lo que se opera por día, para que tu orden no mueva el precio.";
+    default: return null;
+  }
+}
 
 const input = "num w-32 rounded-lg border border-border bg-bg px-3 py-2 text-right focus:border-text";
 
@@ -76,6 +88,12 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
         <>
           <div className="mt-5 space-y-4">
             <Field id="qty" label="Cantidad" step="1" value={quantity} onChange={(v) => setQuantity(Math.max(0, Math.floor(v)))} />
+            {quantity === plan.quantity && sizeReason(plan, ticker) && (
+              <p className="-mt-2 text-sm text-text-3">
+                {sizeReason(plan, ticker)}
+                {plan.portfolio_share != null && plan.portfolio_share > 0 && ` Es el ${pct(plan.portfolio_share).replace("+", "")} de tu cartera.`}
+              </p>
+            )}
             <Field id="sl" label="Stop loss" hint="Vende solo si baja a este precio" step="0.01" value={stopLoss} onChange={setStopLoss} />
             <Field id="tp" label="Take profit" hint="Vende solo si sube a este precio" step="0.01" value={takeProfit} onChange={setTakeProfit} />
           </div>

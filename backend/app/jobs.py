@@ -7,12 +7,13 @@ from typing import Literal
 
 import httpx
 
-from app.analysis import scoring, track_record
+from app import alerts
+from app.analysis import market_hours, scoring, track_record
 from app.analysis.tagger import TagInput, tag_items
 from app.db import get_db, rows_as
 from app.models.db import MarketRow, NewsRow
 from app.portfolio import get_holdings, refresh_holdings
-from app.sources import kalshi, news, polymarket
+from app.sources import corporate_events, kalshi, news, polymarket
 
 log = logging.getLogger(__name__)
 
@@ -130,6 +131,17 @@ def tag_pending() -> None:
 def score_live() -> None:
     recs = scoring.score_all("live")
     log.info("scored %d tickers (live)", len(recs))
+    alerts.sell_signals(recs, market_hours.next_close_date())
+
+
+def score_daily() -> None:
+    recs = scoring.score_all("daily")
+    alerts.sell_signals(recs, market_hours.next_close_date())
+
+
+def refresh_events() -> None:
+    held = {h.ticker for h in get_holdings()}
+    corporate_events.refresh(corporate_events.tradable_tickers(held))
 
 
 def _run_all(steps: list[tuple[str, Callable[[], object]]]) -> list[str]:
@@ -144,19 +156,26 @@ def _run_all(steps: list[tuple[str, Callable[[], object]]]) -> list[str]:
     return failed
 
 
+def _alert_failures(job: str, failed: list[str]) -> list[str]:
+    if failed:
+        alerts.job_failed(job, failed)
+    return failed
+
+
 def run_cycle() -> list[str]:
-    return _run_all([
+    return _alert_failures("collect", _run_all([
         ("refresh_holdings", refresh_holdings),
         ("collect_markets", collect_markets),
         ("collect_news", collect_news),
         ("tag_pending", tag_pending),
         ("score_live", score_live),
-    ])
+    ]))
 
 
 def after_close() -> list[str]:
     """17:30 on weekdays: grade the day's recommendations, then issue tomorrow's."""
-    return _run_all([
+    return _alert_failures("after-close", _run_all([
+        ("refresh_events", refresh_events),
         ("evaluate_pending", track_record.evaluate_pending),
-        ("score_daily", lambda: scoring.score_all("daily")),
-    ])
+        ("score_daily", score_daily),
+    ]))

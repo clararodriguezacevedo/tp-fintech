@@ -1,12 +1,12 @@
 import Link from "next/link";
 
-import { ActionBadge, strength, threeMonths } from "@/components/signals";
+import { ActionBadge, threeMonths, track } from "@/components/signals";
 import { ApiFailure, attempt, Card, Notice, PageTitle, SectionTitle } from "@/components/ui";
-import { api, type Recommendation } from "@/lib/api/client";
+import { api, type CalibrationBucket, type Recommendation } from "@/lib/api/client";
 import { money, timeAgo } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
-function BuyCard({ r }: { r: Recommendation }) {
+function BuyCard({ r, calibration }: { r: Recommendation; calibration: CalibrationBucket[] }) {
   return (
     <Card className="flex flex-col">
       <div className="flex items-start justify-between gap-3">
@@ -21,7 +21,7 @@ function BuyCard({ r }: { r: Recommendation }) {
       <div className="mt-4 flex items-end justify-between gap-3">
         <div>
           {r.price_at_rec != null && <p className="num font-semibold">{money(r.price_at_rec)}</p>}
-          <p className="text-sm text-text-2">{strength(r.score)}</p>
+          <p className="text-sm text-text-2">{track(r, calibration)}</p>
         </div>
         <Link href={`/ticker/${r.ticker}`} className="whitespace-nowrap rounded-lg bg-text px-3 py-1.5 text-sm font-medium text-bg hover:opacity-85">
           Ver y comprar
@@ -45,8 +45,9 @@ function HoldingRow({ r }: { r: Recommendation }) {
 }
 
 export default async function Home() {
-  const recs = await attempt(() => api.recommendations());
+  const [recs, cal] = await Promise.all([attempt(() => api.recommendations()), attempt(api.calibration)]);
   if (!recs.ok) return <ApiFailure error={recs.error} />;
+  const calibration = cal.ok ? cal.data : [];
 
   const buys = recs.data.filter((r) => r.action === "buy").sort((a, b) => b.score - a.score);
   const held = recs.data.filter((r) => r.held).sort((a, b) => a.score - b.score);
@@ -63,7 +64,7 @@ export default async function Home() {
           <Notice>Hoy no hay compras recomendadas.</Notice>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {buys.slice(0, 6).map((r) => <BuyCard key={r.ticker} r={r} />)}
+            {buys.slice(0, 6).map((r) => <BuyCard key={r.ticker} r={r} calibration={calibration} />)}
           </div>
         )}
       </section>
