@@ -3,6 +3,9 @@
 Snapshots are stored at most every 30 minutes while BYMA is open (plus one after the close) and
 double as the portfolio's value over time. What the user sees is fresher: `current_holdings`
 goes back to IOL whenever the latest snapshot is more than a few minutes old.
+
+The cash in the account is stored with each snapshot (cash_snapshots): when a position is sold,
+its value moves to cash, so the portfolio is the holdings plus the cash.
 """
 
 import logging
@@ -46,6 +49,13 @@ class Holding(BaseModel):
 class Snapshot(BaseModel):
     captured_at: datetime
     holdings: list[Holding]
+    cash_ars: float | None = None  # pesos in the account (None: unknown for this snapshot)
+    cash_usd: float | None = None
+
+    @property
+    def total_ars(self) -> float:
+        """Holdings valued in pesos plus the peso cash."""
+        return sum(h.value for h in self.holdings if h.currency == "ARS") + (self.cash_ars or 0.0)
 
 
 def _fetch_from_iol() -> list[Holding]:
@@ -67,6 +77,29 @@ def _fetch_from_iol() -> list[Holding]:
     ]
 
 
+def _fetch_cash() -> tuple[float | None, float | None]:
+    """(pesos, dollars) in the account, settled or not; (None, None) if IOL can't answer."""
+    try:
+        b = get_iol().balances()
+        return b.ars.totals.total, b.usd.totals.total
+    except Exception:
+        log.warning("no balances from IOL; snapshot without cash")
+        return None, None
+
+
+def _fetch_snapshot(now: datetime) -> Snapshot:
+    cash_ars, cash_usd = _fetch_cash()
+    return Snapshot(captured_at=now, holdings=_fetch_from_iol(), cash_ars=cash_ars, cash_usd=cash_usd)
+
+
+def cash_at(captured_at: datetime | str) -> tuple[float | None, float | None]:
+    when = captured_at if isinstance(captured_at, str) else captured_at.isoformat()
+    rows = get_db().table("cash_snapshots").select("ars,usd").eq("captured_at", when).execute().data
+    if not rows:
+        return None, None
+    return float(rows[0]["ars"]), float(rows[0]["usd"])  # type: ignore[index, arg-type]
+
+
 def latest_snapshot() -> Snapshot | None:
     db = get_db()
     head = (
@@ -78,7 +111,11 @@ def latest_snapshot() -> Snapshot | None:
     captured_at = head[0]["captured_at"]  # type: ignore[index]
     rows = db.table("holdings_snapshots").select("*").eq("captured_at", captured_at).execute().data
     holdings = [Holding.model_validate(r) for r in rows]
-    return Snapshot(captured_at=datetime.fromisoformat(str(captured_at)), holdings=holdings)
+    cash_ars, cash_usd = cash_at(str(captured_at))
+    return Snapshot(
+        captured_at=datetime.fromisoformat(str(captured_at)), holdings=holdings,
+        cash_ars=cash_ars, cash_usd=cash_usd,
+    )
 
 
 def _last_close_time(now: datetime) -> datetime:
@@ -96,12 +133,16 @@ def _due(latest: Snapshot | None, now: datetime) -> bool:
     return latest.captured_at < _last_close_time(now)
 
 
-def _save(holdings: list[Holding], now: datetime) -> None:
-    if holdings:
+def _save(snap: Snapshot) -> None:
+    if snap.holdings:
         get_db().table("holdings_snapshots").insert(
-            [{"captured_at": now.isoformat(), **h.model_dump()} for h in holdings]
+            [{"captured_at": snap.captured_at.isoformat(), **h.model_dump()} for h in snap.holdings]
         ).execute()
-        log.info("saved holdings snapshot with %d positions", len(holdings))
+        log.info("saved holdings snapshot with %d positions", len(snap.holdings))
+    if snap.cash_ars is not None:
+        get_db().table("cash_snapshots").upsert({
+            "captured_at": snap.captured_at.isoformat(), "ars": snap.cash_ars, "usd": snap.cash_usd or 0.0,
+        }).execute()
 
 
 def refresh_holdings(force: bool = False) -> list[Holding]:
@@ -110,9 +151,9 @@ def refresh_holdings(force: bool = False) -> list[Holding]:
     latest = latest_snapshot()
     if not force and not _due(latest, now) and latest is not None:
         return latest.holdings
-    holdings = _fetch_from_iol()
-    _save(holdings, now)
-    return holdings
+    snap = _fetch_snapshot(now)
+    _save(snap)
+    return snap.holdings
 
 
 def current_holdings() -> Snapshot:
@@ -128,15 +169,23 @@ def current_holdings() -> Snapshot:
         if fresh:
             return latest
     try:
-        holdings = _fetch_from_iol()
+        snap = _fetch_snapshot(now)
     except Exception:
         if latest is None:
             raise
         log.exception("IOL unavailable; showing the last snapshot")
         return latest
     if _due(latest, now):
-        _save(holdings, now)
-    return Snapshot(captured_at=now, holdings=holdings)
+        _save(snap)
+    return snap
+
+
+def latest_cash() -> float:
+    """Peso cash as of the latest snapshot, or live from IOL; 0 if neither is available."""
+    latest = latest_snapshot()
+    if latest and latest.cash_ars is not None:
+        return latest.cash_ars
+    return _fetch_cash()[0] or 0.0
 
 
 def get_holdings() -> list[Holding]:
@@ -148,7 +197,7 @@ def get_holdings() -> list[Holding]:
 
 
 def value_history(days: int = 90) -> list[tuple[datetime, float]]:
-    """Total portfolio value per snapshot, oldest first."""
+    """Total portfolio value (holdings plus peso cash, where known) per snapshot, oldest first."""
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     totals: dict[str, float] = {}
     page = 0
@@ -164,4 +213,8 @@ def value_history(days: int = 90) -> list[tuple[datetime, float]]:
         if len(rows) < 1000:
             break
         page += 1
-    return [(datetime.fromisoformat(k), v) for k, v in totals.items()]
+    cash = {
+        datetime.fromisoformat(str(r["captured_at"])): float(r["ars"])  # type: ignore[index, arg-type]
+        for r in get_db().table("cash_snapshots").select("captured_at,ars").gte("captured_at", since).execute().data
+    }
+    return [(t, v + cash.get(t, 0.0)) for t, v in ((datetime.fromisoformat(k), v) for k, v in totals.items())]

@@ -22,12 +22,14 @@ from app.models.db import (
     Action, MarketRow, NewsRow, RecommendationRow, SnapshotRow, TickerImpactRow, TradeRow,
     TradeStatus,
 )
-from app.portfolio import BOND_TYPES, EQUITY_TYPES, current_holdings, get_holdings, value_history
+from app.portfolio import (
+    BOND_TYPES, EQUITY_TYPES, current_holdings, get_holdings, latest_cash, value_history,
+)
 from app.models.iol import DailyBar
 from app.schemas import (
     AccountSummary, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
     ModelInfo, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, SignalStats,
-    TrackRecordSummary, TradePlan,
+    TrackRecordSummary, TradePlan, Transfer,
 )
 from app.sources import polymarket
 from app.trading import paper
@@ -212,9 +214,17 @@ def ticker_impacts(ticker: str, limit: int = Query(50, ge=1, le=500)) -> list[Ti
 def portfolio() -> PortfolioOut:
     """The IOL positions, at most a few minutes old while the market is open."""
     snap = current_holdings()
+    if snap.cash_ars is None:
+        # An old snapshot, from before cash was stored: ask IOL now.
+        try:
+            b = get_iol().balances()
+            snap = snap.model_copy(update={"cash_ars": b.ars.totals.total, "cash_usd": b.usd.totals.total})
+        except Exception:
+            log.warning("no cash for the portfolio")
     return PortfolioOut(
         captured_at=snap.captured_at,
         holdings=[HoldingOut.model_validate(h.model_dump()) for h in snap.holdings],
+        cash_ars=snap.cash_ars or 0.0, cash_usd=snap.cash_usd or 0.0, total_ars=snap.total_ars,
     )
 
 
@@ -236,7 +246,7 @@ def portfolio_history(days: int = Query(90, ge=1, le=365)) -> list[PortfolioValu
     ]
     try:
         snap = current_holdings()
-        cash = get_iol().balances().ars.totals.t0
+        cash = snap.cash_ars if snap.cash_ars is not None else get_iol().balances().ars.totals.total
         live = sum(h.value for h in snap.holdings if h.currency == "ARS") + cash
         mep = history.history[-1].exchange_rate.mep if history.history else None
         points.append(PortfolioValuePoint(t=snap.captured_at, value=live, value_usd_mep=live / mep if mep else None))
@@ -251,10 +261,23 @@ def account() -> AccountSummary:
     iol = get_iol()
     balances = iol.balances()
     return AccountSummary(
-        total_value=iol.positions().total_market_value + balances.ars.totals.t0,
+        total_value=iol.positions().total_market_value + balances.ars.totals.total,
         cash_ars=balances.ars.available.t0,
         cash_usd=balances.usd.available.t0,
     )
+
+
+@app.get("/account/transfers", response_model=list[Transfer])
+def account_transfers(days: int = Query(90, ge=1, le=365)) -> list[Transfer]:
+    """Deposits and withdrawals in pesos, newest first: money that entered or left the account,
+    so a jump in its value that day is not a gain or a loss."""
+    today = date.today()
+    movements = get_iol().movements(today - timedelta(days=days), today)
+    return [
+        Transfer(day=m.trade_date.date(), amount=m.net_amount)
+        for m in sorted(movements, key=lambda m: m.trade_date, reverse=True)
+        if m.activity_type in ("Deposit", "Withdrawal") and m.currency == "ARS"
+    ]
 
 
 @app.get("/tickers/{ticker}/bars", response_model=list[DailyBar])
@@ -283,7 +306,7 @@ def trade_plan(
             # IOL's account endpoint is down now and then; the saved holdings are close enough.
             if settings.iol_live_trading:
                 raise HTTPException(503, "IOL no está respondiendo; probá en unos minutos")
-            total, real_cash = sum(h.value for h in holdings.values()), 0.0
+            total, real_cash = sum(h.value for h in holdings.values()) + latest_cash(), 0.0
         portfolio_value = portfolio_value or total
         # Paper trades spend a simulated budget, not the account's real cash.
         cash = cash or (real_cash if settings.iol_live_trading else settings.paper_cash)

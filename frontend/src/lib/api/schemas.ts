@@ -110,6 +110,9 @@ const PortfolioOut = z
   .object({
     captured_at: z.string().datetime({ offset: true }),
     holdings: z.array(HoldingOut),
+    cash_ars: z.number(),
+    cash_usd: z.number(),
+    total_ars: z.number(),
   })
   .passthrough();
 const PortfolioValuePoint = z
@@ -125,6 +128,9 @@ const AccountSummary = z
     cash_ars: z.number(),
     cash_usd: z.number(),
   })
+  .passthrough();
+const Transfer = z
+  .object({ day: z.string(), amount: z.number() })
   .passthrough();
 const DailyBar = z
   .object({
@@ -388,6 +394,7 @@ export const schemas = {
   PortfolioOut,
   PortfolioValuePoint,
   AccountSummary,
+  Transfer,
   DailyBar,
   portfolio_value,
   TradePlan,

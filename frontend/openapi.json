@@ -636,6 +636,69 @@
         }
       }
     },
+    "/account/transfers": {
+      "get": {
+        "summary": "Account Transfers",
+        "description": "Deposits and withdrawals in pesos, newest first: money that entered or left the account,\nso a jump in its value that day is not a gain or a loss.",
+        "operationId": "account_transfers",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 90,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Transfer"
+                  },
+                  "title": "Response Account Transfers"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tickers/{ticker}/bars": {
       "get": {
         "summary": "Ticker Bars",
@@ -2355,12 +2418,27 @@
             },
             "type": "array",
             "title": "Holdings"
+          },
+          "cash_ars": {
+            "type": "number",
+            "title": "Cash Ars"
+          },
+          "cash_usd": {
+            "type": "number",
+            "title": "Cash Usd"
+          },
+          "total_ars": {
+            "type": "number",
+            "title": "Total Ars"
           }
         },
         "type": "object",
         "required": [
           "captured_at",
-          "holdings"
+          "holdings",
+          "cash_ars",
+          "cash_usd",
+          "total_ars"
         ],
         "title": "PortfolioOut"
       },
@@ -3371,6 +3449,25 @@
           "updated_at"
         ],
         "title": "TradeRow"
+      },
+      "Transfer": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "amount"
+        ],
+        "title": "Transfer"
       },
       "ValidationError": {
         "properties": {

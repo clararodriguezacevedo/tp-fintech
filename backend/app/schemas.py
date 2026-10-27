@@ -2,7 +2,7 @@
 app.models.db). FastAPI publishes all of them in /openapi.json, which the frontend uses to
 generate its zod schemas."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -54,6 +54,11 @@ class PortfolioValuePoint(BaseModel):
     value_usd_mep: float | None = None  # same value in dollars at that day's MEP rate
 
 
+class Transfer(BaseModel):
+    day: date
+    amount: float  # pesos; positive = deposit, negative = withdrawal
+
+
 class TradePlan(BaseModel):
     entry: float
     stop_loss: float
@@ -93,6 +98,9 @@ class HoldingOut(BaseModel):
 class PortfolioOut(BaseModel):
     captured_at: datetime  # when these prices were read from IOL
     holdings: list[HoldingOut]
+    cash_ars: float  # pesos in the account, ready to invest (part of the portfolio's value)
+    cash_usd: float
+    total_ars: float  # holdings in pesos + cash_ars
 
 
 class HitStats(BaseModel):

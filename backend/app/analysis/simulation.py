@@ -1,22 +1,24 @@
 """What the user's portfolio would be worth had they followed every daily recommendation.
 
-Day by day, starting from the real portfolio of the day each batch of recommendations was made:
+Day by day, starting from the real portfolio of the day each batch of recommendations was made,
+cash included (it earns nothing; a position the user sold is cash from then on):
 
   without following  every position earns its close -> close move (close_return)
   following          positions marked "sell" are sold at the next open (so they still take the
                      overnight gap) and sit in cash for the day; every "buy" is sized like the
                      buy panel sizes it (losing RISK_PER_TRADE of the portfolio at a 2 ATR stop,
                      between MIN_ALLOCATION and MAX_POSITION; BUY_ALLOCATION without price
-                     history) at the next open (earning open -> close), taken pro rata from the
-                     rest; "keep" changes nothing
+                     history) at the next open (earning open -> close), paid with cash first
+                     (including what the sells raised) and the rest taken pro rata from the
+                     positions; "keep" changes nothing
   costs              the account's real cost per operation (commission + VAT + market fee, from
                      IOL's order estimate; COMMISSION if IOL can't answer), charged only when
                      something changes versus the
                      previous day (entering or leaving a buy, selling or buying back)
 
 Two references, from the same starting value:
-  hold     the starting portfolio, untouched: no recommendations and none of the user's own
-           trades either
+  hold     the starting portfolio, cash included, untouched: no recommendations and none of
+           the user's own trades either
   merval   the Merval leaders in equal parts (IOL doesn't publish the index itself)
 
 All of them compound from the same starting value, so the difference between "without" and
@@ -39,6 +41,7 @@ from app.config import get_settings
 from app.db import get_db, rows_as
 from app.models.db import RecommendationRow
 from app.models.iol import DailyBar
+from app.portfolio import cash_at
 from app.sources.corporate_events import events_between
 
 log = logging.getLogger(__name__)
@@ -46,6 +49,7 @@ log = logging.getLogger(__name__)
 BUY_ALLOCATION = 0.05  # when there is no price history to size from
 MIN_ALLOCATION = 0.01
 COMMISSION = 0.006  # fallback when IOL's order estimate is unavailable
+CASH = "$cash"  # the account's peso cash, as one more weight
 
 
 class SimDay(BaseModel):
@@ -73,8 +77,8 @@ class Simulation(BaseModel):
 
 
 def _weights_at(when: datetime) -> tuple[float, dict[str, float]]:
-    """Total value and per-ticker weights from the last holdings snapshot before `when`
-    (or the first one after it, for days before snapshots started)."""
+    """Total value and per-ticker weights (plus CASH) from the last holdings snapshot before
+    `when` (or the first one after it, for days before snapshots started)."""
     db = get_db()
     head = (
         db.table("holdings_snapshots").select("captured_at").lte("captured_at", when.isoformat())
@@ -88,6 +92,9 @@ def _weights_at(when: datetime) -> tuple[float, dict[str, float]]:
     captured = head[0]["captured_at"]  # type: ignore[index]
     rows = db.table("holdings_snapshots").select("ticker,value").eq("captured_at", captured).execute().data
     values = {str(r["ticker"]): float(r["value"]) for r in rows}  # type: ignore[index, arg-type]
+    cash, _ = cash_at(str(captured))
+    if cash:
+        values[CASH] = cash
     total = sum(values.values())
     return total, ({t: v / total for t, v in values.items()} if total else {})
 
@@ -177,13 +184,18 @@ def simulate() -> Simulation:
         sizes = {t: px.allocation(t, day) for t in buys}
         allocations += sizes.values()
 
-        base_r = sum(w * close_to_close.get(t, 0.0) for t, w in weights.items())
+        # Cash earns nothing, so it adds nothing to the day's return but weighs in the total.
+        base_r = sum(w * close_to_close.get(t, 0.0) for t, w in weights.items() if t != CASH)
 
-        # Following: sold positions only take the overnight gap; buys enter at the open and are
-        # funded pro rata from the rest.
+        # Following: sold positions only take the overnight gap and become cash; buys enter at
+        # the open, paid with cash first and then pro rata from the positions.
         kept_r = base_r - sum(weights[t] * (close_to_close.get(t, 0.0) - gap.get(t, 0.0)) for t in sells)
         invested = min(1.0, sum(sizes.values()))
-        follow_r = (1 - invested) * kept_r + sum(sizes[t] * open_to_close.get(t, 0.0) for t in buys)
+        cash_w = weights.get(CASH, 0.0) + sum(weights[t] for t in sells)
+        from_positions = max(0.0, invested - cash_w)
+        held_w = 1 - cash_w
+        kept_share = 1 - from_positions / held_w if held_w > 0 else 0.0
+        follow_r = kept_share * kept_r + sum(sizes[t] * open_to_close.get(t, 0.0) for t in buys)
 
         # Commissions only on changes versus yesterday.
         trades = (
@@ -194,6 +206,8 @@ def simulate() -> Simulation:
 
         # References: graded moves where there are any, otherwise the cached closes.
         for t in hold:
+            if t == CASH:
+                continue
             r = close_to_close.get(t)
             if r is None:
                 r = px.day_return(t, day, dividends.get((t, day), 0.0)) or 0.0

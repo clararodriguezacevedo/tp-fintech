@@ -20,7 +20,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from app.config import get_settings
 from app.models.iol import (
-    AccountHistory, ApiError, Balances, Bars, DailyBar, OptionRow, OrderEstimate, OrderResult,
+    AccountHistory, ApiError, Balances, Bars, DailyBar, Movement, OptionRow, OrderEstimate, OrderResult,
     Positions, Quote, RepoTerm, ScreenerRow, Token, Trade,
 )
 
@@ -178,6 +178,13 @@ class IOLClient:
         return self._get(
             "/broker/accounts/AR/portfolio/history", AccountHistory,
             start_date=start.isoformat(), end_date=end.isoformat(),
+        )
+
+    def movements(self, start: date, end: date) -> list[Movement]:
+        """Every cash movement: trades, deposits, withdrawals, dividends, fees."""
+        return self._get(
+            "/broker/accounts/activities", list[Movement],
+            start_date=start.isoformat(), end_date=end.isoformat(), country="all", currency="all", state="all",
         )
 
     def operations(self, start: date, end: date) -> list[Trade]:

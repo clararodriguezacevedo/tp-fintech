@@ -34,10 +34,16 @@ class Token(IOLModel):
 # Accounts
 
 class BySettlement(IOLModel):
+    """Amounts by settlement term, each term on its own (a sale settling tomorrow is in t1)."""
+
     t0: float
     t1: float = 0
     t2: float = 0
     t3: float = 0
+
+    @property
+    def total(self) -> float:
+        return self.t0 + self.t1 + self.t2 + self.t3
 
 
 class CurrencyBalance(IOLModel):
@@ -133,6 +139,15 @@ class AccountHistory(IOLModel):
 
     status: Literal["complete", "partial"]
     history: list[HistoryDay]
+
+
+class Movement(IOLModel):
+    """One item of GET /broker/accounts/activities: buys, sells, deposits, withdrawals..."""
+
+    activity_type: str  # "Buy", "Sell", "Deposit", "Withdrawal", "Dividend Payment", ...
+    trade_date: datetime
+    currency: str  # "ARS" or "US$"
+    net_amount: float  # what came into (+) or left (-) the account's cash
 
 
 class Trade(IOLModel):
