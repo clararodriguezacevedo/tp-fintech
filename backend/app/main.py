@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from app import jobs, prices
+from app import account as acct, jobs, prices
 from app.analysis import market_hours, risk, scoring, simulation, track_record
 from app.analysis.tagger import UNIVERSE
 from app.analysis.simulation import Simulation
@@ -22,14 +22,12 @@ from app.models.db import (
     Action, MarketRow, NewsRow, RecommendationRow, SnapshotRow, TickerImpactRow, TradeRow,
     TradeStatus,
 )
-from app.portfolio import (
-    BOND_TYPES, EQUITY_TYPES, current_holdings, get_holdings, latest_cash, value_history,
-)
+from app.portfolio import BOND_TYPES, EQUITY_TYPES, current_holdings, get_holdings, value_history
 from app.models.iol import DailyBar
 from app.schemas import (
     AccountSummary, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
     ModelInfo, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, SignalStats,
-    TrackRecordSummary, TradePlan, Transfer,
+    Quote, TrackRecordSummary, TradePlan, Transfer,
 )
 from app.sources import polymarket
 from app.trading import paper
@@ -212,58 +210,44 @@ def ticker_impacts(ticker: str, limit: int = Query(50, ge=1, le=500)) -> list[Ti
 
 @app.get("/portfolio", response_model=PortfolioOut)
 def portfolio() -> PortfolioOut:
-    """The IOL positions, at most a few minutes old while the market is open."""
+    """The IOL positions and cash, at most a few minutes old while the market is open."""
     snap = current_holdings()
-    if snap.cash_ars is None:
-        # An old snapshot, from before cash was stored: ask IOL now.
-        try:
-            b = get_iol().balances()
-            snap = snap.model_copy(update={"cash_ars": b.ars.totals.total, "cash_usd": b.usd.totals.total})
-        except Exception:
-            log.warning("no cash for the portfolio")
+    v = acct.value_of(snap)
     return PortfolioOut(
         captured_at=snap.captured_at,
         holdings=[HoldingOut.model_validate(h.model_dump()) for h in snap.holdings],
-        cash_ars=snap.cash_ars or 0.0, cash_usd=snap.cash_usd or 0.0, total_ars=snap.total_ars,
+        cash_ars=v.cash_ars, cash_usd=v.cash_usd, mep=v.mep, cash_usd_ars=v.cash_usd_ars,
+        total_ars=v.total,
     )
 
 
 @app.get("/portfolio/history", response_model=list[PortfolioValuePoint])
 def portfolio_history(days: int = Query(90, ge=1, le=365)) -> list[PortfolioValuePoint]:
-    """Account value per day from IOL (pesos and dollar MEP), plus today's live value.
-    Falls back to the app's own snapshots if IOL's history is unavailable."""
-    today = date.today()
+    """The account's closing value per day from IOL (pesos and dollar MEP), up to yesterday.
+    Today's value is /portfolio's total_ars, which uses the same definition: callers add it as
+    the last point, so the chart ends exactly at the number shown above it. Falls back to the
+    app's own snapshots if IOL's history is unavailable."""
+    today = market_hours.now_art().date()
     try:
         history = get_iol().account_history(today - timedelta(days=days), today - timedelta(days=1))
     except Exception:
-        return [PortfolioValuePoint(t=t, value=v) for t, v in value_history(days)]
-    points = [
+        return [PortfolioValuePoint(t=t, value=v) for t, v in value_history(days) if t.astimezone(market_hours.ART).date() < today]
+    return [
         PortfolioValuePoint(
             t=datetime.combine(d.date, market_hours.CLOSE, tzinfo=market_hours.ART),
             value=d.equity.ars, value_usd_mep=d.equity.usd_mep,
         )
         for d in history.history if d.equity.ars > 0
     ]
-    try:
-        snap = current_holdings()
-        cash = snap.cash_ars if snap.cash_ars is not None else get_iol().balances().ars.totals.total
-        live = sum(h.value for h in snap.holdings if h.currency == "ARS") + cash
-        mep = history.history[-1].exchange_rate.mep if history.history else None
-        points.append(PortfolioValuePoint(t=snap.captured_at, value=live, value_usd_mep=live / mep if mep else None))
-    except Exception:
-        log.warning("no live value for today's point")
-    return points
 
 
 @app.get("/account", response_model=AccountSummary)
 def account() -> AccountSummary:
-    """Total account value and cash available to trade, from IOL."""
-    iol = get_iol()
-    balances = iol.balances()
+    """Total account value (as /portfolio defines it) and cash available to trade now."""
+    v = acct.current()
+    balances = get_iol().balances()
     return AccountSummary(
-        total_value=iol.positions().total_market_value + balances.ars.totals.total,
-        cash_ars=balances.ars.available.t0,
-        cash_usd=balances.usd.available.t0,
+        total_value=v.total, cash_ars=balances.ars.available.t0, cash_usd=balances.usd.available.t0,
     )
 
 
@@ -271,13 +255,31 @@ def account() -> AccountSummary:
 def account_transfers(days: int = Query(90, ge=1, le=365)) -> list[Transfer]:
     """Deposits and withdrawals in pesos, newest first: money that entered or left the account,
     so a jump in its value that day is not a gain or a loss."""
-    today = date.today()
-    movements = get_iol().movements(today - timedelta(days=days), today)
-    return [
-        Transfer(day=m.trade_date.date(), amount=m.net_amount)
-        for m in sorted(movements, key=lambda m: m.trade_date, reverse=True)
-        if m.activity_type in ("Deposit", "Withdrawal") and m.currency == "ARS"
-    ]
+    today = market_hours.now_art().date()
+    return acct.transfers(today - timedelta(days=days), today)
+
+
+@app.get("/tickers/{ticker}/quote", response_model=Quote)
+def ticker_quote(ticker: str) -> Quote:
+    """Price now and its change versus the previous close, from IOL (the same basis as the
+    portfolio's "Hoy"); the last two stored closes when IOL doesn't answer."""
+    ticker = ticker.upper()
+    try:
+        q = get_iol().quote(ticker)
+        if q.price:
+            prev = q.prices.previous_close or None
+            change = q.price / prev - 1 if prev else q.change.percent / 100
+            return Quote(price=q.price, change_pct=change, previous_close=prev, live=True)
+    except Exception:
+        log.warning("no live quote for %s; using stored closes", ticker)
+    bars = prices.daily_bars(ticker)
+    if not bars:
+        raise HTTPException(404, f"no price for {ticker}")
+    prev = bars[-2].close if len(bars) >= 2 else None
+    return Quote(
+        price=bars[-1].close, change_pct=bars[-1].close / prev - 1 if prev else 0.0,
+        previous_close=prev, live=False,
+    )
 
 
 @app.get("/tickers/{ticker}/bars", response_model=list[DailyBar])
@@ -300,13 +302,13 @@ def trade_plan(
     holdings = {h.ticker: h for h in get_holdings()}
     if portfolio_value is None or cash is None:
         try:
-            acct = account()
-            total, real_cash = acct.total_value, acct.cash_ars
+            summary = account()
+            total, real_cash = summary.total_value, summary.cash_ars
         except IOLUnavailable:
             # IOL's account endpoint is down now and then; the saved holdings are close enough.
             if settings.iol_live_trading:
                 raise HTTPException(503, "IOL no está respondiendo; probá en unos minutos")
-            total, real_cash = sum(h.value for h in holdings.values()) + latest_cash(), 0.0
+            total, real_cash = sum(h.value for h in holdings.values()) + acct.latest_cash_total(), 0.0
         portfolio_value = portfolio_value or total
         # Paper trades spend a simulated budget, not the account's real cash.
         cash = cash or (real_cash if settings.iol_live_trading else settings.paper_cash)

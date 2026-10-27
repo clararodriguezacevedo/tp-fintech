@@ -482,7 +482,7 @@
     "/portfolio": {
       "get": {
         "summary": "Portfolio",
-        "description": "The IOL positions, at most a few minutes old while the market is open.",
+        "description": "The IOL positions and cash, at most a few minutes old while the market is open.",
         "operationId": "portfolio",
         "parameters": [
           {
@@ -529,7 +529,7 @@
     "/portfolio/history": {
       "get": {
         "summary": "Portfolio History",
-        "description": "Account value per day from IOL (pesos and dollar MEP), plus today's live value.\nFalls back to the app's own snapshots if IOL's history is unavailable.",
+        "description": "The account's closing value per day from IOL (pesos and dollar MEP), up to yesterday.\nToday's value is /portfolio's total_ars, which uses the same definition: callers add it as\nthe last point, so the chart ends exactly at the number shown above it. Falls back to the\napp's own snapshots if IOL's history is unavailable.",
         "operationId": "portfolio_history",
         "parameters": [
           {
@@ -592,7 +592,7 @@
     "/account": {
       "get": {
         "summary": "Account",
-        "description": "Total account value and cash available to trade, from IOL.",
+        "description": "Total account value (as /portfolio defines it) and cash available to trade now.",
         "operationId": "account",
         "parameters": [
           {
@@ -682,6 +682,62 @@
                     "$ref": "#/components/schemas/Transfer"
                   },
                   "title": "Response Account Transfers"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tickers/{ticker}/quote": {
+      "get": {
+        "summary": "Ticker Quote",
+        "description": "Price now and its change versus the previous close, from IOL (the same basis as the\nportfolio's \"Hoy\"); the last two stored closes when IOL doesn't answer.",
+        "operationId": "ticker_quote",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
                 }
               }
             }
@@ -2432,6 +2488,21 @@
             "type": "number",
             "title": "Cash Usd"
           },
+          "mep": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mep"
+          },
+          "cash_usd_ars": {
+            "type": "number",
+            "title": "Cash Usd Ars"
+          },
           "total_ars": {
             "type": "number",
             "title": "Total Ars"
@@ -2443,9 +2514,12 @@
           "holdings",
           "cash_ars",
           "cash_usd",
+          "mep",
+          "cash_usd_ars",
           "total_ars"
         ],
-        "title": "PortfolioOut"
+        "title": "PortfolioOut",
+        "description": "The account now. total_ars = the holdings in pesos + cash_ars + cash_usd_ars, the same\ndefinition as every point of /portfolio/history (app.account)."
       },
       "PortfolioValuePoint": {
         "properties": {
@@ -2497,6 +2571,41 @@
           "p"
         ],
         "title": "ProbabilityPoint"
+      },
+      "Quote": {
+        "properties": {
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "change_pct": {
+            "type": "number",
+            "title": "Change Pct"
+          },
+          "previous_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Close"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          }
+        },
+        "type": "object",
+        "required": [
+          "price",
+          "change_pct",
+          "previous_close",
+          "live"
+        ],
+        "title": "Quote"
       },
       "RecommendationRow": {
         "properties": {
@@ -3051,6 +3160,16 @@
             },
             "type": "array",
             "title": "Days"
+          },
+          "anchored": {
+            "type": "boolean",
+            "title": "Anchored",
+            "default": false
+          },
+          "transfers": {
+            "type": "number",
+            "title": "Transfers",
+            "default": 0.0
           }
         },
         "type": "object",

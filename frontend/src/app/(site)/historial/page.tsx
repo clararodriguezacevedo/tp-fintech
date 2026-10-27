@@ -78,7 +78,13 @@ export default async function HistoryPage() {
         <ul className="divide-y divide-border border-y border-border">
           {[
             { label: "Siguiendo las recomendaciones", value: s.follow_value, note: "" },
-            { label: "Lo que hiciste", value: s.base_value, note: "tu cartera real de cada día" },
+            {
+              label: "Lo que hiciste",
+              value: s.base_value,
+              note: s.anchored
+                ? `tu cuenta real${s.transfers ? `, sin contar ${s.transfers < 0 ? "lo que retiraste" : "lo que depositaste"} (${money(Math.abs(s.transfers))})` : ""}`
+                : "tu cartera real de cada día",
+            },
             { label: "Quedarte quieto", value: s.hold_value, note: "la cartera del primer día, sin tocarla" },
             { label: "Comprar las líderes del Merval", value: s.merval_value, note: "las 20 en partes iguales" },
           ].map((x) => {

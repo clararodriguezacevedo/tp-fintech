@@ -1,6 +1,7 @@
 "use client";
 
-// A single-series line chart with a hover tooltip and optional dashed reference lines.
+// A single-series line chart with a hover tooltip, optional dashed reference lines, and optional
+// marks: a vertical bar at a point showing how much of that day's jump was money moved in or out.
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { dateTime, dayShort, money, moneyCompact, price } from "@/lib/format";
@@ -13,6 +14,21 @@ export type TimeFormat = keyof typeof TIME_FORMATS;
 
 export type Point = { t: string; v: number };
 export type RefLine = { value: number; label: string; tone: "buy" | "sell" };
+/** At point i, the value moved by `delta` that isn't a gain or loss (a deposit or withdrawal). */
+export type Mark = { i: number; delta: number; label: string };
+
+/** Row (0, 1, 2) for each mark's label so labels closer than LABEL_W apart don't overlap. */
+const LABEL_W = 120;
+function placeLabels(marks: Mark[], xOf: (m: Mark) => number) {
+  const lastX: number[] = [];
+  return [...marks].sort((a, b) => xOf(a) - xOf(b)).map((m) => {
+    const mx = xOf(m);
+    let row = lastX.findIndex((lx) => mx - lx >= LABEL_W);
+    if (row < 0) row = Math.min(lastX.length, 2);
+    lastX[row] = mx;
+    return { m, row };
+  });
+}
 
 function niceTicks(min: number, max: number, count = 4) {
   const span = max - min || Math.abs(max) || 1;
@@ -29,6 +45,7 @@ export function LineChart({
   timeFormat = "dayShort",
   height = 240,
   refLines = [],
+  marks = [],
   label,
 }: {
   points: Point[];
@@ -36,6 +53,7 @@ export function LineChart({
   timeFormat?: TimeFormat;
   height?: number;
   refLines?: RefLine[];
+  marks?: Mark[];
   label: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -53,7 +71,8 @@ export function LineChart({
   const innerH = height - 12 - 24;
 
   const { y, ticks, left } = useMemo(() => {
-    const values = [...points.map((p) => p.v), ...refLines.map((r) => r.value)];
+    const ends = marks.filter((m) => points[m.i]).map((m) => points[m.i].v - m.delta);
+    const values = [...points.map((p) => p.v), ...refLines.map((r) => r.value), ...ends];
     let lo = Math.min(...values);
     let hi = Math.max(...values);
     const margin = (hi - lo || Math.abs(hi) || 1) * 0.08;
@@ -62,7 +81,7 @@ export function LineChart({
     const ticks = niceTicks(lo, hi);
     const left = Math.ceil(Math.max(...ticks.map((t) => VALUE_FORMATS[valueFormat](t).length)) * 6.6) + 12;
     return { y: (v: number) => 12 + innerH - ((v - lo) / (hi - lo)) * innerH, ticks, left };
-  }, [points, refLines, innerH, valueFormat]);
+  }, [points, refLines, marks, innerH, valueFormat]);
 
   if (points.length < 2) return <p className="text-text-2">Todavía no hay datos suficientes para el gráfico.</p>;
 
@@ -102,6 +121,25 @@ export function LineChart({
           </g>
         ))}
         <path d={path} fill="none" stroke="var(--text)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {placeLabels(marks.filter((m) => points[m.i]), (m) => x(m.i)).map(({ m, row }) => {
+          const after = points[m.i].v;
+          const before = after - m.delta;
+          const top = Math.min(y(before), y(after));
+          const bottom = Math.max(y(before), y(after));
+          const mx = x(m.i);
+          const nearRight = mx > width - right - 120;
+          // Labels that would overlap a neighbour's move one line further from the bar.
+          const labelY = m.delta < 0 ? bottom + 14 + row * 13 : top - 6 - row * 13;
+          return (
+            <g key={`${m.i}-${m.label}`}>
+              <line x1={mx} x2={mx} y1={12} y2={12 + innerH} stroke="var(--border)" strokeDasharray="3 3" />
+              <rect x={mx - 3} y={top} width="6" height={Math.max(2, bottom - top)} rx="2" fill="var(--text-2)" />
+              <text x={nearRight ? mx - 8 : mx + 8} y={labelY} textAnchor={nearRight ? "end" : "start"} fontSize="11" fill="var(--text-2)" className="num">
+                {m.label}
+              </text>
+            </g>
+          );
+        })}
         {h && hover != null && (
           <g>
             <line x1={x(hover)} x2={x(hover)} y1={12} y2={12 + innerH} stroke="var(--border)" />

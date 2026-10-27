@@ -24,6 +24,12 @@ Two references, from the same starting value:
 All of them compound from the same starting value, so the difference between "without" and
 "following" is the effect of following the recommendations. Positions without a graded move
 count as flat. Returns include dividends on their ex-dates.
+
+Anchored to the real account: "without following" is then the account's actual value each day
+(IOL's daily close, and today the same value Mi cartera shows), minus the deposits and plus the
+withdrawals made since the start, so moving money in or out is not a gain or a loss. "Following"
+is that real value times the model's day-by-day difference between following and not. Without
+IOL's history, the modeled values above are shown instead.
 """
 
 import logging
@@ -34,7 +40,7 @@ from datetime import date, datetime, timedelta
 from pydantic import BaseModel
 
 from app import prices
-from app.analysis import risk
+from app.analysis import market_hours, risk
 from app.analysis.tagger import UNIVERSE
 from app.brokers.iol import trade_cost_rate
 from app.config import get_settings
@@ -74,6 +80,8 @@ class Simulation(BaseModel):
     buy_allocation: float  # average share of the portfolio per simulated buy
     commission: float
     days: list[SimDay]
+    anchored: bool = False  # True: base values are the real account, net of transfers
+    transfers: float = 0.0  # deposits (+) minus withdrawals since the start, taken out of base
 
 
 def _weights_at(when: datetime) -> tuple[float, dict[str, float]]:
@@ -227,7 +235,7 @@ def simulate() -> Simulation:
         ))
         prev_buys, prev_sells = buys, sells
 
-    return Simulation(
+    sim = Simulation(
         start_day=start_day, start_value=round(start_value, 2), base_value=round(base_value, 2),
         follow_value=round(follow_value, 2),
         hold_value=round(sum(hold.values()), 2) if hold else None,
@@ -235,3 +243,57 @@ def simulate() -> Simulation:
         buy_allocation=round(statistics.mean(allocations), 4) if allocations else BUY_ALLOCATION,
         commission=cost_rate, days=days,
     )
+    try:
+        return _anchor_to_account(sim)
+    except Exception:
+        log.exception("could not anchor the simulation to the real account")
+        return sim
+
+
+def _anchor_to_account(sim: Simulation) -> Simulation:
+    """Replace "without following" with the account's real value (net of transfers) and carry
+    the model's following/not-following ratio over it. See the module docstring."""
+    from app import account  # avoid an import cycle
+
+    if not sim.days or sim.start_day is None:
+        return sim
+    today = market_hours.now_art().date()
+    first = sim.start_day
+    closes = account.daily(first - timedelta(days=10), today - timedelta(days=1))
+    before = [d for d in closes if d < first]
+    if not before:
+        return sim
+    ref_day = max(before)
+    start = closes[ref_day]
+    moved = account.transfers(ref_day, today)
+    live = account.current().total
+
+    def real(day: date) -> float | None:
+        value = live if day >= today else closes.get(day)
+        if value is None:
+            return None
+        return value - sum(t.amount for t in moved if ref_day < t.day <= day)
+
+    scale = start / sim.start_value if sim.start_value else 1.0
+    base_prev = follow_prev = start
+    days = []
+    for d in sim.days:
+        r = real(d.day)
+        if r is None:
+            r = base_prev * (1 + d.base_return)
+        base_r = r / base_prev - 1
+        follow = follow_prev * (1 + base_r) * (1 + d.follow_return) / (1 + d.base_return)
+        days.append(d.model_copy(update={
+            "base_return": round(base_r, 6), "follow_return": round(follow / follow_prev - 1, 6),
+            "base_value": round(r, 2), "follow_value": round(follow, 2),
+            "hold_value": round(d.hold_value * scale, 2) if d.hold_value is not None else None,
+            "merval_value": round(d.merval_value * scale, 2) if d.merval_value is not None else None,
+        }))
+        base_prev, follow_prev = r, follow
+    last = days[-1]
+    return sim.model_copy(update={
+        "start_value": round(start, 2), "base_value": last.base_value, "follow_value": last.follow_value,
+        "hold_value": last.hold_value, "merval_value": last.merval_value, "days": days,
+        "transfers": round(sum(t.amount for t in moved if ref_day < t.day <= last.day), 2),
+        "anchored": True,
+    })

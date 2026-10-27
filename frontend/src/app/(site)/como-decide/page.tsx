@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Card, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type ModelInfo, type Recommendation } from "@/lib/api/client";
-import { score } from "@/lib/format";
+import { roundToTotal, score } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
 export const metadata = { title: "Cómo decide | El Parqué" };
@@ -34,6 +34,8 @@ function Example({ r, m }: { r: Recommendation; m: ModelInfo }) {
   ];
   const concentration = b.concentration ?? 0;
   const threshold = r.held ? m.sell_threshold_held : m.buy_threshold;
+  // Each part rounded so that the rounded parts add up to the rounded score shown below.
+  const parts = roundToTotal([...rows.map((x) => x.value * x.weight), concentration], 2, r.score);
   return (
     <Card>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -54,12 +56,12 @@ function Example({ r, m }: { r: Recommendation; m: ModelInfo }) {
             </tr>
           </thead>
           <tbody className="num divide-y divide-border border-y border-border">
-            {rows.map((x) => (
+            {rows.map((x, i) => (
               <tr key={x.label}>
                 <td className="py-2 font-sans">{x.label}</td>
                 <td className="py-2 text-right">{score(x.value)}</td>
                 <td className="py-2 text-right">{pctOf(x.weight)}</td>
-                <td className="py-2 text-right">{score(x.value * x.weight)}</td>
+                <td className="py-2 text-right">{score(parts[i])}</td>
               </tr>
             ))}
             {concentration !== 0 && (
@@ -67,7 +69,7 @@ function Example({ r, m }: { r: Recommendation; m: ModelInfo }) {
                 <td className="py-2 font-sans">Concentración de tu cartera</td>
                 <td className="py-2 text-right" />
                 <td className="py-2 text-right" />
-                <td className="py-2 text-right">{score(concentration)}</td>
+                <td className="py-2 text-right">{score(parts[rows.length])}</td>
               </tr>
             )}
           </tbody>

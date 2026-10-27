@@ -32,6 +32,7 @@ export type TrackRecordSummary = z.infer<typeof schemas.TrackRecordSummary>;
 export type CalibrationBucket = z.infer<typeof schemas.CalibrationBucket>;
 export type ModelInfo = z.infer<typeof schemas.ModelInfo>;
 export type Transfer = z.infer<typeof schemas.Transfer>;
+export type Quote = z.infer<typeof schemas.Quote>;
 
 export class ApiError extends Error {
   constructor(
@@ -86,6 +87,7 @@ export const api = {
   ) => request(z.array(schemas.RecommendationRow), "/recommendations", { query }),
   account: () => request(schemas.AccountSummary, "/account"),
   transfers: (days = 90) => request(z.array(schemas.Transfer), "/account/transfers", { query: { days } }),
+  quote: (ticker: string) => request(schemas.Quote, `/tickers/${ticker}/quote`),
   bars: (ticker: string, days = 90) =>
     request(z.array(schemas.DailyBar), `/tickers/${ticker}/bars`, { query: { days } }),
   tradePlan: (ticker: string, query: { portfolio_value?: number; cash?: number; entry?: number } = {}) =>

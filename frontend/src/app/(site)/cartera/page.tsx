@@ -4,7 +4,7 @@ import { LineChart } from "@/components/charts";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api, type Holding, type Recommendation } from "@/lib/api/client";
-import { dayShort, integer, money, pctPoints, price } from "@/lib/format";
+import { dayShort, integer, money, moneyCompact, pctPoints, price, roundToTotal } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
 export const metadata = { title: "Mi cartera | El Parqué" };
@@ -34,26 +34,40 @@ export default async function PortfolioPage() {
   const all = portfolio.data.holdings.slice().sort((a, b) => b.value - a.value);
   const ars = all.filter((h) => h.currency === "ARS");
   const dollars = all.filter((h) => h.currency === "USD");
-  // The portfolio is what is invested plus the cash: selling moves value to cash, it doesn't lose it.
-  const cash = portfolio.data.cash_ars;
-  const total = portfolio.data.total_ars;
-  const invested = total - cash;
+  // One definition everywhere (backend app.account): positions in pesos + peso cash + dollar cash
+  // at the MEP rate. The table's rows add up to it and the chart ends on it.
+  const p = portfolio.data;
+  const cash = p.cash_ars;
+  const total = p.total_ars;
+  const invested = ars.reduce((s, h) => s + h.value, 0);
   const gain = ars.reduce((s, h) => s + h.gain_amount, 0);
   const cost = invested - gain;
-  // Today: the whole account (positions and cash) against yesterday's close, minus money that came
-  // in or went out today. So a sale, even at a loss, only counts what was really lost.
+  const cashRows = [
+    { key: "ars", name: "Pesos disponibles", note: "Para invertir, en tu cuenta de IOL", value: cash },
+    ...(p.cash_usd >= 0.01 ? [{ key: "usd", name: "Dólares disponibles", note: `${usd(p.cash_usd)} al dólar MEP`, value: p.cash_usd_ars }] : []),
+  ];
+  const shares = roundToTotal([...ars.map((h) => (h.value / total) * 100), ...cashRows.map((c) => (c.value / total) * 100)], 0, 100);
+  const shareOf = new Map<string, number>([...ars.map((h, i) => [h.ticker, shares[i]] as const), ...cashRows.map((c, i) => [`$${c.key}`, shares[ars.length + i]] as const)]);
+  // The chart: IOL's close of each past day, then today's value, the same number as above.
+  const points = [...(history.ok ? history.data : []), { t: p.captured_at, value: total, value_usd_mep: p.mep ? total / p.mep : null }];
+  // Today: the whole account against yesterday's close, minus money that came in or went out
+  // today. A sale, even at a loss, only counts what was really lost.
   const moves = transfers.ok ? transfers.data : [];
   const todayKey = dayART(new Date());
   const inToday = moves.filter((m) => m.day === todayKey).reduce((s, m) => s + m.amount, 0);
-  const yesterday = history.ok && history.data.length >= 2 ? history.data.at(-2) : undefined;
+  const yesterday = history.ok ? history.data.at(-1) : undefined;
   const today = yesterday
     ? total - yesterday.value - inToday
     : ars.reduce((s, h) => s + h.value - h.value / (1 + h.day_change_pct / 100), 0);
+  // A bar on each day money came in or went out, from the value before it to after it.
+  const marks = moves.flatMap((m) => {
+    const i = points.findIndex((pt) => dayART(pt.t) === m.day);
+    return i < 0 ? [] : [{ i, delta: m.amount, label: `${m.amount >= 0 ? "Depósito +" : "Retiro −"}${moneyCompact(Math.abs(m.amount))}` }];
+  });
   const adviceBy = new Map<string, Recommendation>(advice.ok ? advice.data.map((r) => [r.ticker, r]) : []);
   const sells = all.filter((h) => adviceBy.get(h.ticker)?.action === "sell");
   const warning = concentration(ars, total);
-  const lastPoint = history.ok ? history.data.at(-1) : undefined;
-  const usdMep = lastPoint?.value_usd_mep != null && lastPoint.value ? (total / lastPoint.value) * lastPoint.value_usd_mep : null;
+  const usdMep = p.mep ? total / p.mep : null;
 
   return (
     <div className="space-y-10">
@@ -65,13 +79,13 @@ export default async function PortfolioPage() {
           <span><Delta value={gain}>{money(Math.abs(gain))} ({pctPoints(cost ? (gain / cost) * 100 : 0)})</Delta> en lo que tenés invertido</span>
         </p>
         <p className="num mt-1 text-text-2">
-          {money(invested)} invertidos y {money(cash)} disponibles para invertir
+          {money(invested)} invertidos y {money(total - invested)} disponibles
         </p>
         {usdMep != null && <p className="num mt-1 text-text-2">≈ {usd(usdMep)} al dólar MEP</p>}
         <p className="mt-2 text-sm text-text-3">
           En pesos argentinos, con precios de IOL de las {time(portfolio.data.captured_at)}.
           {dollars.length > 0 && ` Además tenés ${dollars.length} posición${dollars.length > 1 ? "es" : ""} en dólares, que no se suman al total.`}
-          {portfolio.data.cash_usd >= 0.01 && ` Y ${usd(portfolio.data.cash_usd)} en efectivo en dólares, aparte.`}
+
         </p>
       </section>
 
@@ -121,42 +135,58 @@ export default async function PortfolioPage() {
                       <Delta value={h.gain_amount}>{fmt(h, Math.abs(h.gain_amount))}</Delta>
                       <p className="num text-sm text-text-2">{pctPoints(h.gain_pct)}</p>
                     </td>
-                    <td className="num py-3 text-right">{h.currency === "ARS" && total ? `${Math.round((h.value / total) * 100)}%` : "-"}</td>
+                    <td className="num py-3 text-right">{h.currency === "ARS" && total ? `${shareOf.get(h.ticker)}%` : "-"}</td>
                     <td className="py-3 text-right">{r ? <ActionBadge action={r.action} /> : <span className="text-text-3">-</span>}</td>
                   </tr>
                 );
               })}
-              <tr>
-                <td className="py-3">
-                  <p className="font-semibold">Disponible para invertir</p>
-                  <p className="text-sm text-text-2">Pesos en tu cuenta de IOL</p>
-                </td>
+              {cashRows.map((c) => (
+                <tr key={c.key}>
+                  <td className="py-3">
+                    <p className="font-semibold">{c.name}</p>
+                    <p className="text-sm text-text-2">{c.note}</p>
+                  </td>
+                  <td className="py-3" />
+                  <td className="py-3" />
+                  <td className="num py-3 text-right">{money(c.value)}</td>
+                  <td className="py-3" />
+                  <td className="num py-3 text-right">{shareOf.get(`$${c.key}`)}%</td>
+                  <td className="py-3" />
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-border font-semibold">
+                <td className="py-3">Total</td>
                 <td className="py-3" />
                 <td className="py-3" />
-                <td className="num py-3 text-right">{money(cash)}</td>
-                <td className="py-3" />
-                <td className="num py-3 text-right">{total ? `${Math.round((cash / total) * 100)}%` : "-"}</td>
+                <td className="num py-3 text-right">{money(total)}</td>
+                <td className="py-3 text-right"><Delta value={gain}>{money(Math.abs(gain))}</Delta></td>
+                <td className="num py-3 text-right">100%</td>
                 <td className="py-3" />
               </tr>
-            </tbody>
+            </tfoot>
           </table>
         </div>
         {warning && <p className="mt-4 text-sm text-text-2">{warning}</p>}
       </section>
 
-      {history.ok && history.data.length >= 2 && (
+      {points.length >= 2 && (
         <section>
           <SectionTitle>Valor de tu cuenta en los últimos 3 meses</SectionTitle>
           <LineChart
             label="Valor total de la cuenta en pesos, día por día"
-            points={history.data.map((p) => ({ t: p.t, v: p.value }))}
+            points={points.map((pt) => ({ t: pt.t, v: pt.value }))}
+            marks={marks}
             valueFormat="moneyCompact"
             timeFormat="dayShort"
           />
           <p className="mt-3 text-sm text-text-3">
-            Incluye la plata disponible: cuando se vende algo, el valor pasa a efectivo y no se pierde.
-            {moves.length > 0 &&
-              ` Los saltos por plata que entró o salió no son ganancias ni pérdidas: ${moves
+            Es el mismo total de arriba, día por día: incluye la plata disponible, así que vender algo no baja la línea.
+            {marks.length > 0 && " Las barras marcan la plata que depositaste o retiraste: ese salto no es ganancia ni pérdida."}
+            {moves.length > marks.length &&
+              ` Antes del gráfico: ${moves
+                .filter((m) => !marks.some((k) => dayART(points[k.i].t) === m.day))
                 .map((m) => `${m.amount >= 0 ? "depositaste" : "retiraste"} ${money(Math.abs(m.amount))} el ${dayShort(m.day + "T12:00:00")}`)
                 .join(", ")}.`}
           </p>

@@ -13,20 +13,22 @@ export async function generateMetadata({ params }: { params: Promise<{ symbol: s
 
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const ticker = (await params).symbol.toUpperCase();
-  const [recs, bars, plan, health, holdings, calibration] = await Promise.all([
+  const [recs, bars, plan, health, holdings, calibration, quote] = await Promise.all([
     attempt(() => api.recommendations({ ticker })),
     attempt(() => api.bars(ticker, 90)),
     attempt(() => api.tradePlan(ticker)),
     attempt(api.health),
     attempt(api.portfolio),
     attempt(api.calibration),
+    attempt(() => api.quote(ticker)),
   ]);
 
   const rec = recs.ok ? recs.data[0] : undefined;
   const closes = bars.ok ? bars.data : [];
   const last = closes.at(-1);
-  const prev = closes.at(-2);
-  const dayChange = last && prev ? last.close / prev.close - 1 : null;
+  // Price and today's change from the same IOL quote the portfolio uses, so both pages agree.
+  const priceNow = quote.ok ? quote.data.price : plan.ok ? plan.data.entry : last?.close;
+  const dayChange = quote.ok ? quote.data.change_pct : null;
   const position = holdings.ok ? holdings.data.holdings.find((h) => h.ticker === ticker) : undefined;
   const mode = health.ok ? health.data.mode : "paper";
   const name = nameOf(ticker, position?.description);
@@ -38,7 +40,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
           <h1 className="text-4xl font-semibold tracking-tight">{ticker}</h1>
           <p className="mt-1 text-lg text-text-2">{name}</p>
           <p className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <span className="num text-2xl font-semibold">{money(plan.ok ? plan.data.entry : last?.close)}</span>
+            <span className="num text-2xl font-semibold">{money(priceNow)}</span>
             {dayChange != null && <span className="text-text-2"><Delta value={dayChange}>{pct(dayChange)} hoy</Delta></span>}
             {threeMonths(rec?.signal_breakdown) && <span className="text-sm text-text-3">{threeMonths(rec?.signal_breakdown)}</span>}
           </p>

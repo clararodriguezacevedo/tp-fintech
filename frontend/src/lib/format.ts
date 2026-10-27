@@ -9,6 +9,24 @@ export const moneyCompact = (x: number | null | undefined) => (x == null ? "-" :
 export const price = (x: number | null | undefined) => (x == null ? "-" : ars.format(x));
 export const integer = (x: number | null | undefined) => (x == null ? "-" : int.format(x));
 
+/** Round each value to `digits` decimals so the rounded values still add up to the rounded
+ * total (largest remainder): a column of percentages that sums to 100, a breakdown that sums to
+ * its score. */
+export function roundToTotal(values: number[], digits = 0, total = values.reduce((s, v) => s + v, 0)) {
+  const k = 10 ** digits;
+  const target = Math.round(total * k);
+  const floors = values.map((v) => Math.floor(v * k));
+  let left = target - floors.reduce((s, v) => s + v, 0);
+  const order = values.map((v, i) => [v * k - floors[i], i] as const).sort((a, b) => b[0] - a[0]);
+  const out = [...floors];
+  for (const [, i] of left >= 0 ? order : [...order].reverse()) {
+    if (left === 0) break;
+    out[i] += left > 0 ? 1 : -1;
+    left += left > 0 ? -1 : 1;
+  }
+  return out.map((v) => v / k);
+}
+
 /** 0.0523 -> "+5,2%" */
 export const pct = (x: number | null | undefined, digits = 1) =>
   x == null ? "-" : `${x > 0 ? "+" : ""}${(x * 100).toLocaleString("es-AR", { maximumFractionDigits: digits, minimumFractionDigits: digits })}%`;

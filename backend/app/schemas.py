@@ -50,7 +50,7 @@ class AccountSummary(BaseModel):
 
 class PortfolioValuePoint(BaseModel):
     t: datetime
-    value: float  # pesos
+    value: float  # pesos: IOL's closing value of the whole account that day
     value_usd_mep: float | None = None  # same value in dollars at that day's MEP rate
 
 
@@ -96,11 +96,23 @@ class HoldingOut(BaseModel):
 
 
 class PortfolioOut(BaseModel):
+    """The account now. total_ars = the holdings in pesos + cash_ars + cash_usd_ars, the same
+    definition as every point of /portfolio/history (app.account)."""
+
     captured_at: datetime  # when these prices were read from IOL
     holdings: list[HoldingOut]
-    cash_ars: float  # pesos in the account, ready to invest (part of the portfolio's value)
+    cash_ars: float  # pesos in the account, ready to invest
     cash_usd: float
-    total_ars: float  # holdings in pesos + cash_ars
+    mep: float | None  # pesos per dollar used for cash_usd_ars
+    cash_usd_ars: float  # cash_usd in pesos at the MEP rate
+    total_ars: float
+
+
+class Quote(BaseModel):
+    price: float
+    change_pct: float  # versus the previous close, as a fraction
+    previous_close: float | None
+    live: bool  # False when IOL didn't answer and this is the last stored close
 
 
 class HitStats(BaseModel):

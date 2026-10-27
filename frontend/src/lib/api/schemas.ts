@@ -112,6 +112,8 @@ const PortfolioOut = z
     holdings: z.array(HoldingOut),
     cash_ars: z.number(),
     cash_usd: z.number(),
+    mep: z.union([z.number(), z.null()]),
+    cash_usd_ars: z.number(),
     total_ars: z.number(),
   })
   .passthrough();
@@ -131,6 +133,14 @@ const AccountSummary = z
   .passthrough();
 const Transfer = z
   .object({ day: z.string(), amount: z.number() })
+  .passthrough();
+const Quote = z
+  .object({
+    price: z.number(),
+    change_pct: z.number(),
+    previous_close: z.union([z.number(), z.null()]),
+    live: z.boolean(),
+  })
   .passthrough();
 const DailyBar = z
   .object({
@@ -376,6 +386,8 @@ const Simulation = z
     buy_allocation: z.number(),
     commission: z.number(),
     days: z.array(SimDay),
+    anchored: z.boolean().optional().default(false),
+    transfers: z.number().optional().default(0),
   })
   .passthrough();
 
@@ -396,6 +408,7 @@ export const schemas = {
   PortfolioValuePoint,
   AccountSummary,
   Transfer,
+  Quote,
   DailyBar,
   portfolio_value,
   TradePlan,

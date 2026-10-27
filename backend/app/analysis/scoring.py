@@ -50,7 +50,7 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel
 
-from app import prices
+from app import account, prices
 from app.analysis import market_hours, risk
 from app.analysis.tagger import UNIVERSE
 from app.sources import corporate_events, macro
@@ -58,7 +58,7 @@ from app.brokers.iol import get_iol
 from app.db import get_db, rows_as
 from app.models.db import Action, Evidence, MarketRow, NewsRow, SignalBreakdown, TickerImpactRow
 from app.models.iol import DailyBar
-from app.portfolio import BOND_TYPES, EQUITY_TYPES, Holding, get_holdings, latest_cash
+from app.portfolio import BOND_TYPES, EQUITY_TYPES, Holding, get_holdings
 
 log = logging.getLogger(__name__)
 
@@ -542,7 +542,7 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     # portfolio, cash included (cash is in neither group, and selling a position lowers it).
     peso_holdings = [h for h in holdings.values() if h.currency == "ARS"]
     try:
-        cash = latest_cash()
+        cash = account.latest_cash_total()
     except Exception:
         log.warning("no cash for the concentration check")
         cash = 0.0
