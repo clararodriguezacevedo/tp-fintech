@@ -4,7 +4,7 @@ import { LineChart } from "@/components/charts";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api, type Holding, type Recommendation } from "@/lib/api/client";
-import { dayShort, integer, money, moneyCompact, pctPoints, price, roundToTotal } from "@/lib/format";
+import { dayShort, integer, money, pctPoints, price, roundToTotal } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
 export const metadata = { title: "Mi cartera | El Parqué" };
@@ -62,7 +62,7 @@ export default async function PortfolioPage() {
   // A bar on each day money came in or went out, from the value before it to after it.
   const marks = moves.flatMap((m) => {
     const i = points.findIndex((pt) => dayART(pt.t) === m.day);
-    return i < 0 ? [] : [{ i, delta: m.amount, label: `${m.amount >= 0 ? "Depósito +" : "Retiro −"}${moneyCompact(Math.abs(m.amount))}` }];
+    return i < 0 ? [] : [{ i, delta: m.amount, label: `${m.amount >= 0 ? "Depositaste" : "Retiraste"} ${money(Math.abs(m.amount))}` }];
   });
   const adviceBy = new Map<string, Recommendation>(advice.ok ? advice.data.map((r) => [r.ticker, r]) : []);
   const sells = all.filter((h) => adviceBy.get(h.ticker)?.action === "sell");
@@ -183,13 +183,26 @@ export default async function PortfolioPage() {
           />
           <p className="mt-3 text-sm text-text-3">
             Es el mismo total de arriba, día por día: incluye la plata disponible, así que vender algo no baja la línea.
-            {marks.length > 0 && " Las barras marcan la plata que depositaste o retiraste: ese salto no es ganancia ni pérdida."}
-            {moves.length > marks.length &&
-              ` Antes del gráfico: ${moves
-                .filter((m) => !marks.some((k) => dayART(points[k.i].t) === m.day))
-                .map((m) => `${m.amount >= 0 ? "depositaste" : "retiraste"} ${money(Math.abs(m.amount))} el ${dayShort(m.day + "T12:00:00")}`)
-                .join(", ")}.`}
           </p>
+          {moves.length > 0 && (
+            <div className="mt-6 max-w-sm">
+              <p className="mb-2 flex items-center gap-2 text-sm font-medium">
+                <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4" fill="var(--bg)" stroke="var(--text-2)" strokeWidth="2" /></svg>
+                Depósitos y retiros
+              </p>
+              <ul className="divide-y divide-border border-y border-border text-sm">
+                {moves.map((m) => (
+                  <li key={`${m.day}-${m.amount}`} className="flex justify-between gap-4 py-1.5">
+                    <span className="text-text-2">{dayShort(m.day + "T12:00:00")}</span>
+                    <span className="num">{m.amount >= 0 ? "+" : "−"}{money(Math.abs(m.amount))}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-sm text-text-3">
+                Marcados en el gráfico con un punto y una barra del tamaño del salto: es plata que entró o salió, no una ganancia ni una pérdida.
+              </p>
+            </div>
+          )}
         </section>
       )}
     </div>

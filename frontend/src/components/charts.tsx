@@ -1,7 +1,8 @@
 "use client";
 
 // A single-series line chart with a hover tooltip, optional dashed reference lines, and optional
-// marks: a vertical bar at a point showing how much of that day's jump was money moved in or out.
+// marks: a thin bar at a point showing how much of that day's jump was money moved in or out.
+// Marks carry no text on the plot; their label shows in the tooltip (and callers list them below).
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { dateTime, dayShort, money, moneyCompact, price } from "@/lib/format";
@@ -17,18 +18,8 @@ export type RefLine = { value: number; label: string; tone: "buy" | "sell" };
 /** At point i, the value moved by `delta` that isn't a gain or loss (a deposit or withdrawal). */
 export type Mark = { i: number; delta: number; label: string };
 
-/** Row (0, 1, 2) for each mark's label so labels closer than LABEL_W apart don't overlap. */
-const LABEL_W = 120;
-function placeLabels(marks: Mark[], xOf: (m: Mark) => number) {
-  const lastX: number[] = [];
-  return [...marks].sort((a, b) => xOf(a) - xOf(b)).map((m) => {
-    const mx = xOf(m);
-    let row = lastX.findIndex((lx) => mx - lx >= LABEL_W);
-    if (row < 0) row = Math.min(lastX.length, 2);
-    lastX[row] = mx;
-    return { m, row };
-  });
-}
+const MONTH = new Intl.DateTimeFormat("es-AR", { month: "short", timeZone: "America/Argentina/Buenos_Aires" });
+const monthKey = (t: string) => new Date(t).toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).slice(0, 7);
 
 function niceTicks(min: number, max: number, count = 4) {
   const span = max - min || Math.abs(max) || 1;
@@ -67,6 +58,8 @@ export function LineChart({
   }, []);
 
   const fmt = (v: number) => VALUE_FORMATS[valueFormat](v);
+  // The tooltip shows the exact value, so it matches the same number anywhere else on the page.
+  const fmtExact = (v: number) => (valueFormat === "moneyCompact" ? money(v) : fmt(v));
   const fmtTime = (t: string) => TIME_FORMATS[timeFormat](t);
   const innerH = height - 12 - 24;
 
@@ -89,7 +82,16 @@ export function LineChart({
   const innerW = width - left - right;
   const x = (i: number) => left + (i / (points.length - 1)) * innerW;
   const path = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  const floor = 12 + innerH;
+  const area = `${path}L${x(points.length - 1).toFixed(1)},${floor}L${x(0).toFixed(1)},${floor}Z`;
   const h = hover != null ? points[hover] : null;
+  const hMark = hover != null ? marks.find((m) => m.i === hover) : undefined;
+  const shown = marks.filter((m) => points[m.i]);
+  // Time axis: the first day of each month when the span is long, else the two ends.
+  const monthStarts = points.flatMap((p, i) => (i > 0 && monthKey(p.t) !== monthKey(points[i - 1].t) ? [i] : []));
+  const xTicks = points.length > 40 && monthStarts.length >= 2
+    ? monthStarts.map((i) => ({ i, text: MONTH.format(new Date(points[i].t)).replace(".", ""), anchor: "middle" as const }))
+    : [...new Set([0, points.length - 1])].map((i) => ({ i, text: fmtTime(points[i].t), anchor: i === 0 ? ("start" as const) : ("end" as const) }));
 
   return (
     <div ref={box} className="relative w-full min-w-0 overflow-hidden">
@@ -101,8 +103,12 @@ export function LineChart({
         className="touch-none select-none"
         onPointerLeave={() => setHover(null)}
         onPointerMove={(e) => {
-          const px = e.clientX - e.currentTarget.getBoundingClientRect().left - left;
-          setHover(Math.max(0, Math.min(points.length - 1, Math.round((px / innerW) * (points.length - 1)))));
+          const px = e.clientX - e.currentTarget.getBoundingClientRect().left;
+          let i = Math.max(0, Math.min(points.length - 1, Math.round(((px - left) / innerW) * (points.length - 1))));
+          // A mark within 8px is easier to hit than the exact day.
+          const near = shown.find((m) => Math.abs(x(m.i) - px) <= 8);
+          if (near) i = near.i;
+          setHover(i);
         }}
       >
         {ticks.map((t) => (
@@ -111,8 +117,8 @@ export function LineChart({
             <text x={left - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize="11" fill="var(--text-3)" className="num">{fmt(t)}</text>
           </g>
         ))}
-        {[...new Set([0, points.length - 1])].map((i) => (
-          <text key={i} x={x(i)} y={height - 6} textAnchor={i === 0 ? "start" : "end"} fontSize="11" fill="var(--text-3)">{fmtTime(points[i].t)}</text>
+        {xTicks.map((t) => (
+          <text key={t.i} x={x(t.i)} y={height - 6} textAnchor={t.anchor} fontSize="11" fill="var(--text-3)">{t.text}</text>
         ))}
         {refLines.map((r) => (
           <g key={r.label}>
@@ -120,39 +126,40 @@ export function LineChart({
             <text x={width - right} y={y(r.value) - 6} textAnchor="end" fontSize="11" fill="var(--text-2)">{r.label}</text>
           </g>
         ))}
-        <path d={path} fill="none" stroke="var(--text)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        {placeLabels(marks.filter((m) => points[m.i]), (m) => x(m.i)).map(({ m, row }) => {
-          const after = points[m.i].v;
-          const before = after - m.delta;
-          const top = Math.min(y(before), y(after));
-          const bottom = Math.max(y(before), y(after));
-          const mx = x(m.i);
-          const nearRight = mx > width - right - 120;
-          // Labels that would overlap a neighbour's move one line further from the bar.
-          const labelY = m.delta < 0 ? bottom + 14 + row * 13 : top - 6 - row * 13;
+        <path d={area} fill="var(--text)" fillOpacity="0.05" stroke="none" />
+        {h && hover != null && <line x1={x(hover)} x2={x(hover)} y1={12} y2={floor} stroke="var(--border)" />}
+        {shown.map((m) => {
+          // The part of the day's jump that was money in or out: from the value before to after.
+          const y1 = y(points[m.i].v - m.delta);
+          const y2 = y(points[m.i].v);
           return (
-            <g key={`${m.i}-${m.label}`}>
-              <line x1={mx} x2={mx} y1={12} y2={12 + innerH} stroke="var(--border)" strokeDasharray="3 3" />
-              <rect x={mx - 3} y={top} width="6" height={Math.max(2, bottom - top)} rx="2" fill="var(--text-2)" />
-              <text x={nearRight ? mx - 8 : mx + 8} y={labelY} textAnchor={nearRight ? "end" : "start"} fontSize="11" fill="var(--text-2)" className="num">
-                {m.label}
-              </text>
-            </g>
+            <rect
+              key={`${m.i}-${m.label}`}
+              x={x(m.i) - 2}
+              y={Math.min(y1, y2)}
+              width="4"
+              height={Math.max(3, Math.abs(y2 - y1))}
+              rx="2"
+              fill="var(--text-3)"
+              fillOpacity={hover === m.i ? 1 : 0.7}
+            />
           );
         })}
+        <path d={path} fill="none" stroke="var(--text)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {shown.map((m) => (
+          <circle key={`dot-${m.i}`} cx={x(m.i)} cy={y(points[m.i].v)} r="4" fill="var(--bg)" stroke="var(--text-2)" strokeWidth="2" />
+        ))}
         {h && hover != null && (
-          <g>
-            <line x1={x(hover)} x2={x(hover)} y1={12} y2={12 + innerH} stroke="var(--border)" />
-            <circle cx={x(hover)} cy={y(h.v)} r="4.5" fill="var(--text)" stroke="var(--bg)" strokeWidth="2" />
-          </g>
+          <circle cx={x(hover)} cy={y(h.v)} r="4.5" fill="var(--text)" stroke="var(--bg)" strokeWidth="2" />
         )}
       </svg>
       {h && hover != null && (
         <div
           className="pointer-events-none absolute top-0 rounded-md border border-border bg-bg px-2 py-1 text-xs shadow-sm"
-          style={{ left: Math.min(Math.max(x(hover) - 60, 0), width - 140) }}
+          style={{ left: Math.min(Math.max(x(hover) - 70, 0), width - (hMark ? 200 : 150)) }}
         >
-          <span className="text-text-3">{fmtTime(h.t)}</span> <span className="num font-medium">{fmt(h.v)}</span>
+          <p><span className="num font-medium">{fmtExact(h.v)}</span> <span className="text-text-3">{fmtTime(h.t)}</span></p>
+          {hMark && <p className="num text-text-2">{hMark.label}</p>}
         </div>
       )}
     </div>
