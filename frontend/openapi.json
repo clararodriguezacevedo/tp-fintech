@@ -2239,6 +2239,10 @@
             "type": "number",
             "title": "Sector Weight"
           },
+          "sector_cap": {
+            "type": "number",
+            "title": "Sector Cap"
+          },
           "sectors": {
             "additionalProperties": {
               "items": {
@@ -2297,6 +2301,7 @@
           "sell_threshold_held",
           "broad_weight",
           "sector_weight",
+          "sector_cap",
           "sectors",
           "news_half_life_hours",
           "news_max_age_hours",

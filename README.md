@@ -196,7 +196,8 @@ subieron hasta 6%") se ignoran porque solo cuentan lo que ya pasó. Una noticia 
 ticker, para todo el Merval o para otra empresa del sector cuenta una sola vez, con el peso de la
 etiqueta más directa. Las noticias generales del Merval o de los bonos cuentan 50%; las de otra
 empresa del mismo sector (bancos, petróleo y gas, electricidad, materiales, tecnología) cuentan
-30%. Los mercados de predicción que resuelven en más de 6 meses pesan menos.
+30%, y todas juntas suman como máximo 0,25. Los adelantos de algo cuyo resultado no se conoce
+("se vienen los balances", "qué mirar esta semana") tampoco cuentan. Los mercados de predicción que resuelven en más de 6 meses pesan menos.
 
 **Concentración**: si ya tenés más de 60% de la cartera en el mismo riesgo (riesgo argentino:
 acciones locales, bonos y VIST; o activos del exterior), las compras de ese grupo pierden 2 puntos

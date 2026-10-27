@@ -145,6 +145,7 @@ class ModelInfo(BaseModel):
     sell_threshold_held: float
     broad_weight: float
     sector_weight: float
+    sector_cap: float  # all sector news together, either way
     sectors: dict[str, list[str]]
     news_half_life_hours: float
     news_max_age_hours: float

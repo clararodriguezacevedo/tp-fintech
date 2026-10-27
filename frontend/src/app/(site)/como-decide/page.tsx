@@ -149,10 +149,10 @@ export default async function HowItDecides() {
       </Block>
 
       <Block title="Lo que no cuenta, o cuenta menos">
-        <p>Las notas de cierre (&quot;así cerró el mercado&quot;, &quot;las acciones subieron hasta 6%&quot;) no cuentan: solo describen lo que ya pasó.</p>
+        <p>Las notas de cierre (&quot;así cerró el mercado&quot;, &quot;las acciones subieron hasta 6%&quot;) no cuentan: solo describen lo que ya pasó. Los adelantos (&quot;se vienen los balances de las tecnológicas&quot;, &quot;qué mirar esta semana&quot;) tampoco: anuncian algo que todavía no se sabe para qué lado sale.</p>
         <p>La misma historia publicada por varios medios cuenta una vez. Una noticia etiquetada para una acción y también para todo el Merval cuenta una vez.</p>
         <p>
-          Una noticia general del Merval o de los bonos cuenta {pctOf(m.broad_weight)} para cada acción o bono. Una noticia sobre otra empresa del mismo sector (por ejemplo, Galicia para los demás bancos) cuenta {pctOf(m.sector_weight)}.
+          Una noticia general del Merval o de los bonos cuenta {pctOf(m.broad_weight)} para cada acción o bono. Una noticia sobre otra empresa del mismo sector (por ejemplo, Galicia para los demás bancos) cuenta {pctOf(m.sector_weight)}, y todas las del sector juntas suman como máximo {num(m.sector_cap)}, para que muchas noticias chicas de otras empresas no alcancen para recomendar comprar.
         </p>
         <p>Los mercados de predicción que se resuelven en más de 6 meses pesan menos: dicen poco sobre mañana.</p>
         <p>Los dividendos y los cupones no cuentan como señal: el día que se pagan el precio baja, pero no es una pérdida. Se avisan en cada recomendación y se descuentan al medir los resultados.</p>

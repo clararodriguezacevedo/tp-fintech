@@ -33,6 +33,9 @@ celebrity and weather items fall here.
 Also return an empty ticker list for market wrap-ups that only report how prices already moved
 ("así cerró el mercado", "las acciones subieron hasta 6%", "stocks fell on Friday"): they carry
 no new information, the move is already in the price.
+The same for previews of an event whose outcome is unknown ("Big Tech's earnings are on deck",
+"what to watch this week", "se esperan los balances"): an upcoming report is not good or bad
+news until its numbers are out. Tag the result once it is reported, not the wait for it.
 
 Write the summary in Spanish, one or two plain sentences an average investor understands."""
 

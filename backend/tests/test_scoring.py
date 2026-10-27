@@ -97,17 +97,38 @@ def test_news_tagged_for_ticker_and_merval_counts_once():
 
 
 def test_sector_news_spreads_at_reduced_weight():
-    signals = {"GGAL": TickerSignals(evidence=[ev("a", 1.0)]), "BMA": TickerSignals(evidence=[ev("b", 1.0)])}
+    signals = {"GGAL": TickerSignals(evidence=[ev("a", 0.5)]), "BMA": TickerSignals(evidence=[ev("b", 1.0)])}
     peers = scoring.sector_evidence("BMA", signals)
     assert [(e.item_id, e.via) for e in peers] == [("a", "GGAL")]
     rec = _combine(inputs(ticker="BMA", own=signals["BMA"].evidence, sector=peers), gap=0.0)
-    assert rec.breakdown.news == pytest.approx(1.0 + scoring.SECTOR_WEIGHT)
+    assert rec.breakdown.news == pytest.approx(1.0 + 0.5 * scoring.SECTOR_WEIGHT)
 
 
 def test_sector_news_already_tagged_on_the_ticker_counts_once():
     signals = {"GGAL": TickerSignals(evidence=[ev("a", 1.0)])}
     rec = _combine(inputs(ticker="BMA", own=[ev("a", 1.0)], sector=scoring.sector_evidence("BMA", signals)), gap=0.0)
     assert len(rec.evidence) == 1 and rec.evidence[0].via is None
+
+
+def test_many_small_sector_items_are_capped():
+    signals = {"NVDA": TickerSignals(evidence=[ev(f"n{k}", 0.6) for k in range(6)])}
+    rec = _combine(inputs(ticker="MSFT", sector=scoring.sector_evidence("MSFT", signals)), gap=0.0)
+    assert rec.breakdown.news == pytest.approx(scoring.SECTOR_CAP, abs=1e-3)
+    one = _combine(inputs(ticker="MSFT", sector=[ev("x", 0.5).model_copy(update={"via": "NVDA"})]), gap=0.0)
+    assert one.breakdown.news == pytest.approx(0.5 * scoring.SECTOR_WEIGHT)
+
+
+@pytest.mark.parametrize("title", [
+    "Big Tech's earnings are on deck. There's more for investors to watch than AI spending",
+    "Stocks to watch this week: Microsoft, Alphabet and Amazon report",
+    "Qué mirar esta semana en el mercado",
+])
+def test_previews_are_detected(title):
+    assert scoring.is_preview(title)
+
+
+def test_results_are_not_previews():
+    assert not scoring.is_preview("Microsoft beat earnings estimates and raised its cloud forecast")
 
 
 def test_unrelated_sectors_dont_spread():

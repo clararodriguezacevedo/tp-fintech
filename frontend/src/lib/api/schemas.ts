@@ -338,6 +338,7 @@ const ModelInfo = z
     sell_threshold_held: z.number(),
     broad_weight: z.number(),
     sector_weight: z.number(),
+    sector_cap: z.number(),
     sectors: z.record(z.array(z.string())),
     news_half_life_hours: z.number(),
     news_max_age_hours: z.number(),

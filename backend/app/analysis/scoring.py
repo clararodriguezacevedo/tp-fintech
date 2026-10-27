@@ -28,7 +28,9 @@ Per ticker:
           + 0.1 * macro + concentration
 
 Market wrap-ups ("así cerró el mercado", "las acciones subieron hasta 6%") are ignored: they only
-report moves that already happened. A news item tagged both for a ticker and for MERVAL/BONOS
+report moves that already happened. Previews of what is coming ("Big Tech's earnings are on
+deck", "qué mirar esta semana") are ignored too: they announce an event, not which way it goes.
+News spread from sector peers adds up to at most SECTOR_CAP, however many items there are. A news item tagged both for a ticker and for MERVAL/BONOS
 counts once. Prediction markets resolving more than 6 months out weigh less.
 
 Broad "MERVAL" tags apply at half weight to every stock, "BONOS" tags to every bond.
@@ -70,6 +72,7 @@ BROAD_WEIGHT = 0.5
 # (49% right on 3,936 ticker-days, correlation +0.003).
 W_EVIDENCE, W_TREND, W_CONTEXT, W_GAP, W_MACRO = 0.65, 0.05, 0.1, 0.1, 0.1
 SECTOR_WEIGHT = 0.3  # news about a sector peer, versus news about the ticker itself
+SECTOR_CAP = 0.25  # all of a ticker's sector news together, so many small items don't add up to a buy
 # Sectors whose shares tend to move together, each within one risk group.
 SECTORS = {
     "bancos": ["GGAL", "BMA", "SUPV", "BBAR", "VALO", "BYMA"],
@@ -138,8 +141,21 @@ def is_market_recap(title: str) -> bool:
     return bool(_RECAP.search(title))
 
 
+# Previews announce an event (earnings, a data release) without saying which way it will go.
+_PREVIEW = re.compile(
+    r"earnings (are |is )?on (the )?deck|(what|things|stocks) to watch|earnings preview|ahead of (its |their |the )?earnings"
+    r"|week ahead|(qu[eé]|lo que hay que) mirar|antes de (sus |los )?(balances|resultados)|semana de balances"
+    r"|agenda (de la semana|financiera|del mercado)",
+    re.IGNORECASE,
+)
+
+
+def is_preview(title: str) -> bool:
+    return bool(_PREVIEW.search(title))
+
+
 def _news_evidence(imp: TickerImpactRow, item: NewsRow, now: datetime) -> Evidence | None:
-    if is_market_recap(item.title):
+    if is_market_recap(item.title) or is_preview(item.title):
         return None
     published = item.published_at or item.created_at
     age_h = (now - published).total_seconds() / 3600
@@ -441,10 +457,11 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
         for e in i.broad if e.item_id not in seen
     ]
     seen |= {e.item_id for e in broad}
-    sector = [
-        e.model_copy(update={"contribution": round(e.contribution * SECTOR_WEIGHT, 4)})
-        for e in i.sector if e.item_id not in seen
-    ]
+    sector = [e for e in i.sector if e.item_id not in seen]
+    # Each peer item at SECTOR_WEIGHT, and all of them together at most SECTOR_CAP either way.
+    total = abs(sum(e.contribution for e in sector)) * SECTOR_WEIGHT
+    scale = SECTOR_WEIGHT * (min(1.0, SECTOR_CAP / total) if total > 0 else 1.0)
+    sector = [e.model_copy(update={"contribution": round(e.contribution * scale, 4)}) for e in sector]
     evidence = i.own + broad + sector
     news = sum(e.contribution for e in evidence if e.kind == "news")
     markets = sum(e.contribution for e in evidence if e.kind == "market")
