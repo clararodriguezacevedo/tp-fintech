@@ -187,9 +187,10 @@ const TradeRow = z
     ticker: z.string(),
     market: z.string(),
     quantity: z.number().int(),
+    side: z.enum(["buy", "sell"]).optional().default("buy"),
     entry_price: z.number(),
-    stop_loss: z.number(),
-    take_profit: z.number(),
+    stop_loss: z.union([z.number(), z.null()]).optional(),
+    take_profit: z.union([z.number(), z.null()]).optional(),
     status: z.enum([
       "queued",
       "sent",
@@ -201,6 +202,7 @@ const TradeRow = z
       "failed",
     ]),
     live: z.boolean(),
+    cost_basis: z.union([z.number(), z.null()]).optional(),
     fill_price: z.union([z.number(), z.null()]).optional(),
     filled_at: z.union([z.string(), z.null()]).optional(),
     exit_price: z.union([z.number(), z.null()]).optional(),
@@ -229,6 +231,24 @@ const status = z
     z.null(),
   ])
   .optional();
+const SellPlan = z
+  .object({
+    ticker: z.string(),
+    held: z.number().int(),
+    price: z.number(),
+    value_per_unit: z.number(),
+    cost_per_unit: z.number(),
+    fees: z.union([z.number(), z.null()]).optional(),
+    market_open: z.boolean(),
+  })
+  .passthrough();
+const SellRequest = z
+  .object({
+    ticker: z.string().min(1).max(12),
+    quantity: z.number().int().gt(0),
+    recommendation_id: z.union([z.string(), z.null()]).optional(),
+  })
+  .passthrough();
 const action = z.union([z.enum(["buy", "sell", "keep"]), z.null()]).optional();
 const held = z.union([z.boolean(), z.null()]).optional();
 const SignalBreakdown = z
@@ -415,6 +435,8 @@ export const schemas = {
   BuyRequest,
   TradeRow,
   status,
+  SellPlan,
+  SellRequest,
   action,
   held,
   SignalBreakdown,

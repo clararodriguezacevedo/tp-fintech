@@ -45,6 +45,11 @@ export async function attempt<T>(fn: () => Promise<T>): Promise<{ ok: true; data
   }
 }
 
+/** A gray placeholder block shown while a page's data loads. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div aria-hidden className={`animate-pulse rounded-md bg-surface ${className}`} />;
+}
+
 /** A colored ▲/▼ next to a signed value, e.g. a gain. */
 export function Delta({ value, children }: { value: number; children: ReactNode }) {
   return (

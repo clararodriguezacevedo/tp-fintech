@@ -72,17 +72,16 @@ body {
 }
 
 /* Recommendations strip: scrolls slowly, pauses on hover, stays still with reduced motion. */
-@keyframes tape {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
+/* The tape's movement is a Web Animation (components/tape-track.tsx); this keeps it on its own
+   compositor layer. */
 .tape-track {
   width: max-content;
-  animation: tape 70s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
 }
-.tape:hover .tape-track {
-  animation-play-state: paused;
+.tape-mask {
+  mask-image: linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent);
 }
 @media (prefers-reduced-motion: reduce) {
-  .tape-track { animation: none; }
+  .tape-track { transform: none; }
 }

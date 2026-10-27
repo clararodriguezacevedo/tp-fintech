@@ -136,11 +136,13 @@ class TradeRow(Row):
     ticker: str
     market: str
     quantity: int
+    side: Literal["buy", "sell"] = "buy"
     entry_price: float
-    stop_loss: float
-    take_profit: float
+    stop_loss: float | None = None  # buys only
+    take_profit: float | None = None  # buys only
     status: TradeStatus
     live: bool
+    cost_basis: float | None = None  # sells: what the units sold had cost
     fill_price: float | None = None
     filled_at: datetime | None = None
     exit_price: float | None = None

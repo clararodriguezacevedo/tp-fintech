@@ -156,6 +156,16 @@ def _run_all(steps: list[tuple[str, Callable[[], object]]]) -> list[str]:
     return failed
 
 
+def refresh_simulation() -> None:
+    """Recompute Resultados' simulation once the day is graded, so the page loads from cache."""
+    from app.analysis import simulation  # heavy imports, only for this job
+
+    sim = simulation.simulate()
+    get_db().table("api_cache").upsert({
+        "key": "simulation", "value": sim.model_dump(mode="json"), "created_at": _now(),
+    }).execute()
+
+
 def _alert_failures(job: str, failed: list[str]) -> list[str]:
     if failed:
         alerts.job_failed(job, failed)
@@ -178,4 +188,5 @@ def after_close() -> list[str]:
         ("refresh_events", refresh_events),
         ("evaluate_pending", track_record.evaluate_pending),
         ("score_daily", score_daily),
+        ("refresh_simulation", refresh_simulation),
     ]))

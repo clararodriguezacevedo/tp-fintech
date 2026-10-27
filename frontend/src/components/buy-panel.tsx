@@ -68,7 +68,7 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
             ? `${t.quantity} ${t.ticker} se compran cuando abra el mercado, a las 11:00.`
             : `Compraste ${t.quantity} ${t.ticker} a ${money(t.fill_price)}.`}
         </p>
-        <Link href="/operaciones" className="mt-4 inline-block text-sm underline">Ver mis compras</Link>
+        <Link href="/operaciones" className="mt-4 inline-block text-sm underline">Ver mis operaciones</Link>
       </div>
     );
   }

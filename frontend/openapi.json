@@ -1071,6 +1071,119 @@
         }
       }
     },
+    "/tickers/{ticker}/sell-plan": {
+      "get": {
+        "summary": "Sell Plan",
+        "description": "What selling a held position would bring, for the sell panel.",
+        "operationId": "sell_plan",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellPlan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trades/sell": {
+      "post": {
+        "summary": "Sell",
+        "description": "Sell a held position (paper by default: the IOL account doesn't change).",
+        "operationId": "sell",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SellRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeRow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/trades/{trade_id}/close": {
       "post": {
         "summary": "Close Trade",
@@ -1493,7 +1606,7 @@
     "/track-record/simulation": {
       "get": {
         "summary": "Track Record Simulation",
-        "description": "Portfolio value had every daily recommendation been followed, versus not following,\nkeeping the starting portfolio untouched, and buying the Merval leaders.",
+        "description": "Portfolio value had every daily recommendation been followed, versus not following,\nkeeping the starting portfolio untouched, and buying the Merval leaders. Takes ~9 s to\ncompute, so a result up to SIMULATION_TTL old is served from api_cache.",
         "operationId": "track_record_simulation",
         "parameters": [
           {
@@ -2797,6 +2910,88 @@
         ],
         "title": "RecommendationRow"
       },
+      "SellPlan": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "held": {
+            "type": "integer",
+            "title": "Held"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "value_per_unit": {
+            "type": "number",
+            "title": "Value Per Unit"
+          },
+          "cost_per_unit": {
+            "type": "number",
+            "title": "Cost Per Unit"
+          },
+          "fees": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fees"
+          },
+          "market_open": {
+            "type": "boolean",
+            "title": "Market Open"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "held",
+          "price",
+          "value_per_unit",
+          "cost_per_unit",
+          "market_open"
+        ],
+        "title": "SellPlan",
+        "description": "What selling a position would bring, before confirming."
+      },
+      "SellRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Ticker"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "recommendation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "quantity"
+        ],
+        "title": "SellRequest"
+      },
       "SignalBreakdown": {
         "properties": {
           "news": {
@@ -3416,16 +3611,39 @@
             "type": "integer",
             "title": "Quantity"
           },
+          "side": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side",
+            "default": "buy"
+          },
           "entry_price": {
             "type": "number",
             "title": "Entry Price"
           },
           "stop_loss": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Stop Loss"
           },
           "take_profit": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Take Profit"
           },
           "status": {
@@ -3445,6 +3663,17 @@
           "live": {
             "type": "boolean",
             "title": "Live"
+          },
+          "cost_basis": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Basis"
           },
           "fill_price": {
             "anyOf": [
@@ -3565,8 +3794,6 @@
           "market",
           "quantity",
           "entry_price",
-          "stop_loss",
-          "take_profit",
           "status",
           "live",
           "created_at",

@@ -87,17 +87,35 @@ export function LineChart({
   const h = hover != null ? points[hover] : null;
   const hMark = hover != null ? marks.find((m) => m.i === hover) : undefined;
   const shown = marks.filter((m) => points[m.i]);
-  // Time axis: the first day of each month when the span is long, else the two ends.
+  // Time axis: with marks, the date of each one (a second line when two are close); without, the
+  // first day of each month on a long span, else the two ends.
+  type Tick = { i: number; text: string; anchor: "start" | "middle" | "end"; row: number; mark: boolean };
   const monthStarts = points.flatMap((p, i) => (i > 0 && monthKey(p.t) !== monthKey(points[i - 1].t) ? [i] : []));
-  const xTicks = points.length > 40 && monthStarts.length >= 2
-    ? monthStarts.map((i) => ({ i, text: MONTH.format(new Date(points[i].t)).replace(".", ""), anchor: "middle" as const }))
-    : [...new Set([0, points.length - 1])].map((i) => ({ i, text: fmtTime(points[i].t), anchor: i === 0 ? ("start" as const) : ("end" as const) }));
+  let xTicks: Tick[];
+  if (shown.length > 0) {
+    const ends: number[] = [];
+    xTicks = [...shown].sort((a, b) => a.i - b.i).map((m) => {
+      const text = dayShort(points[m.i].t);
+      const half = text.length * 3.3;
+      const cx = Math.min(Math.max(x(m.i), left + half), width - right - half);
+      let row = ends.findIndex((end) => cx - half > end + 6);
+      if (row < 0) row = ends.length;
+      ends[row] = cx + half;
+      return { i: m.i, text, anchor: "middle" as const, row, mark: true };
+    });
+  } else if (points.length > 40 && monthStarts.length >= 2) {
+    xTicks = monthStarts.map((i) => ({ i, text: MONTH.format(new Date(points[i].t)).replace(".", ""), anchor: "middle" as const, row: 0, mark: false }));
+  } else {
+    xTicks = [...new Set([0, points.length - 1])].map((i) => ({ i, text: fmtTime(points[i].t), anchor: i === 0 ? ("start" as const) : ("end" as const), row: 0, mark: false }));
+  }
+  const rows = Math.max(1, ...xTicks.map((t) => t.row + 1));
+  const svgH = height + (rows - 1) * 14;
 
   return (
     <div ref={box} className="relative w-full min-w-0 overflow-hidden">
       <svg
         width={width}
-        height={height}
+        height={svgH}
         role="img"
         aria-label={label}
         className="touch-none select-none"
@@ -117,9 +135,16 @@ export function LineChart({
             <text x={left - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize="11" fill="var(--text-3)" className="num">{fmt(t)}</text>
           </g>
         ))}
-        {xTicks.map((t) => (
-          <text key={t.i} x={x(t.i)} y={height - 6} textAnchor={t.anchor} fontSize="11" fill="var(--text-3)">{t.text}</text>
-        ))}
+        {xTicks.map((t) => {
+          const half = t.text.length * 3.3;
+          const tx = t.anchor === "middle" ? Math.min(Math.max(x(t.i), left + half), width - right - half) : x(t.i);
+          return (
+            <g key={t.i}>
+              {t.mark && <line x1={x(t.i)} x2={x(t.i)} y1={floor} y2={floor + 4 + t.row * 14} stroke="var(--text-3)" />}
+              <text x={tx} y={height - 6 + t.row * 14} textAnchor={t.anchor} fontSize="11" fill={t.mark ? "var(--text-2)" : "var(--text-3)"} className="num">{t.text}</text>
+            </g>
+          );
+        })}
         {refLines.map((r) => (
           <g key={r.label}>
             <line x1={left} x2={width - right} y1={y(r.value)} y2={y(r.value)} stroke={`var(--${r.tone})`} strokeWidth="1.5" strokeDasharray="5 4" />

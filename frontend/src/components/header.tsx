@@ -6,6 +6,8 @@ import { nameOf } from "@/lib/names";
 import { authEnabled } from "@/lib/session";
 
 import { NavLinks } from "./nav";
+import { TapeTrack } from "./tape-track";
+import { TickerSearch } from "./ticker-search";
 import { attempt } from "./ui";
 
 const LABEL = { buy: "Comprar", sell: "Vender", keep: "Mantener" } as const;
@@ -39,10 +41,10 @@ async function Tape() {
         <span className="hidden sm:inline">Recomendaciones de hoy</span>
         <span className="sm:hidden">Hoy</span>
       </span>
-      <div className="min-w-0 flex-1 overflow-hidden py-2" aria-label="Recomendaciones de hoy">
-        <div className="tape-track flex">
+      <div className="tape-mask min-w-0 flex-1 overflow-hidden py-2" aria-label="Recomendaciones de hoy">
+        <TapeTrack>
           {[...items, ...items].map((r, i) => <TapeItem key={`${r.ticker}-${i}`} r={r} />)}
-        </div>
+        </TapeTrack>
       </div>
     </div>
   );
@@ -55,6 +57,7 @@ export function Header() {
         <Link href="/" className="text-lg font-semibold tracking-tight">El Parqué</Link>
         <div className="flex items-center gap-2">
           <NavLinks />
+          <TickerSearch />
           {authEnabled() && (
             <form action={logout}>
               <button className="rounded-md px-3 py-1.5 text-sm text-text-3 hover:text-text">Salir</button>

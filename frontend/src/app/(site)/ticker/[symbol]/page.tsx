@@ -1,4 +1,5 @@
 import { BuyPanel } from "@/components/buy-panel";
+import { SellPanel } from "@/components/sell-panel";
 import { LineChart } from "@/components/charts";
 import { ActionBadge, Reasons, threeMonths, track } from "@/components/signals";
 import { attempt, Card, Delta, Notice, SectionTitle, Stat } from "@/components/ui";
@@ -13,7 +14,7 @@ export async function generateMetadata({ params }: { params: Promise<{ symbol: s
 
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const ticker = (await params).symbol.toUpperCase();
-  const [recs, bars, plan, health, holdings, calibration, quote] = await Promise.all([
+  const [recs, bars, plan, health, holdings, calibration, quote, sellPlan] = await Promise.all([
     attempt(() => api.recommendations({ ticker })),
     attempt(() => api.bars(ticker, 90)),
     attempt(() => api.tradePlan(ticker)),
@@ -21,6 +22,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
     attempt(api.portfolio),
     attempt(api.calibration),
     attempt(() => api.quote(ticker)),
+    attempt(() => api.sellPlan(ticker)),
   ]);
 
   const rec = recs.ok ? recs.data[0] : undefined;
@@ -69,6 +71,9 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
                 <Stat label="Ganancia" value={<Delta value={position.gain_pct}>{pctPoints(position.gain_pct)}</Delta>} />
               </div>
             </Card>
+          )}
+          {sellPlan.ok && (
+            <SellPanel plan={sellPlan.data} mode={mode} recommended={rec?.action === "sell"} recommendationId={rec?.action === "sell" ? rec.id : undefined} />
           )}
           {plan.ok ? (
             <BuyPanel ticker={ticker} plan={plan.data} mode={mode} recommendationId={rec?.id} />

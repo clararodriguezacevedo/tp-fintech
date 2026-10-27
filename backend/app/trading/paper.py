@@ -7,7 +7,10 @@ With IOL_LIVE_TRADING=false (the default) everything is simulated: fills and exi
 the real last price from IOL, and the result is stored in trade_intents. With it on, the same
 flow sends real orders to IOL.
 
-Lifecycle: queued (market closed) -> filled -> stopped_out | took_profit | closed (manual).
+Lifecycle of a buy: queued (market closed) -> filled -> stopped_out | took_profit | closed (sold
+by the user). A sell of a position the user holds (following a "sell" recommendation, say) is
+one step: filled at the last price (paper: right away; live: queued while BYMA is closed), with
+its result measured against what those units cost. A paper sell doesn't change the IOL account.
 """
 
 import logging
@@ -64,9 +67,39 @@ def _fill(trade: TradeRow, price: float) -> TradeRow:
     live = get_settings().iol_live_trading
     fields: dict[str, Any] = {"status": "filled", "fill_price": price, "filled_at": _now(), "live": live}
     if live:
-        order = get_iol().buy(trade.ticker, trade.quantity, price, trade.market)
-        fields["iol_order_number"] = order.order_id
+        send = get_iol().sell if trade.side == "sell" else get_iol().buy
+        fields["iol_order_number"] = send(trade.ticker, trade.quantity, price, trade.market).order_id
+    if trade.side == "sell" and trade.cost_basis is not None:
+        # The sell's own result: what it brought minus what those units cost.
+        fields["realized_pnl"] = round(trade.quantity * price * _unit_factor(trade.ticker) - trade.cost_basis, 2)
+        fields["exit_price"] = price
+        fields["closed_at"] = _now()
     return _update(trade.id, **fields)
+
+
+def _unit_factor(ticker: str) -> float:
+    """Pesos per unit per peso of price: bonds are quoted per 100 nominal."""
+    from app.portfolio import BOND_TYPES, current_holdings  # avoid an import cycle
+
+    holding = next((h for h in current_holdings().holdings if h.ticker == ticker), None)
+    return 0.01 if holding and holding.type in BOND_TYPES else 1.0
+
+
+def sell_plan(ticker: str, price_fn: PriceFn = last_price) -> dict[str, Any]:
+    """What selling the position in `ticker` would bring per unit, and what it cost."""
+    from app.portfolio import current_holdings  # avoid an import cycle
+
+    ticker = ticker.upper()
+    holding = next((h for h in current_holdings().holdings if h.ticker == ticker), None)
+    if holding is None or holding.quantity <= 0:
+        raise ValueError(f"no tenés {ticker} en tu cartera")
+    price = price_fn(ticker, "BCBA")
+    value_per_unit = holding.value / holding.quantity * (price / holding.last_price if holding.last_price else 1.0)
+    cost_per_unit = (holding.value - holding.gain_amount) / holding.quantity
+    return {
+        "ticker": ticker, "held": int(holding.quantity), "price": price,
+        "value_per_unit": value_per_unit, "cost_per_unit": cost_per_unit,
+    }
 
 
 def _close(trade: TradeRow, price: float, status: TradeStatus) -> TradeRow:
@@ -118,12 +151,40 @@ def create_buy(
     return trade
 
 
+def create_sell(
+    ticker: str,
+    quantity: int,
+    recommendation_id: str | None = None,
+    market: str = "BCBA",
+    price_fn: PriceFn = last_price,
+    is_open: Callable[[], bool] = market_hours.is_open,
+) -> TradeRow:
+    """Sell `quantity` units of a position the user holds."""
+    plan = sell_plan(ticker, price_fn)
+    if not 0 < quantity <= plan["held"]:
+        raise ValueError(f"podés vender entre 1 y {plan['held']} {plan['ticker']}")
+    data = get_db().table("trade_intents").insert({
+        "ticker": plan["ticker"],
+        "market": market,
+        "side": "sell",
+        "quantity": quantity,
+        "entry_price": plan["price"],
+        "cost_basis": round(plan["cost_per_unit"] * quantity, 2),
+        "recommendation_id": recommendation_id,
+        "live": get_settings().iol_live_trading,
+    }).execute().data
+    trade = rows_as(TradeRow, data)[0]
+    if is_open() or not get_settings().iol_live_trading:
+        trade = _fill(trade, plan["price"])
+    return trade
+
+
 def close_trade(trade_id: str, price_fn: PriceFn = last_price) -> TradeRow:
     """Sell now at the last price (or cancel, if it never filled)."""
     trade = _get(trade_id)
     if trade.status == "queued":
         return _update(trade_id, status="cancelled", closed_at=_now())
-    if trade.status != "filled":
+    if trade.status != "filled" or trade.side == "sell":
         raise ValueError(f"trade is already {trade.status}")
     return _close(trade, price_fn(trade.ticker, trade.market), "closed")
 
@@ -144,9 +205,11 @@ def check_open_trades(price_fn: PriceFn = last_price) -> list[TradeRow]:
             price = prices[key]
             if t.status == "queued":
                 changed.append(_fill(t, price))
-            elif price <= t.stop_loss:
+            elif t.side == "sell":
+                continue
+            elif t.stop_loss is not None and price <= t.stop_loss:
                 changed.append(_close(t, price, "stopped_out"))
-            elif price >= t.take_profit:
+            elif t.take_profit is not None and price >= t.take_profit:
                 changed.append(_close(t, price, "took_profit"))
         except Exception as e:
             log.exception("trade %s failed", t.id)

@@ -1,12 +1,13 @@
 import { ImpactList } from "@/components/signals";
 import { ApiFailure, attempt, PageTitle, SectionTitle } from "@/components/ui";
 import { api } from "@/lib/api/client";
-import { prob, timeAgo } from "@/lib/format";
+import { prob } from "@/lib/format";
+import { NewsList } from "@/components/news-list";
 
 export const metadata = { title: "Noticias | El Parqué" };
 
 export default async function NewsPage() {
-  const [news, markets] = await Promise.all([attempt(() => api.news(40)), attempt(() => api.markets({ limit: 20, relevant: true }))]);
+  const [news, markets] = await Promise.all([attempt(() => api.news(60)), attempt(() => api.markets({ limit: 20, relevant: true }))]);
 
   return (
     <div>
@@ -16,18 +17,7 @@ export default async function NewsPage() {
       </p>
       <div className="grid gap-12 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section>
-          {!news.ok ? <ApiFailure error={news.error} /> : (
-            <ul className="divide-y divide-border">
-              {news.data.map((n) => (
-                <li key={n.id} className="py-4 first:pt-0">
-                  <a href={n.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{n.title}</a>
-                  {n.ai_summary && <p className="mt-1 text-text-2">{n.ai_summary}</p>}
-                  <ImpactList impacts={n.impacts} />
-                  <p className="mt-2 text-sm text-text-3">{n.source}{n.published_at && `, ${timeAgo(n.published_at)}`}</p>
-                </li>
-              ))}
-            </ul>
-          )}
+          {!news.ok ? <ApiFailure error={news.error} /> : <NewsList news={news.data} />}
         </section>
         <section>
           <SectionTitle>Qué esperan los mercados de predicción</SectionTitle>

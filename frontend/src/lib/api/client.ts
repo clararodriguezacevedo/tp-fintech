@@ -33,6 +33,8 @@ export type CalibrationBucket = z.infer<typeof schemas.CalibrationBucket>;
 export type ModelInfo = z.infer<typeof schemas.ModelInfo>;
 export type Transfer = z.infer<typeof schemas.Transfer>;
 export type Quote = z.infer<typeof schemas.Quote>;
+export type SellPlan = z.infer<typeof schemas.SellPlan>;
+export type SellRequest = z.infer<typeof schemas.SellRequest>;
 
 export class ApiError extends Error {
   constructor(
@@ -95,6 +97,9 @@ export const api = {
   trades: (status?: Trade["status"]) => request(z.array(schemas.TradeRow), "/trades", { query: { status } }),
   buy: (req: BuyRequest) =>
     request(schemas.TradeRow, "/trades", { method: "POST", body: JSON.stringify(schemas.BuyRequest.parse(req)) }),
+  sellPlan: (ticker: string) => request(schemas.SellPlan, `/tickers/${ticker}/sell-plan`),
+  sell: (req: SellRequest) =>
+    request(schemas.TradeRow, "/trades/sell", { method: "POST", body: JSON.stringify(schemas.SellRequest.parse(req)) }),
   closeTrade: (tradeId: string) => request(schemas.TradeRow, `/trades/${tradeId}/close`, { method: "POST" }),
   trackRecord: () => request(schemas.TrackRecordSummary, "/track-record"),
   simulation: () => request(schemas.Simulation, "/track-record/simulation"),

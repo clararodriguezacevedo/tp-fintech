@@ -37,7 +37,26 @@ export async function buyAction(_prev: BuyState, form: FormData): Promise<BuySta
   }
 }
 
-export async function closeTradeAction(form: FormData): Promise<void> {
-  await api.closeTrade(String(form.get("trade_id")));
-  revalidatePath("/operaciones");
+export async function sellAction(_prev: BuyState, form: FormData): Promise<BuyState> {
+  try {
+    const trade = await api.sell({
+      ticker: String(form.get("ticker") ?? ""),
+      quantity: Math.floor(Number(form.get("quantity"))),
+      recommendation_id: (form.get("recommendation_id") as string) || null,
+    });
+    revalidatePath("/operaciones");
+    return { status: "ok", trade };
+  } catch (e) {
+    return { status: "error", message: apiMessage(e) };
+  }
+}
+
+export async function closeTradeAction(_prev: BuyState, form: FormData): Promise<BuyState> {
+  try {
+    const trade = await api.closeTrade(String(form.get("trade_id")));
+    revalidatePath("/operaciones");
+    return { status: "ok", trade };
+  } catch (e) {
+    return { status: "error", message: apiMessage(e) };
+  }
 }

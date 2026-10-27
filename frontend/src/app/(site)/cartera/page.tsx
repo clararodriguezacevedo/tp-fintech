@@ -73,19 +73,33 @@ export default async function PortfolioPage() {
     <div className="space-y-10">
       <section>
         <h1 className="text-3xl font-semibold tracking-tight">Mi cartera</h1>
-        <p className="num mt-4 text-4xl font-semibold">{money(total)}</p>
-        <p className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-text-2">
-          <span><Delta value={today}>{money(Math.abs(today))}</Delta> hoy</span>
-          <span><Delta value={gain}>{money(Math.abs(gain))} ({pctPoints(cost ? (gain / cost) * 100 : 0)})</Delta> en lo que tenés invertido</span>
-        </p>
-        <p className="num mt-1 text-text-2">
-          {money(invested)} invertidos y {money(total - invested)} disponibles
-        </p>
-        {usdMep != null && <p className="num mt-1 text-text-2">≈ {usd(usdMep)} al dólar MEP</p>}
-        <p className="mt-2 text-sm text-text-3">
-          En pesos argentinos, con precios de IOL de las {time(portfolio.data.captured_at)}.
+        <div className="mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <p className="num text-4xl font-semibold">{money(total)}</p>
+          {usdMep != null && <p className="num text-text-2">≈ {usd(usdMep)} al dólar MEP</p>}
+        </div>
+        <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+          {[
+            { label: "Hoy", value: <Delta value={today}>{money(Math.abs(today))}</Delta> },
+            {
+              label: "Ganancia de lo invertido",
+              value: <Delta value={gain}>{money(Math.abs(gain))}</Delta>,
+              note: pctPoints(cost ? (gain / cost) * 100 : 0),
+            },
+            { label: "Invertido", value: money(invested) },
+            { label: "Disponible", value: money(total - invested) },
+          ].map((s) => (
+            <div key={s.label} className="bg-bg px-4 py-3">
+              <dt className="text-sm text-text-2">{s.label}</dt>
+              <dd className="num mt-1 font-semibold">
+                {s.value}
+                {s.note && <span className="ml-2 text-sm font-normal text-text-2">{s.note}</span>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 text-sm text-text-3">
+          En pesos, con precios de IOL de las {time(portfolio.data.captured_at)}.
           {dollars.length > 0 && ` Además tenés ${dollars.length} posición${dollars.length > 1 ? "es" : ""} en dólares, que no se suman al total.`}
-
         </p>
       </section>
 
@@ -95,7 +109,7 @@ export default async function PortfolioPage() {
           {sells.map((h, i) => (
             <span key={h.ticker}>
               {i > 0 && (i === sells.length - 1 ? " y " : ", ")}
-              <Link href={`/ticker/${h.ticker}`} className="font-semibold text-text underline">{h.ticker}</Link>
+              <Link href={`/ticker/${h.ticker}#vender`} className="font-semibold text-text underline">{h.ticker}</Link>
             </span>
           ))}
           .
@@ -181,9 +195,6 @@ export default async function PortfolioPage() {
             valueFormat="moneyCompact"
             timeFormat="dayShort"
           />
-          <p className="mt-3 text-sm text-text-3">
-            Es el mismo total de arriba, día por día: incluye la plata disponible, así que vender algo no baja la línea.
-          </p>
           {moves.length > 0 && (
             <div className="mt-6 max-w-sm">
               <p className="mb-2 flex items-center gap-2 text-sm font-medium">
@@ -198,9 +209,7 @@ export default async function PortfolioPage() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-sm text-text-3">
-                Marcados en el gráfico con un punto y una barra del tamaño del salto: es plata que entró o salió, no una ganancia ni una pérdida.
-              </p>
+              <p className="mt-2 text-sm text-text-3">Plata que entró o salió de la cuenta: no es ganancia ni pérdida.</p>
             </div>
           )}
         </section>

@@ -27,7 +27,7 @@ from app.models.iol import DailyBar
 from app.schemas import (
     AccountSummary, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
     ModelInfo, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, SignalStats,
-    Quote, TrackRecordSummary, TradePlan, Transfer,
+    Quote, SellPlan, SellRequest, TrackRecordSummary, TradePlan, Transfer,
 )
 from app.sources import polymarket
 from app.trading import paper
@@ -354,6 +354,30 @@ def buy(req: BuyRequest) -> TradeRow:
         raise HTTPException(400, str(e))
 
 
+@app.get("/tickers/{ticker}/sell-plan", response_model=SellPlan)
+def sell_plan(ticker: str) -> SellPlan:
+    """What selling a held position would bring, for the sell panel."""
+    try:
+        plan = paper.sell_plan(ticker)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    fees = None
+    try:
+        fees = get_iol().estimate_order("sell", plan["ticker"], plan["held"], plan["price"]).total_cost
+    except Exception:
+        log.warning("no fee estimate for selling %s", ticker)
+    return SellPlan(**plan, fees=fees, market_open=market_hours.is_open())
+
+
+@app.post("/trades/sell", response_model=TradeRow)
+def sell(req: SellRequest) -> TradeRow:
+    """Sell a held position (paper by default: the IOL account doesn't change)."""
+    try:
+        return paper.create_sell(**req.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.get("/trades", response_model=list[TradeRow])
 def list_trades(status: TradeStatus | None = None) -> list[TradeRow]:
     q = get_db().table("trade_intents").select("*")
@@ -431,11 +455,25 @@ def model_info() -> ModelInfo:
     )
 
 
+SIMULATION_TTL = timedelta(minutes=30)
+
+
 @app.get("/track-record/simulation", response_model=Simulation)
 def track_record_simulation() -> Simulation:
     """Portfolio value had every daily recommendation been followed, versus not following,
-    keeping the starting portfolio untouched, and buying the Merval leaders."""
-    return simulation.simulate()
+    keeping the starting portfolio untouched, and buying the Merval leaders. Takes ~9 s to
+    compute, so a result up to SIMULATION_TTL old is served from api_cache."""
+    db = get_db()
+    rows = db.table("api_cache").select("value,created_at").eq("key", "simulation").execute().data
+    if rows:
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(str(rows[0]["created_at"]))  # type: ignore[index]
+        if age < SIMULATION_TTL:
+            return Simulation.model_validate(rows[0]["value"])  # type: ignore[index]
+    sim = simulation.simulate()
+    db.table("api_cache").upsert({
+        "key": "simulation", "value": sim.model_dump(mode="json"), "created_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+    return sim
 
 
 @app.get("/track-record/history", response_model=list[RecommendationRow])

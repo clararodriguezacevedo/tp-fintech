@@ -81,6 +81,24 @@ class BuyRequest(BaseModel):
     recommendation_id: str | None = None
 
 
+class SellRequest(BaseModel):
+    ticker: str = Field(min_length=1, max_length=12)
+    quantity: int = Field(gt=0)
+    recommendation_id: str | None = None
+
+
+class SellPlan(BaseModel):
+    """What selling a position would bring, before confirming."""
+
+    ticker: str
+    held: int  # units in the portfolio
+    price: float  # last price, per unit as IOL quotes it (bonds: per 100 nominal)
+    value_per_unit: float  # pesos one unit is worth at that price
+    cost_per_unit: float  # pesos one unit cost
+    fees: float | None = None  # IOL's estimate for selling all of it
+    market_open: bool
+
+
 class HoldingOut(BaseModel):
     ticker: str
     description: str
