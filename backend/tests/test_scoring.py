@@ -185,3 +185,15 @@ def test_three_month_context():
     assert change == pytest.approx(0.25)
     assert from_high == pytest.approx(100 / 125 - 1)
     assert scoring.three_month_context(bars(20), 100.0) == (None, None)
+
+
+def test_broken_accents_are_detected():
+    from app.analysis.tagger import TaggedItem, TickerImpact, has_broken_accents
+
+    ok = TaggedItem(id="a", summary="La suba del petróleo favorece a YPF.", impacts=[])
+    bad = TaggedItem(id="b", summary="Bien.", impacts=[
+        TickerImpact(ticker="YPFD", direction="up", strength="low", reason="La suba del petr3leo favorece a YPF."),
+    ])
+    assert not has_broken_accents(ok)
+    assert has_broken_accents(bad)
+    assert not has_broken_accents(TaggedItem(id="c", summary="Subió 3% en el G20 y el S3.", impacts=[]))

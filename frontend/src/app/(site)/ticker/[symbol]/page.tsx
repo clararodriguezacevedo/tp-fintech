@@ -2,7 +2,7 @@ import { BuyPanel } from "@/components/buy-panel";
 import { SellPanel } from "@/components/sell-panel";
 import { LineChart } from "@/components/charts";
 import { ActionBadge, Reasons, threeMonths, track } from "@/components/signals";
-import { attempt, Card, Delta, Notice, SectionTitle, Stat } from "@/components/ui";
+import { attempt, Card, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { fromEntry, integer, money, pct, pctPoints } from "@/lib/format";
 import { nameOf } from "@/lib/names";
@@ -64,12 +64,18 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
         <aside className="space-y-4">
           {position && (
             <Card>
-              <p className="mb-4 font-semibold">Tu posición</p>
-              <div className="grid grid-cols-2 gap-4">
-                <Stat label="Cantidad" value={integer(position.quantity)} />
-                <Stat label="Valor" value={money(position.value)} />
-                <Stat label="Ganancia" value={<Delta value={position.gain_pct}>{pctPoints(position.gain_pct)}</Delta>} />
-              </div>
+              <p className="mb-3 font-semibold">Tu posición</p>
+              <dl className="space-y-1">
+                <div className="flex justify-between gap-4"><dt className="text-text-2">Cantidad</dt><dd className="num">{integer(position.quantity)}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-text-2">Valor</dt><dd className="num font-semibold">{money(position.value)}</dd></div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-text-2">Ganancia</dt>
+                  <dd className="num">
+                    <Delta value={position.gain_amount}>{money(Math.abs(position.gain_amount))}</Delta>
+                    <span className="ml-2 text-sm text-text-2">{pctPoints(position.gain_pct)}</span>
+                  </dd>
+                </div>
+              </dl>
             </Card>
           )}
           {sellPlan.ok && (

@@ -11,6 +11,14 @@ import { fromEntry, money, pct } from "@/lib/format";
 
 /** Why the suggested quantity is what it is: the limit that binds. */
 function sizeReason(plan: TradePlan, ticker: string) {
+  if (plan.quantity === 0) {
+    switch (plan.limited_by) {
+      case "position": return `${ticker} ya es el 10% de tu cartera, así que no se sugiere comprar más.`;
+      case "concentration": return "Tu cartera ya tiene mucho de este tipo de riesgo, así que no se sugiere comprar más.";
+      case "cash": return "No tenés efectivo disponible para comprar.";
+      default: return "Con los límites de tu cartera no hay una cantidad sugerida.";
+    }
+  }
   switch (plan.limited_by) {
     case "risk": return `Calculada para que, si toca el stop loss, pierdas como máximo ${money(plan.max_loss)}. Cuanto más se mueve el precio, menos se compra.`;
     case "cash": return "Limitada por el efectivo que tenés disponible.";
@@ -109,7 +117,7 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
             <div className="flex justify-between"><dt className="text-text-2">Si baja {fromEntry(stopLoss, entry).replace("−", "")} (stop loss)</dt><dd className="num">−{money(maxLoss)}</dd></div>
             <div className="flex justify-between"><dt className="text-text-2">Si sube {fromEntry(takeProfit, entry).replace("+", "")} (take profit)</dt><dd className="num">+{money(maxGain)}</dd></div>
           </dl>
-          {problem && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{problem}</p>}
+          {problem && !(plan.quantity === 0 && quantity === 0) && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{problem}</p>}
           <button
             type="button"
             disabled={!!problem}

@@ -19,9 +19,9 @@ export function NewsList({ news }: { news: NewsItem[] }) {
           type="button"
           aria-pressed={all}
           onClick={() => setAll(!all)}
-          className={`mb-4 rounded-full border px-3 py-1 text-sm ${all ? "border-text bg-surface" : "border-border text-text-2 hover:border-text"}`}
+          className="mb-3 text-sm text-text-3 hover:text-text-2 hover:underline"
         >
-          {all ? "Ocultar" : "Mostrar"} las {hidden} que no afectan a ningún ticker
+          {all ? "Solo con tickers" : `Ver todas (${hidden} más)`}
         </button>
       )}
       {shown.length === 0 ? (

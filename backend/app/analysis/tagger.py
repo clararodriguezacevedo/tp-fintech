@@ -1,6 +1,7 @@
 """Links news and prediction markets to tickers with Gemini (free tier)."""
 
 import logging
+import re
 from typing import Literal
 
 from google import genai
@@ -116,4 +117,16 @@ def tag_items(items: list[TagInput], holdings: dict[str, str] | None = None) -> 
     allowed = set(ALL_TICKERS) | set(holdings) | {"MERVAL", "BONOS"}
     for item in batch.items:
         item.impacts = [i for i in item.impacts if i.ticker in allowed]
-    return batch.items
+    # Gemini sometimes writes "3" for an accented letter ("posici3n", "petr3leo"). Those items
+    # are left out, so they stay untagged and are tagged again on the next cycle.
+    clean = [it for it in batch.items if not has_broken_accents(it)]
+    if len(clean) < len(batch.items):
+        log.warning("dropped %d tagged items with broken accents", len(batch.items) - len(clean))
+    return clean
+
+
+_BROKEN = re.compile(r"[A-Za-záéíóúñÁÉÍÓÚÑ]3[a-záéíóúñ]")
+
+
+def has_broken_accents(item: TaggedItem) -> bool:
+    return any(_BROKEN.search(text) for text in [item.summary, *(i.reason for i in item.impacts)])
