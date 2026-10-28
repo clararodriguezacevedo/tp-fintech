@@ -9,11 +9,13 @@ import { buyAction, type BuyState } from "@/app/(site)/actions";
 import type { TradePlan } from "@/lib/api/client";
 import { fromEntry, money, pct } from "@/lib/format";
 
+const RISK_NAME: Record<number, string> = { 1: "bajo", 2: "medio", 3: "alto" };
+
 /** Why the suggested quantity is what it is: the limit that binds. */
 function sizeReason(plan: TradePlan, ticker: string) {
   if (plan.quantity === 0) {
     switch (plan.limited_by) {
-      case "position": return `${ticker} ya es el 10% de tu cartera, así que no se sugiere comprar más.`;
+      case "position": return `${ticker} ya llega al máximo por activo de tu perfil, así que no se sugiere comprar más.`;
       case "concentration": return "Tu cartera ya tiene mucho de este tipo de riesgo, así que no se sugiere comprar más.";
       case "cash": return "No tenés efectivo disponible para comprar.";
       default: return "Con los límites de tu cartera no hay una cantidad sugerida.";
@@ -22,7 +24,7 @@ function sizeReason(plan: TradePlan, ticker: string) {
   switch (plan.limited_by) {
     case "risk": return `Calculada para que, si toca el stop loss, pierdas como máximo ${money(plan.max_loss)}. Cuanto más se mueve el precio, menos se compra.`;
     case "cash": return "Limitada por el efectivo que tenés disponible.";
-    case "position": return `Limitada para que ${ticker} no pase el 10% de tu cartera.`;
+    case "position": return `Limitada para que ${ticker} no pase el máximo por activo de tu perfil.`;
     case "concentration": return "Limitada para no concentrar todavía más tu cartera en el mismo tipo de riesgo.";
     case "liquidity": return "Limitada al 10% de lo que se opera por día, para que tu orden no mueva el precio.";
     default: return null;
@@ -56,6 +58,7 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
   const stopLoss = Math.round(plan.entry * (1 - slPct / 100) * 100) / 100;
   const takeProfit = Math.round(plan.entry * (1 + tpPct / 100) * 100) / 100;
   const [review, setReview] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [state, action, pending] = useActionState<BuyState, FormData>(buyAction, { status: "idle" });
 
   const entry = plan.entry;
@@ -66,6 +69,7 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
     quantity < 1 ? "La cantidad tiene que ser al menos 1."
     : !(slPct > 0 && slPct < 100) ? "El stop loss tiene que ser una baja entre 0% y 100%."
     : !(tpPct > 0) ? "El take profit tiene que ser una suba mayor a 0%."
+    : plan.out_of_profile && !accepted ? "Para comprar algo fuera de tu perfil tenés que confirmarlo."
     : null;
 
   if (state.status === "ok") {
@@ -92,9 +96,19 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
       <input type="hidden" name="stop_loss" value={stopLoss} />
       <input type="hidden" name="take_profit" value={takeProfit} />
       {recommendationId && <input type="hidden" name="recommendation_id" value={recommendationId} />}
+      {accepted && <input type="hidden" name="accept_out_of_profile" value="on" />}
 
       <p className="text-lg font-semibold">Comprar {ticker}</p>
       {mode === "paper" && <p className="text-sm text-text-3">Simulación, sin plata real</p>}
+      {plan.out_of_profile && plan.risk_level != null && plan.profile && (
+        <div className="mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: "var(--sell-soft)" }}>
+          <p>Es de riesgo {RISK_NAME[plan.risk_level]} y tu perfil es {plan.profile}: está fuera de tu perfil y no te lo recomendamos.</p>
+          <label className="mt-2 flex items-start gap-2">
+            <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} className="mt-1" />
+            <span>Entiendo el riesgo y quiero comprarlo igual.</span>
+          </label>
+        </div>
+      )}
 
       {!review ? (
         <>

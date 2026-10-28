@@ -12,7 +12,9 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app import account as acct, jobs, prices
-from app.analysis import market_hours, risk, scoring, simulation, track_record
+from app.analysis import market_hours, risk, scoring, simulation, suitability, track_record
+from app.assets import asset_types
+from app.profile import InvestorProfile, declare, get_profile
 from app.analysis.tagger import UNIVERSE
 from app.analysis.simulation import Simulation
 from app.brokers.iol import IOLUnavailable, get_iol
@@ -27,7 +29,7 @@ from app.models.iol import DailyBar
 from app.schemas import (
     AccountSummary, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
     ModelInfo, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, SignalStats,
-    Quote, SellPlan, SellRequest, TrackRecordSummary, TradePlan, Transfer,
+    ProfileRequest, Quote, SellPlan, SellRequest, TrackRecordSummary, TradePlan, Transfer,
 )
 from app.sources import polymarket
 from app.trading import paper
@@ -300,6 +302,7 @@ def trade_plan(
     ticker = ticker.upper()
     settings = get_settings()
     holdings = {h.ticker: h for h in get_holdings()}
+    investor = get_profile().profile
     if portfolio_value is None or cash is None:
         try:
             summary = account()
@@ -326,7 +329,7 @@ def trade_plan(
         entry=price,
         atr_value=risk.atr([b.high for b in bars], [b.low for b in bars], [b.close for b in bars]),
         portfolio_value=portfolio_value,
-        risk_per_trade=settings.risk_per_trade,
+        risk_per_trade=suitability.RISK_PER_TRADE[investor],
         cash_available=cash,
         held_value=holdings[ticker].value if ticker in holdings else 0.0,
         group_value=sum(
@@ -335,21 +338,56 @@ def trade_plan(
         ),
         concentration_limit=scoring.CONCENTRATION_LIMIT,
         avg_volume=sum(volumes) / len(volumes) if len(volumes) >= 5 else None,
+        max_position=suitability.MAX_POSITION[investor],
     )
+    level = _risk_of(ticker)
     fees = None
     if plan.quantity > 0:
         try:
             fees = get_iol().estimate_order("buy", ticker, plan.quantity, price).total_cost
         except Exception:
             log.warning("no fee estimate for %s", ticker)
-    return TradePlan(**plan.__dict__, market_open=market_hours.is_open(), fees=fees)
+    return TradePlan(
+        **plan.__dict__, market_open=market_hours.is_open(), fees=fees,
+        risk_level=level.level, volatility=level.volatility, profile=investor,
+        out_of_profile=not suitability.allowed(level.level, investor),
+    )
+
+
+def _risk_of(ticker: str) -> suitability.RiskLevel:
+    kind = asset_types({ticker}).get(ticker)
+    try:
+        bars = prices.daily_bars(ticker, days=100)
+    except Exception:
+        bars = []
+    return suitability.risk_level(ticker, kind, bars)
+
+
+@app.get("/profile", response_model=InvestorProfile)
+def investor_profile(refresh: bool = False) -> InvestorProfile:
+    """The user's investor profile: IOL's test result when there is one, else the declared one."""
+    return get_profile(refresh=refresh)
+
+
+@app.put("/profile", response_model=InvestorProfile)
+def set_investor_profile(req: ProfileRequest) -> InvestorProfile:
+    """Declare the profile in the app; used while IOL has none."""
+    return declare(req.profile)
 
 
 @app.post("/trades", response_model=TradeRow)
 def buy(req: BuyRequest) -> TradeRow:
-    """One-click buy. Paper by default; fills now if BYMA is open, otherwise queues."""
+    """One-click buy. Paper by default; fills now if BYMA is open, otherwise queues. A buy above
+    the investor profile needs accept_out_of_profile (CNV suitability)."""
+    investor = get_profile().profile
+    level = _risk_of(req.ticker.upper())
+    if not suitability.allowed(level.level, investor) and not req.accept_out_of_profile:
+        raise HTTPException(400, (
+            f"{req.ticker.upper()} es de riesgo {suitability.LEVEL_NAME[level.level]} y está fuera de tu perfil "
+            f"{investor}. Para comprarlo igual, confirmá que entendés el riesgo."
+        ))
     try:
-        return paper.create_buy(**req.model_dump())
+        return paper.create_buy(**req.model_dump(exclude={"accept_out_of_profile"}))
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -439,6 +477,7 @@ def track_record_calibration() -> list[CalibrationBucket]:
 @app.get("/model", response_model=ModelInfo)
 def model_info() -> ModelInfo:
     """The scoring model's weights and thresholds."""
+    investor = get_profile().profile
     return ModelInfo(
         weights={
             "evidence": scoring.W_EVIDENCE, "trend": scoring.W_TREND, "context": scoring.W_CONTEXT,
@@ -450,7 +489,11 @@ def model_info() -> ModelInfo:
         news_half_life_hours=scoring.NEWS_HALF_LIFE_HOURS, news_max_age_hours=scoring.NEWS_MAX_AGE_HOURS,
         priced_in_full=scoring.PRICED_IN_FULL, concentration_limit=scoring.CONCENTRATION_LIMIT,
         concentration_penalty=scoring.CONCENTRATION_PENALTY, concentration_max=scoring.CONCENTRATION_MAX,
-        risk_per_trade=get_settings().risk_per_trade, max_position=risk.MAX_POSITION,
+        risk_per_trade=suitability.RISK_PER_TRADE[investor], max_position=suitability.MAX_POSITION[investor],
+        profile=investor, profile_max_level={str(k): v for k, v in suitability.MAX_LEVEL.items()},
+        profile_risk_per_trade={str(k): v for k, v in suitability.RISK_PER_TRADE.items()},
+        profile_max_position={str(k): v for k, v in suitability.MAX_POSITION.items()},
+        bond_low_vol=suitability.BOND_LOW_VOL, equity_mid_vol=suitability.EQUITY_MID_VOL,
         max_volume_share=risk.MAX_VOLUME_SHARE, calibration_min_cases=track_record.CALIBRATION_MIN_CASES,
     )
 

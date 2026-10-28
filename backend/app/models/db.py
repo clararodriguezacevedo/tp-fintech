@@ -105,6 +105,10 @@ class SignalBreakdown(BaseModel):
     event_kind: Literal["dividend", "coupon"] | None = None  # next payment detaching soon
     event_date: date | None = None
     event_yield: float | None = None
+    risk_level: int | None = None  # 1 bajo, 2 medio, 3 alto (app.analysis.suitability)
+    volatility: float | None = None  # annualized, the basis of risk_level
+    profile: Literal["conservador", "moderado", "arriesgado"] | None = None  # the user's, when scored
+    out_of_profile: bool = False  # above the profile: never recommended to buy
 
 
 class RecommendationRow(Row):

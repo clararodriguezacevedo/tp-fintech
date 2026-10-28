@@ -122,3 +122,48 @@ def test_split_is_adjusted_but_normal_gaps_are_not():
     assert adj[0].volume == 100
     gap = raw[:2] + [raw[2].model_copy(update={"open": 70_000.0, "close": 70_000.0})]
     assert prices.adjust_splits(gap) == gap
+
+
+# Investor profile
+
+def _flat_bars(daily_move: float, n: int = 61) -> list[DailyBar]:
+    out, price = [], 100.0
+    for k in range(n):
+        price *= 1 + (daily_move if k % 2 else -daily_move)
+        out.append(DailyBar(day=date(2026, 1, 1), open=price, high=price, low=price, close=price))
+    return out
+
+
+def test_risk_levels_by_kind_and_volatility():
+    from app.analysis import suitability as s
+
+    calm, mid, wild = _flat_bars(0.003), _flat_bars(0.012), _flat_bars(0.03)  # ~5%, ~19%, ~48% a year
+    assert s.risk_level("AL30", "TIT. PUBLICOS", calm).level == 1
+    assert s.risk_level("AL30", "TitulosPublicos", mid).level == 2
+    assert s.risk_level("KO", "CEDEARS", mid).level == 2
+    assert s.risk_level("SPY", "CEDEARS", mid).kind == "etf"
+    assert s.risk_level("GGAL", "ACCIONES", wild).level == 3
+    assert s.risk_level("XYZ", None, calm).level == 3  # unknown kind is never safe
+    assert s.risk_level("KO", "CEDEARS", []).level == 3  # no history is never safe
+
+
+def test_profiles_allow_up_to_their_level():
+    from app.analysis import suitability as s
+
+    assert s.allowed(1, "conservador") and not s.allowed(2, "conservador")
+    assert s.allowed(2, "moderado") and not s.allowed(3, "moderado")
+    assert s.allowed(3, "arriesgado")
+
+
+def test_out_of_profile_is_never_a_buy():
+    from app.analysis import scoring, suitability
+    from app.models.db import Evidence
+
+    strong = [Evidence(kind="news", item_id="a", title="t", direction="up", strength="high", reason="", contribution=3.0)]
+    base = dict(ticker="GGAL", held=False, price=100.0, own=strong, broad=[], trend=0.0, context=0.0)
+    risky = suitability.RiskLevel(level=3, kind="stock", volatility=0.4)
+    inside = scoring._combine(scoring._Inputs(**base, risk=risky, profile="arriesgado"), gap=0.0)  # type: ignore[arg-type]
+    outside = scoring._combine(scoring._Inputs(**base, risk=risky, profile="moderado"), gap=0.0)  # type: ignore[arg-type]
+    assert inside.action == "buy" and not inside.breakdown.out_of_profile
+    assert outside.action == "keep" and outside.breakdown.out_of_profile
+    assert outside.score == inside.score

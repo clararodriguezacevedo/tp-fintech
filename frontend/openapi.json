@@ -940,10 +940,122 @@
         }
       }
     },
+    "/profile": {
+      "get": {
+        "summary": "Investor Profile",
+        "description": "The user's investor profile: IOL's test result when there is one, else the declared one.",
+        "operationId": "investor_profile",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestorProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Set Investor Profile",
+        "description": "Declare the profile in the app; used while IOL has none.",
+        "operationId": "set_investor_profile",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestorProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/trades": {
       "post": {
         "summary": "Buy",
-        "description": "One-click buy. Paper by default; fills now if BYMA is open, otherwise queues.",
+        "description": "One-click buy. Paper by default; fills now if BYMA is open, otherwise queues. A buy above\nthe investor profile needs accept_out_of_profile (CNV suitability).",
         "operationId": "buy",
         "parameters": [
           {
@@ -1771,6 +1883,11 @@
               }
             ],
             "title": "Recommendation Id"
+          },
+          "accept_out_of_profile": {
+            "type": "boolean",
+            "title": "Accept Out Of Profile",
+            "default": false
           }
         },
         "type": "object",
@@ -2190,6 +2307,61 @@
         ],
         "title": "Impact"
       },
+      "InvestorProfile": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "conservador",
+              "moderado",
+              "arriesgado"
+            ],
+            "title": "Profile"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "iol",
+              "declared",
+              "default"
+            ],
+            "title": "Source"
+          },
+          "iol_test_pending": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iol Test Pending"
+          },
+          "declared": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "conservador",
+                  "moderado",
+                  "arriesgado"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile",
+          "source"
+        ],
+        "title": "InvestorProfile"
+      },
       "JobResult": {
         "properties": {
           "failed": {
@@ -2454,6 +2626,44 @@
             "type": "number",
             "title": "Max Position"
           },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "conservador",
+              "moderado",
+              "arriesgado"
+            ],
+            "title": "Profile"
+          },
+          "profile_max_level": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Profile Max Level"
+          },
+          "profile_risk_per_trade": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Profile Risk Per Trade"
+          },
+          "profile_max_position": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Profile Max Position"
+          },
+          "bond_low_vol": {
+            "type": "number",
+            "title": "Bond Low Vol"
+          },
+          "equity_mid_vol": {
+            "type": "number",
+            "title": "Equity Mid Vol"
+          },
           "max_volume_share": {
             "type": "number",
             "title": "Max Volume Share"
@@ -2480,6 +2690,12 @@
           "concentration_max",
           "risk_per_trade",
           "max_position",
+          "profile",
+          "profile_max_level",
+          "profile_risk_per_trade",
+          "profile_max_position",
+          "bond_low_vol",
+          "equity_mid_vol",
           "max_volume_share",
           "calibration_min_cases"
         ],
@@ -2684,6 +2900,24 @@
           "p"
         ],
         "title": "ProbabilityPoint"
+      },
+      "ProfileRequest": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "conservador",
+              "moderado",
+              "arriesgado"
+            ],
+            "title": "Profile"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile"
+        ],
+        "title": "ProfileRequest"
       },
       "Quote": {
         "properties": {
@@ -3144,6 +3378,49 @@
               }
             ],
             "title": "Event Yield"
+          },
+          "risk_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Level"
+          },
+          "volatility": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volatility"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "conservador",
+                  "moderado",
+                  "arriesgado"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "out_of_profile": {
+            "type": "boolean",
+            "title": "Out Of Profile",
+            "default": false
           }
         },
         "type": "object",
@@ -3580,6 +3857,49 @@
               }
             ],
             "title": "Portfolio Share"
+          },
+          "risk_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Level"
+          },
+          "volatility": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volatility"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "conservador",
+                  "moderado",
+                  "arriesgado"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "out_of_profile": {
+            "type": "boolean",
+            "title": "Out Of Profile",
+            "default": false
           }
         },
         "type": "object",

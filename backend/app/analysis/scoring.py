@@ -33,6 +33,9 @@ deck", "qué mirar esta semana") are ignored too: they announce an event, not wh
 News spread from sector peers adds up to at most SECTOR_CAP, however many items there are. A news item tagged both for a ticker and for MERVAL/BONOS
 counts once. Prediction markets resolving more than 6 months out weigh less.
 
+Investor profile (CNV): an asset whose risk level is above the user's profile (see
+app.analysis.suitability) is never recommended to buy; its score is kept, its action is keep.
+
 Broad "MERVAL" tags apply at half weight to every stock, "BONOS" tags to every bond.
 Tickers the user holds can only get sell (from -0.45, a higher bar than buying) or keep; the
 rest can only get buy (from +0.3) or keep.
@@ -51,7 +54,9 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 
 from app import account, prices
-from app.analysis import market_hours, risk
+from app.analysis import market_hours, risk, suitability
+from app.assets import asset_types
+from app.profile import get_profile
 from app.analysis.tagger import UNIVERSE
 from app.sources import corporate_events, macro
 from app.brokers.iol import get_iol
@@ -393,6 +398,8 @@ class _Inputs:
     macro_level: float | None = None
     macro_change: float | None = None
     event: corporate_events.CorporateEvent | None = None
+    risk: suitability.RiskLevel | None = None
+    profile: suitability.Profile = "conservador"
 
 
 def sector_evidence(ticker: str, signals: dict[str, TickerSignals]) -> list[Evidence]:
@@ -478,6 +485,9 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
         action = "sell" if score <= SELL_THRESHOLD_HELD else "keep"
     else:
         action = "buy" if score >= BUY_THRESHOLD else "keep"
+    out_of_profile = i.risk is not None and not suitability.allowed(i.risk.level, i.profile)
+    if out_of_profile and action == "buy":
+        action = "keep"
 
     # More independent pieces of evidence, more confidence; trend alone never gets far.
     coverage = 1 - math.exp(-(len(evidence) + 1) / 3)
@@ -508,6 +518,9 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
             event_kind=i.event.kind if i.event else None,  # type: ignore[arg-type]
             event_date=i.event.ex_date if i.event else None,
             event_yield=round(i.event.yield_, 5) if i.event and i.event.yield_ is not None else None,
+            risk_level=i.risk.level if i.risk else None,
+            volatility=round(i.risk.volatility, 4) if i.risk and i.risk.volatility is not None else None,
+            profile=i.profile, out_of_profile=out_of_profile,
         ),
         evidence=evidence[:MAX_EVIDENCE_SHOWN],
     )
@@ -551,6 +564,17 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     for h in peso_holdings:
         g = risk_group(h.ticker, stocks, bonds)
         group_shares[g] = group_shares.get(g, 0.0) + h.value / total_value
+
+    try:
+        profile = get_profile().profile
+    except Exception:
+        log.exception("no investor profile; scoring as conservador")
+        profile = "conservador"
+    try:
+        kinds = asset_types(tickers)
+    except Exception:
+        log.exception("no asset types; every asset counts as high risk")
+        kinds = {}
 
     try:
         macro_signals = macro.fetch()
@@ -607,6 +631,7 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
             macro=macro_value, macro_source=macro_source,
             macro_level=ms.level if ms else None, macro_change=ms.change if ms else None,
             event=events.get(ticker),
+            risk=suitability.risk_level(ticker, kinds.get(ticker), bars), profile=profile,
         ))
 
     gaps = cedear_gaps({i.ticker: i.price for i in inputs if i.ticker in cedears and i.price})

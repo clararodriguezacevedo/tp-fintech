@@ -169,6 +169,15 @@ export default async function HowItDecides() {
         </p>
       </Block>
 
+      <Block title="Tu perfil de inversor">
+        <p>
+          Cada activo tiene un riesgo bajo, medio o alto según qué tipo de activo es y cuánto se mueve su precio. Tu perfil ({m.profile})
+          define hasta qué riesgo te recomendamos: conservador hasta bajo, moderado hasta medio, arriesgado todo. Lo que está por encima
+          nunca sale como &quot;comprar&quot;, aunque tenga buen puntaje, por las reglas de la CNV. Tu perfil también define cuánto arriesga
+          cada compra y el máximo por activo. Lo ves y lo cambiás en <Link href="/perfil" className="underline">Perfil</Link>.
+        </p>
+      </Block>
+
       <Block title="Cuánto comprar">
         <p>La cantidad sugerida es la menor de estas:</p>
         <ul className="list-disc space-y-1 pl-5">

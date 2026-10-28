@@ -33,6 +33,8 @@ export type CalibrationBucket = z.infer<typeof schemas.CalibrationBucket>;
 export type ModelInfo = z.infer<typeof schemas.ModelInfo>;
 export type Transfer = z.infer<typeof schemas.Transfer>;
 export type Quote = z.infer<typeof schemas.Quote>;
+export type InvestorProfile = z.infer<typeof schemas.InvestorProfile>;
+export type ProfileName = InvestorProfile["profile"];
 export type SellPlan = z.infer<typeof schemas.SellPlan>;
 export type SellRequest = z.infer<typeof schemas.SellRequest>;
 
@@ -88,6 +90,9 @@ export const api = {
     query: { kind?: "live" | "daily"; action?: "buy" | "sell" | "keep"; held?: boolean; ticker?: string } = {},
   ) => request(z.array(schemas.RecommendationRow), "/recommendations", { query }),
   account: () => request(schemas.AccountSummary, "/account"),
+  profile: () => request(schemas.InvestorProfile, "/profile"),
+  setProfile: (profile: ProfileName) =>
+    request(schemas.InvestorProfile, "/profile", { method: "PUT", body: JSON.stringify({ profile }) }),
   transfers: (days = 90) => request(z.array(schemas.Transfer), "/account/transfers", { query: { days } }),
   quote: (ticker: string) => request(schemas.Quote, `/tickers/${ticker}/quote`),
   bars: (ticker: string, days = 90) =>

@@ -40,7 +40,7 @@ from datetime import date, datetime, timedelta
 from pydantic import BaseModel
 
 from app import prices
-from app.analysis import market_hours, risk
+from app.analysis import market_hours, risk, suitability
 from app.analysis.tagger import UNIVERSE
 from app.brokers.iol import trade_cost_rate
 from app.config import get_settings
@@ -113,6 +113,15 @@ class _Prices:
     def __init__(self, start: date):
         self.days = (date.today() - start).days + 40
         self.bars: dict[str, list[DailyBar]] = {}
+        # Buys are sized for the user's investor profile, like the buy panel.
+        try:
+            from app.profile import get_profile  # avoid an import cycle
+
+            profile = get_profile().profile
+        except Exception:
+            profile = "conservador"
+        self.risk_per_trade = suitability.RISK_PER_TRADE[profile]
+        self.max_position = suitability.MAX_POSITION[profile]
 
     def get(self, ticker: str) -> list[DailyBar]:
         if ticker not in self.bars:
@@ -140,7 +149,7 @@ class _Prices:
         stop = 2 * atr / before[-1].close
         if stop <= 0:
             return BUY_ALLOCATION
-        return max(MIN_ALLOCATION, min(risk.MAX_POSITION, get_settings().risk_per_trade / stop))
+        return max(MIN_ALLOCATION, min(self.max_position, self.risk_per_trade / stop))
 
 
 def simulate() -> Simulation:

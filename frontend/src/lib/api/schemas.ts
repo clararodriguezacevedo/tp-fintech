@@ -170,7 +170,26 @@ const TradePlan = z
       ])
       .optional(),
     portfolio_share: z.union([z.number(), z.null()]).optional(),
+    risk_level: z.union([z.number(), z.null()]).optional(),
+    volatility: z.union([z.number(), z.null()]).optional(),
+    profile: z
+      .union([z.enum(["conservador", "moderado", "arriesgado"]), z.null()])
+      .optional(),
+    out_of_profile: z.boolean().optional().default(false),
   })
+  .passthrough();
+const InvestorProfile = z
+  .object({
+    profile: z.enum(["conservador", "moderado", "arriesgado"]),
+    source: z.enum(["iol", "declared", "default"]),
+    iol_test_pending: z.union([z.boolean(), z.null()]).optional(),
+    declared: z
+      .union([z.enum(["conservador", "moderado", "arriesgado"]), z.null()])
+      .optional(),
+  })
+  .passthrough();
+const ProfileRequest = z
+  .object({ profile: z.enum(["conservador", "moderado", "arriesgado"]) })
   .passthrough();
 const BuyRequest = z
   .object({
@@ -179,6 +198,7 @@ const BuyRequest = z
     stop_loss: z.number().gt(0),
     take_profit: z.number().gt(0),
     recommendation_id: z.union([z.string(), z.null()]).optional(),
+    accept_out_of_profile: z.boolean().optional().default(false),
   })
   .passthrough();
 const TradeRow = z
@@ -272,6 +292,12 @@ const SignalBreakdown = z
     event_kind: z.union([z.enum(["dividend", "coupon"]), z.null()]).optional(),
     event_date: z.union([z.string(), z.null()]).optional(),
     event_yield: z.union([z.number(), z.null()]).optional(),
+    risk_level: z.union([z.number(), z.null()]).optional(),
+    volatility: z.union([z.number(), z.null()]).optional(),
+    profile: z
+      .union([z.enum(["conservador", "moderado", "arriesgado"]), z.null()])
+      .optional(),
+    out_of_profile: z.boolean().optional().default(false),
   })
   .passthrough();
 const Evidence = z
@@ -378,6 +404,12 @@ const ModelInfo = z
     concentration_max: z.number(),
     risk_per_trade: z.number(),
     max_position: z.number(),
+    profile: z.enum(["conservador", "moderado", "arriesgado"]),
+    profile_max_level: z.record(z.number().int()),
+    profile_risk_per_trade: z.record(z.number()),
+    profile_max_position: z.record(z.number()),
+    bond_low_vol: z.number(),
+    equity_mid_vol: z.number(),
     max_volume_share: z.number(),
     calibration_min_cases: z.number().int(),
   })
@@ -432,6 +464,8 @@ export const schemas = {
   DailyBar,
   portfolio_value,
   TradePlan,
+  InvestorProfile,
+  ProfileRequest,
   BuyRequest,
   TradeRow,
   status,

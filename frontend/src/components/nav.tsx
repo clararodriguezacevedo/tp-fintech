@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/historial", label: "Resultados" },
   { href: "/noticias", label: "Noticias" },
   { href: "/como-decide", label: "Cómo decide" },
+  { href: "/perfil", label: "Perfil" },
 ];
 
 export function NavLinks() {

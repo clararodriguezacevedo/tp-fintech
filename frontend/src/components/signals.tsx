@@ -50,6 +50,20 @@ type Breakdown = Recommendation["signal_breakdown"];
 const pctText = (x: number) => `${Math.abs(x * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
 
 const GROUP: Record<string, string> = { argentina: "riesgo argentino", exterior: "activos del exterior" };
+export const RISK_NAME: Record<number, string> = { 1: "bajo", 2: "medio", 3: "alto" };
+
+/** "Riesgo medio" as a small pill, with its volatility on hover. */
+export function RiskBadge({ level, volatility, outOfProfile }: { level: number; volatility?: number | null; outOfProfile?: boolean }) {
+  return (
+    <span
+      title={volatility != null ? `Se mueve alrededor de ${Math.round(volatility * 100)}% al año` : "Sin historial de precios suficiente"}
+      className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-text-2"
+      style={outOfProfile ? { borderColor: "var(--sell)", color: "var(--sell)" } : undefined}
+    >
+      Riesgo {RISK_NAME[level]}{outOfProfile ? ", fuera de tu perfil" : ""}
+    </span>
+  );
+}
 const asDay = (d: string) => d + "T12:00:00";
 
 /** A dividend or coupon detaching soon: the price drops that day without it being a loss. */
@@ -74,6 +88,13 @@ export function threeMonths(b: Breakdown | undefined) {
 function marketReasons(b: Breakdown | undefined) {
   const out: { up: boolean; text: string; note: string }[] = [];
   if (!b) return out;
+  if (b.out_of_profile && b.risk_level != null && b.profile) {
+    out.push({
+      up: false,
+      text: `Es de riesgo ${RISK_NAME[b.risk_level]} y tu perfil es ${b.profile}: no te la recomendamos comprar.`,
+      note: "Por las reglas de la CNV, solo te recomendamos lo que va con tu perfil de inversor.",
+    });
+  }
   if (Math.abs(b.macro ?? 0) >= 0.3 && b.macro_source && b.macro_change != null) {
     const rising = b.macro_change > 0;
     out.push(b.macro_source === "riesgo_pais"

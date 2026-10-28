@@ -71,6 +71,10 @@ class TradePlan(BaseModel):
     limits: dict[Literal["risk", "cash", "position", "concentration", "liquidity"], int] = {}
     limited_by: Literal["risk", "cash", "position", "concentration", "liquidity"] | None = None
     portfolio_share: float | None = None  # the buy as a share of the portfolio
+    risk_level: int | None = None  # 1 bajo, 2 medio, 3 alto
+    volatility: float | None = None  # annualized
+    profile: Literal["conservador", "moderado", "arriesgado"] | None = None
+    out_of_profile: bool = False  # buying needs accept_out_of_profile
 
 
 class BuyRequest(BaseModel):
@@ -79,6 +83,11 @@ class BuyRequest(BaseModel):
     stop_loss: float = Field(gt=0)
     take_profit: float = Field(gt=0)
     recommendation_id: str | None = None
+    accept_out_of_profile: bool = False  # the user confirmed buying above their profile
+
+
+class ProfileRequest(BaseModel):
+    profile: Literal["conservador", "moderado", "arriesgado"]
 
 
 class SellRequest(BaseModel):
@@ -183,7 +192,13 @@ class ModelInfo(BaseModel):
     concentration_limit: float
     concentration_penalty: float
     concentration_max: float
-    risk_per_trade: float
-    max_position: float
+    risk_per_trade: float  # for the user's profile
+    max_position: float  # for the user's profile
+    profile: Literal["conservador", "moderado", "arriesgado"]
+    profile_max_level: dict[str, int]
+    profile_risk_per_trade: dict[str, float]
+    profile_max_position: dict[str, float]
+    bond_low_vol: float
+    equity_mid_vol: float
     max_volume_share: float
     calibration_min_cases: int

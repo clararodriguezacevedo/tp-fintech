@@ -43,6 +43,7 @@ def plan_buy(
     group_value: float | None = None,
     concentration_limit: float = 0.60,
     avg_volume: float | None = None,
+    max_position: float = MAX_POSITION,
 ) -> TradePlan:
     """Stop at `stop_atr` ATRs below entry, target at `reward_ratio` times that distance.
 
@@ -50,7 +51,8 @@ def plan_buy(
       risk           hitting the stop loses `risk_per_trade` of the portfolio (so the more
                      volatile the ticker, the smaller the buy)
       cash           the cash available
-      position       the ticker, counting what is already held, stays under MAX_POSITION
+      position       the ticker, counting what is already held, stays under max_position
+                     (by investor profile: 5%, 10% or 15%)
       concentration  its risk group stays under `concentration_limit` of the portfolio; when
                      it is already over, the buy adds at most OVER_LIMIT_BUY
       liquidity      at most MAX_VOLUME_SHARE of the average daily volume, so the order
@@ -60,7 +62,7 @@ def plan_buy(
     limits = {
         "risk": portfolio_value * risk_per_trade / stop_distance,
         "cash": cash_available / entry,
-        "position": max(0.0, MAX_POSITION * portfolio_value - held_value) / entry,
+        "position": max(0.0, max_position * portfolio_value - held_value) / entry,
     }
     if group_value is not None:
         room = concentration_limit * portfolio_value - group_value

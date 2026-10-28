@@ -235,6 +235,20 @@ sube, vender si baja; mantener algo que tenés acierta si no cae más de 1,5%.
   las 20 líderes del Merval en partes iguales (IOL no publica el índice).
 - `GET /track-record/signals`: cuántas veces acertó cada señal por separado.
 
+### Perfil de inversor (CNV)
+
+Cada activo tiene un riesgo (`backend/app/analysis/suitability.py`): **bajo** para bonos y ONs que
+se mueven hasta 12% al año; **medio** para el resto de los bonos y para acciones, CEDEARs y ETFs que
+se mueven hasta 30% al año; **alto** para lo que se mueve más o no tiene historial. Conservador
+llega hasta bajo, moderado hasta medio, arriesgado a todo. Lo que está por encima del perfil nunca
+sale como "comprar" (queda en mantener, con la razón) y comprarlo igual pide una confirmación
+explícita, también en la API (`accept_out_of_profile`). El perfil también fija el riesgo por compra
+(0,5%, 1% o 1,5% de la cartera) y el máximo por activo (5%, 10% o 15%).
+
+El perfil sale del test del inversor de IOL (la API nueva no lo expone, se lee de la anterior,
+`/api/v2/datos-perfil`, una vez por día); mientras IOL no lo tenga se usa el que el usuario elige
+en `/perfil`, y sin ninguno, conservador.
+
 ### Alertas por mail
 
 `backend/app/alerts.py` manda un mail (con [Resend](https://resend.com), gratis) cuando algo que

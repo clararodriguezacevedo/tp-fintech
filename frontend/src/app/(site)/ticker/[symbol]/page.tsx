@@ -1,7 +1,7 @@
 import { BuyPanel } from "@/components/buy-panel";
 import { SellPanel } from "@/components/sell-panel";
 import { LineChart } from "@/components/charts";
-import { ActionBadge, Reasons, threeMonths, track } from "@/components/signals";
+import { ActionBadge, Reasons, RiskBadge, threeMonths, track } from "@/components/signals";
 import { attempt, Card, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { fromEntry, integer, money, pct, pctPoints } from "@/lib/format";
@@ -41,6 +41,9 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">{ticker}</h1>
           <p className="mt-1 text-lg text-text-2">{name}</p>
+          {plan.ok && plan.data.risk_level != null && (
+            <p className="mt-2"><RiskBadge level={plan.data.risk_level} volatility={plan.data.volatility} outOfProfile={plan.data.out_of_profile} /></p>
+          )}
           <p className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <span className="num text-2xl font-semibold">{money(priceNow)}</span>
             {dayChange != null && <span className="text-text-2"><Delta value={dayChange}>{pct(dayChange)} hoy</Delta></span>}

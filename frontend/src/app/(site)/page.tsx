@@ -45,7 +45,7 @@ function HoldingRow({ r }: { r: Recommendation }) {
 }
 
 export default async function Home() {
-  const [recs, cal] = await Promise.all([attempt(() => api.recommendations()), attempt(api.calibration)]);
+  const [recs, cal, profile] = await Promise.all([attempt(() => api.recommendations()), attempt(api.calibration), attempt(api.profile)]);
   if (!recs.ok) return <ApiFailure error={recs.error} />;
   const calibration = cal.ok ? cal.data : [];
 
@@ -60,8 +60,13 @@ export default async function Home() {
         <PageTitle aside={updated && <span className="text-sm text-text-3">Actualizado {timeAgo(updated)}</span>}>
           Para comprar
         </PageTitle>
+        {profile.ok && (
+          <p className="-mt-3 mb-4 text-sm text-text-2">
+            Para tu perfil <Link href="/perfil" className="underline">{profile.data.profile}</Link>.
+          </p>
+        )}
         {buys.length === 0 ? (
-          <Notice>Hoy no hay compras recomendadas.</Notice>
+          <Notice>Hoy no hay compras recomendadas para tu perfil.</Notice>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {buys.slice(0, 6).map((r) => <BuyCard key={r.ticker} r={r} calibration={calibration} />)}

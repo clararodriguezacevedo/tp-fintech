@@ -150,7 +150,10 @@ export default async function PortfolioPage() {
                       <p className="num text-sm text-text-2">{pctPoints(h.gain_pct)}</p>
                     </td>
                     <td className="num py-3 text-right">{h.currency === "ARS" && total ? `${shareOf.get(h.ticker)}%` : "-"}</td>
-                    <td className="py-3 text-right">{r ? <ActionBadge action={r.action} /> : <span className="text-text-3">-</span>}</td>
+                    <td className="py-3 text-right">
+                      {r ? <ActionBadge action={r.action} /> : <span className="text-text-3">-</span>}
+                      {r?.signal_breakdown.out_of_profile && <p className="mt-1 text-xs" style={{ color: "var(--sell)" }}>Fuera de tu perfil</p>}
+                    </td>
                   </tr>
                 );
               })}
