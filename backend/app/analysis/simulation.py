@@ -1,20 +1,20 @@
-"""What the user's portfolio would be worth had they followed every daily recommendation.
+"""What the user's portfolio would be worth had they followed each day's plan.
 
 Day by day, starting from the real portfolio of the day each batch of recommendations was made,
 cash included (it earns nothing; a position the user sold is cash from then on):
 
   without following  every position earns its close -> close move (close_return)
-  following          positions marked "sell" are sold at the next open (so they still take the
-                     overnight gap) and sit in cash for the day; every "buy" is sized like the
-                     buy panel sizes it (losing RISK_PER_TRADE of the portfolio at a 2 ATR stop,
-                     between MIN_ALLOCATION and MAX_POSITION; BUY_ALLOCATION without price
-                     history) at the next open (earning open -> close), paid with cash first
-                     (including what the sells raised) and the rest taken pro rata from the
-                     positions; "keep" changes nothing
+  following          that day's plan, built by the same code as "Tu plan de hoy"
+                     (app.analysis.rotation): positions recommended to sell are sold, buys
+                     (sized for the investor profile like the buy panel: losing its risk per
+                     trade at a 2 ATR stop, between MIN_ALLOCATION and its maximum per asset;
+                     BUY_ALLOCATION without price history) are paid with cash first and then by
+                     rotating out of weaker positions, and what nothing pays for isn't bought.
+                     Everything trades at the next open: what is sold still takes the overnight
+                     gap, what is bought earns open -> close
   costs              the account's real cost per operation (commission + VAT + market fee, from
-                     IOL's order estimate; COMMISSION if IOL can't answer), charged only when
-                     something changes versus the
-                     previous day (entering or leaving a buy, selling or buying back)
+                     IOL's order estimate; COMMISSION if IOL can't answer), charged only on what
+                     changes versus the previous day's plan
 
 Two references, from the same starting value:
   hold     the starting portfolio, cash included, untouched: no recommendations and none of
@@ -40,7 +40,7 @@ from datetime import date, datetime, timedelta
 from pydantic import BaseModel
 
 from app import prices
-from app.analysis import market_hours, risk, suitability
+from app.analysis import market_hours, risk, rotation, suitability
 from app.analysis.tagger import UNIVERSE
 from app.brokers.iol import trade_cost_rate
 from app.config import get_settings
@@ -62,6 +62,7 @@ class SimDay(BaseModel):
     day: date
     bought: list[str]
     sold: list[str]
+    rotated: list[str] = []  # "TSM>MSFT": sold the first to buy the second
     base_return: float
     follow_return: float
     base_value: float
@@ -176,8 +177,8 @@ def simulate() -> Simulation:
     hold: dict[str, float] = {}  # starting portfolio, value per ticker
     merval_value: float | None = None
     start_day: date | None = None
-    prev_buys: set[str] = set()
-    prev_sells: set[str] = set()
+    prev_bought: dict[str, float] = {}
+    prev_sold: dict[str, float] = {}
     allocations: list[float] = []
     days: list[SimDay] = []
 
@@ -192,34 +193,47 @@ def simulate() -> Simulation:
             hold = {t: w * total for t, w in weights.items()}
             merval_value = total
 
+        recs = {r.ticker: r for r in batch}
         close_to_close = {r.ticker: r.close_return or 0.0 for r in batch}
         open_to_close = {r.ticker: r.realized_return or 0.0 for r in batch}
         # Overnight gap: what a position goes through before it can be sold at the open.
         gap = {t: (1 + close_to_close[t]) / (1 + open_to_close[t]) - 1 for t in close_to_close}
-        buys = {r.ticker for r in batch if r.action == "buy" and r.ticker not in weights}
-        sells = {r.ticker for r in batch if r.action == "sell" and r.ticker in weights}
-        sizes = {t: px.allocation(t, day) for t in buys}
+
+        # That day's plan, in pesos (one "unit" = one peso, so amounts aren't rounded to shares).
+        held = [
+            rotation.Held(
+                ticker=t, score=recs[t].score if t in recs else 0.0, value=w * total, quantity=w * total,
+                action=recs[t].action if t in recs else "keep",
+                out_of_profile=bool(t in recs and recs[t].signal_breakdown.out_of_profile),
+            )
+            for t, w in weights.items() if t != CASH and w > 0
+        ]
+        sizes = {r.ticker: px.allocation(r.ticker, day) for r in batch if r.action == "buy" and r.ticker not in weights}
         allocations += sizes.values()
+        plan = rotation.build(
+            weights.get(CASH, 0.0) * total, total, held,
+            [rotation.Candidate(t, recs[t].score, 1.0, s * total) for t, s in sizes.items()], cost_rate,
+        )
+        sold: dict[str, float] = defaultdict(float)  # share of the portfolio
+        bought: dict[str, float] = defaultdict(float)
+        for s in plan.steps:
+            (sold if s.action == "sell" else bought)[s.ticker] += s.amount / total
+        rotated = sorted({f"{s.ticker}>{s.pair}" for s in plan.steps if s.action == "sell" and s.pair})
 
         # Cash earns nothing, so it adds nothing to the day's return but weighs in the total.
         base_r = sum(w * close_to_close.get(t, 0.0) for t, w in weights.items() if t != CASH)
 
-        # Following: sold positions only take the overnight gap and become cash; buys enter at
-        # the open, paid with cash first and then pro rata from the positions.
-        kept_r = base_r - sum(weights[t] * (close_to_close.get(t, 0.0) - gap.get(t, 0.0)) for t in sells)
-        invested = min(1.0, sum(sizes.values()))
-        cash_w = weights.get(CASH, 0.0) + sum(weights[t] for t in sells)
-        from_positions = max(0.0, invested - cash_w)
-        held_w = 1 - cash_w
-        kept_share = 1 - from_positions / held_w if held_w > 0 else 0.0
-        follow_r = kept_share * kept_r + sum(sizes[t] * open_to_close.get(t, 0.0) for t in buys)
-
-        # Commissions only on changes versus yesterday.
-        trades = (
-            sum(sizes.get(t, BUY_ALLOCATION) for t in buys ^ prev_buys)
-            + sum(weights.get(t, 0.0) for t in sells ^ prev_sells)
+        # Following: what is sold only takes the overnight gap; what is bought earns open -> close.
+        follow_r = (
+            base_r
+            - sum(w * (close_to_close.get(t, 0.0) - gap.get(t, 0.0)) for t, w in sold.items())
+            + sum(w * open_to_close.get(t, 0.0) for t, w in bought.items())
         )
-        follow_r -= trades * cost_rate
+
+        # Commissions only on what changes versus yesterday's plan.
+        changed = sum(abs(bought.get(t, 0.0) - prev_bought.get(t, 0.0)) for t in set(bought) | set(prev_bought))
+        changed += sum(abs(sold.get(t, 0.0) - prev_sold.get(t, 0.0)) for t in set(sold) | set(prev_sold))
+        follow_r -= changed * cost_rate
 
         # References: graded moves where there are any, otherwise the cached closes.
         for t in hold:
@@ -237,12 +251,12 @@ def simulate() -> Simulation:
         base_value *= 1 + base_r
         follow_value *= 1 + follow_r
         days.append(SimDay(
-            day=day, bought=sorted(buys), sold=sorted(sells), base_return=round(base_r, 6),
+            day=day, bought=sorted(bought), sold=sorted(sold), rotated=rotated, base_return=round(base_r, 6),
             follow_return=round(follow_r, 6), base_value=round(base_value, 2),
             follow_value=round(follow_value, 2), hold_value=round(sum(hold.values()), 2),
             merval_value=round(merval_value, 2) if merval_value is not None else None,
         ))
-        prev_buys, prev_sells = buys, sells
+        prev_bought, prev_sold = bought, sold
 
     sim = Simulation(
         start_day=start_day, start_value=round(start_value, 2), base_value=round(base_value, 2),

@@ -53,11 +53,11 @@ export default async function HistoryPage() {
     <div className="space-y-10">
       <section>
         <PageTitle>Resultados</PageTitle>
-        <p className="text-text-2">Si hubieras seguido todas las recomendaciones desde el {s.start_day && dayLong(asDay(s.start_day))}, tu cartera valdría</p>
+        <p className="text-text-2">Si hubieras seguido el plan de cada día desde el {s.start_day && dayLong(asDay(s.start_day))}, tu cartera valdría</p>
         <p className="num mt-1 text-4xl font-semibold">{money(s.follow_value)}</p>
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <Card>
-            <p className="text-sm text-text-2">Lo que hiciste (sin seguirlas)</p>
+            <p className="text-sm text-text-2">Lo que hiciste (sin seguirlo)</p>
             <p className="num mt-1 text-xl font-semibold">{money(s.base_value)}</p>
           </Card>
           <Card>
@@ -77,7 +77,7 @@ export default async function HistoryPage() {
         </div>
         <ul className="divide-y divide-border border-y border-border">
           {[
-            { label: "Siguiendo las recomendaciones", value: s.follow_value, note: "" },
+            { label: "Siguiendo el plan de cada día", value: s.follow_value, note: "ventas, compras y rotaciones, con la plata que había" },
             {
               label: "Lo que hiciste",
               value: s.base_value,
@@ -104,7 +104,7 @@ export default async function HistoryPage() {
           })}
         </ul>
         <p className="mt-3 text-sm text-text-3">
-          Todo arranca del mismo valor, tu cartera real del primer día. Cada compra sugerida se hace a la apertura del día siguiente, del tamaño que propone el panel de compra (en promedio {(s.buy_allocation * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}% de la cartera), lo que dice vender se vende a la apertura, y cada operación paga tus costos reales de IOL ({(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%). IOL no publica el índice Merval, por eso la referencia son sus acciones líderes. Los dividendos se suman el día que se cobran.
+          Todo arranca del mismo valor, tu cartera real del primer día. Cada día se sigue el mismo plan que ves en Hoy, sobre tu cartera de ese día: se vende lo que dice vender, cada compra (del tamaño del panel de compra, en promedio {(s.buy_allocation * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}% de la cartera) se paga con la plata disponible y, si no alcanza, rotando desde lo que puntúa mucho peor, y lo que no se puede pagar no se compra. Todo se opera a la apertura del día siguiente y cada operación paga tus costos reales de IOL ({(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%). IOL no publica el índice Merval, por eso la referencia son sus acciones líderes. Los dividendos se suman el día que se cobran.
         </p>
       </section>
 
@@ -140,10 +140,19 @@ export default async function HistoryPage() {
                     <p className="font-semibold first-letter:uppercase">{dayLong(asDay(day))}</p>
                     {d && (
                       <p className="text-sm text-text-2">
-                        Siguiéndolas <Delta value={d.follow_return}>{pct(d.follow_return, 2)}</Delta>, sin seguirlas <Delta value={d.base_return}>{pct(d.base_return, 2)}</Delta>
+                        Con el plan <Delta value={d.follow_return}>{pct(d.follow_return, 2)}</Delta>, sin el plan <Delta value={d.base_return}>{pct(d.base_return, 2)}</Delta>
                       </p>
                     )}
                   </div>
+                  {d && (d.bought.length > 0 || d.sold.length > 0) && (
+                    <p className="mb-3 text-sm text-text-2">
+                      El plan: {[
+                        ...d.rotated.map((r) => { const [from, to] = r.split(">"); return `rotar de ${from} a ${to}`; }),
+                        ...d.sold.filter((t) => !d.rotated.some((r) => r.startsWith(`${t}>`))).map((t) => `vender ${t}`),
+                        ...d.bought.filter((t) => !d.rotated.some((r) => r.endsWith(`>${t}`))).map((t) => `comprar ${t} con la plata disponible`),
+                      ].join(", ")}.
+                    </p>
+                  )}
                   <ul className="divide-y divide-border">
                     {items.sort((a, b) => Number(b.action === "buy") - Number(a.action === "buy") || a.ticker.localeCompare(b.ticker)).map((r) => (
                       <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-2">

@@ -3674,6 +3674,14 @@
             "type": "array",
             "title": "Sold"
           },
+          "rotated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rotated",
+            "default": []
+          },
           "base_return": {
             "type": "number",
             "title": "Base Return"

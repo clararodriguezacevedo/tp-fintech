@@ -444,6 +444,7 @@ const SimDay = z
     day: z.string(),
     bought: z.array(z.string()),
     sold: z.array(z.string()),
+    rotated: z.array(z.string()).optional().default([]),
     base_return: z.number(),
     follow_return: z.number(),
     base_value: z.number(),

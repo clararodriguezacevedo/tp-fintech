@@ -229,8 +229,9 @@ recomendación hecha después del cierre recién se puede ejecutar a la apertura
 **apertura a cierre** del día siguiente (también se guarda cierre a cierre). Comprar acierta si
 sube, vender si baja; mantener algo que tenés acierta si no cae más de 1,5%.
 
-- `GET /track-record/simulation`: cuánto valdría la cartera siguiendo todas las recomendaciones
-  (compras del tamaño que propone el panel y ventas, a la apertura, con los costos reales de IOL),
+- `GET /track-record/simulation`: cuánto valdría la cartera siguiendo el plan de cada día (el mismo
+  código que "Tu plan de hoy": ventas, compras pagadas con efectivo o rotando, a la apertura, con
+  los costos reales de IOL),
   comparado con lo que hiciste, con quedarte quieto con la cartera del primer día y con comprar
   las 20 líderes del Merval en partes iguales (IOL no publica el índice).
 - `GET /track-record/signals`: cuántas veces acertó cada señal por separado.
