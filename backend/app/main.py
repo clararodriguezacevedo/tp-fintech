@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from app import account as acct, jobs, prices
+from app import account as acct, alerts, jobs, prices
 from app.analysis import market_hours, risk, rotation, scoring, simulation, suitability, track_record
 from app.assets import asset_types
 from app.profile import InvestorProfile, declare, get_profile
@@ -242,6 +242,17 @@ def portfolio_history(days: int = Query(90, ge=1, le=365)) -> list[PortfolioValu
         )
         for d in history.history if d.equity.ars > 0
     ]
+
+
+@app.post("/alerts/test", response_model=JobResult)
+def alerts_test() -> JobResult:
+    """Send a test e-mail, to check RESEND_API_KEY and ALERT_EMAIL. failed lists "send" if it didn't go out."""
+    sent = alerts.send(
+        f"test:{datetime.now(timezone.utc).isoformat()}", "Prueba de alertas de El Parque",
+        ["Si te llega este mail, las alertas funcionan: vas a recibir un aviso cuando algo que tenés pase a "
+         "vender, cuando falle un job o cuando se agote la cuota de Gemini."],
+    )
+    return JobResult(failed=[] if sent else ["send"])
 
 
 @app.get("/account", response_model=AccountSummary)
