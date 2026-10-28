@@ -1,12 +1,14 @@
 import Link from "next/link";
 
+import { fundingOf, PlanView } from "@/components/portfolio-plan";
 import { ActionBadge, threeMonths, track } from "@/components/signals";
 import { ApiFailure, attempt, Card, Notice, PageTitle, SectionTitle } from "@/components/ui";
-import { api, type CalibrationBucket, type Recommendation } from "@/lib/api/client";
+import { api, type CalibrationBucket, type PortfolioPlan, type Recommendation } from "@/lib/api/client";
 import { money, timeAgo } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
-function BuyCard({ r, calibration }: { r: Recommendation; calibration: CalibrationBucket[] }) {
+function BuyCard({ r, calibration, plan }: { r: Recommendation; calibration: CalibrationBucket[]; plan: PortfolioPlan | null }) {
+  const funding = fundingOf(plan, r.ticker);
   return (
     <Card className="flex flex-col">
       <div className="flex items-start justify-between gap-3">
@@ -22,6 +24,7 @@ function BuyCard({ r, calibration }: { r: Recommendation; calibration: Calibrati
         <div>
           {r.price_at_rec != null && <p className="num font-semibold">{money(r.price_at_rec)}</p>}
           <p className="text-sm text-text-2">{track(r, calibration)}</p>
+          {funding && <p className="text-sm text-text-3">{funding}</p>}
         </div>
         <Link href={`/ticker/${r.ticker}`} className="whitespace-nowrap rounded-lg bg-text px-3 py-1.5 text-sm font-medium text-bg hover:opacity-85">
           Ver y comprar
@@ -45,7 +48,9 @@ function HoldingRow({ r }: { r: Recommendation }) {
 }
 
 export default async function Home() {
-  const [recs, cal, profile] = await Promise.all([attempt(() => api.recommendations()), attempt(api.calibration), attempt(api.profile)]);
+  const [recs, cal, profile, plan] = await Promise.all([
+    attempt(() => api.recommendations()), attempt(api.calibration), attempt(api.profile), attempt(api.portfolioPlan),
+  ]);
   if (!recs.ok) return <ApiFailure error={recs.error} />;
   const calibration = cal.ok ? cal.data : [];
 
@@ -69,10 +74,17 @@ export default async function Home() {
           <Notice>Hoy no hay compras recomendadas para tu perfil.</Notice>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {buys.slice(0, 6).map((r) => <BuyCard key={r.ticker} r={r} calibration={calibration} />)}
+            {buys.slice(0, 6).map((r) => <BuyCard key={r.ticker} r={r} calibration={calibration} plan={plan.ok ? plan.data : null} />)}
           </div>
         )}
       </section>
+
+      {plan.ok && (
+        <section>
+          <SectionTitle>Tu plan de hoy</SectionTitle>
+          <PlanView plan={plan.data} />
+        </section>
+      )}
 
       <section>
         <SectionTitle>Tu cartera</SectionTitle>

@@ -178,6 +178,15 @@ export default async function HowItDecides() {
         </p>
       </Block>
 
+      <Block title="Con qué plata">
+        <p>
+          Las recomendaciones se convierten en un plan para toda tu cartera. Primero se vende lo que dice vender. Después cada compra,
+          de la mejor a la peor, se paga con tu plata disponible. Si no alcanza, el plan propone rotar: vender parte de algo que tenés
+          y comprar con esa plata, solo si la compra puntúa bastante mejor y lo que vendés no se espera que suba. Lo que no se puede pagar
+          se avisa en vez de recomendarse igual.
+        </p>
+      </Block>
+
       <Block title="Cuánto comprar">
         <p>La cantidad sugerida es la menor de estas:</p>
         <ul className="list-disc space-y-1 pl-5">

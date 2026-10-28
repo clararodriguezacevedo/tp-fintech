@@ -35,6 +35,7 @@ export type Transfer = z.infer<typeof schemas.Transfer>;
 export type Quote = z.infer<typeof schemas.Quote>;
 export type InvestorProfile = z.infer<typeof schemas.InvestorProfile>;
 export type ProfileName = InvestorProfile["profile"];
+export type PortfolioPlan = z.infer<typeof schemas.PortfolioPlan>;
 export type SellPlan = z.infer<typeof schemas.SellPlan>;
 export type SellRequest = z.infer<typeof schemas.SellRequest>;
 
@@ -85,6 +86,7 @@ export const api = {
   portfolio: () => request(schemas.PortfolioOut, "/portfolio"),
   portfolioHistory: (days = 90) =>
     request(z.array(schemas.PortfolioValuePoint), "/portfolio/history", { query: { days } }),
+  portfolioPlan: () => request(schemas.PortfolioPlan, "/portfolio/plan"),
   portfolioAdvice: () => request(z.array(schemas.RecommendationRow), "/portfolio/advice"),
   recommendations: (
     query: { kind?: "live" | "daily"; action?: "buy" | "sell" | "keep"; held?: boolean; ticker?: string } = {},

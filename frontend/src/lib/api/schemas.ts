@@ -349,6 +349,31 @@ const RecommendationRow = z
     updated_at: z.string().datetime({ offset: true }),
   })
   .passthrough();
+const PlanStep = z
+  .object({
+    action: z.enum(["sell", "buy"]),
+    ticker: z.string(),
+    quantity: z.number().int(),
+    amount: z.number(),
+    score: z.number(),
+    why: z.enum(["recommended", "rotation", "cash"]),
+    group: z.number().int(),
+    pair: z.union([z.string(), z.null()]).optional(),
+  })
+  .passthrough();
+const UnfundedBuy = z
+  .object({ ticker: z.string(), score: z.number(), amount: z.number() })
+  .passthrough();
+const PortfolioPlan = z
+  .object({
+    cash: z.number(),
+    cash_left: z.number(),
+    steps: z.array(PlanStep),
+    unfunded: z.array(UnfundedBuy),
+    rotation_gap: z.number(),
+    min_trade: z.number(),
+  })
+  .passthrough();
 const HitStats = z
   .object({
     n: z.number().int(),
@@ -476,6 +501,9 @@ export const schemas = {
   SignalBreakdown,
   Evidence,
   RecommendationRow,
+  PlanStep,
+  UnfundedBuy,
+  PortfolioPlan,
   HitStats,
   TrackRecordSummary,
   SignalStats,

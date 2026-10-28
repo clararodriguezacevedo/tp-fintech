@@ -12,12 +12,12 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app import account as acct, jobs, prices
-from app.analysis import market_hours, risk, scoring, simulation, suitability, track_record
+from app.analysis import market_hours, risk, rotation, scoring, simulation, suitability, track_record
 from app.assets import asset_types
 from app.profile import InvestorProfile, declare, get_profile
 from app.analysis.tagger import UNIVERSE
 from app.analysis.simulation import Simulation
-from app.brokers.iol import IOLUnavailable, get_iol
+from app.brokers.iol import IOLUnavailable, get_iol, trade_cost_rate
 from app.config import get_settings
 from app.db import get_db, rows_as
 from app.models.db import (
@@ -28,11 +28,12 @@ from app.portfolio import BOND_TYPES, EQUITY_TYPES, current_holdings, get_holdin
 from app.models.iol import DailyBar
 from app.schemas import (
     AccountSummary, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
-    ModelInfo, NewsOut, PortfolioOut, PortfolioValuePoint, ProbabilityPoint, SignalStats,
+    ModelInfo, NewsOut, PlanStep, PortfolioOut, PortfolioPlan, UnfundedBuy, PortfolioValuePoint, ProbabilityPoint, SignalStats,
     ProfileRequest, Quote, SellPlan, SellRequest, TrackRecordSummary, TradePlan, Transfer,
 )
 from app.sources import polymarket
 from app.trading import paper
+from app.trading.sizing import size_buy
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -317,29 +318,11 @@ def trade_plan(
         cash = cash or (real_cash if settings.iol_live_trading else settings.paper_cash)
     if cash <= 0:
         raise HTTPException(422, "no peso cash available to buy with")
-    bars = prices.daily_bars(ticker)
-    if len(bars) < 15:
-        raise HTTPException(422, f"not enough price history for {ticker}")
     price = entry or paper.last_price(ticker)
-    stocks = set(UNIVERSE["acciones"]) | {t for t, h in holdings.items() if h.type in EQUITY_TYPES}
-    bonds = set(UNIVERSE["bonos"]) | {t for t, h in holdings.items() if h.type in BOND_TYPES}
-    group = scoring.risk_group(ticker, stocks, bonds)
-    volumes = [b.volume for b in bars[-20:] if b.volume]
-    plan = risk.plan_buy(
-        entry=price,
-        atr_value=risk.atr([b.high for b in bars], [b.low for b in bars], [b.close for b in bars]),
-        portfolio_value=portfolio_value,
-        risk_per_trade=suitability.RISK_PER_TRADE[investor],
-        cash_available=cash,
-        held_value=holdings[ticker].value if ticker in holdings else 0.0,
-        group_value=sum(
-            h.value for h in holdings.values()
-            if h.currency == "ARS" and scoring.risk_group(h.ticker, stocks, bonds) == group
-        ),
-        concentration_limit=scoring.CONCENTRATION_LIMIT,
-        avg_volume=sum(volumes) / len(volumes) if len(volumes) >= 5 else None,
-        max_position=suitability.MAX_POSITION[investor],
-    )
+    try:
+        plan = size_buy(ticker, price, holdings, portfolio_value, cash, investor)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     level = _risk_of(ticker)
     fees = None
     if plan.quantity > 0:
@@ -449,6 +432,43 @@ def list_recommendations(
     if held is not None:
         q = q.eq("held", held)
     return rows_as(RecommendationRow, q.order("score", desc=True).execute().data)
+
+
+@app.get("/portfolio/plan", response_model=PortfolioPlan)
+def portfolio_plan() -> PortfolioPlan:
+    """Today's sells, buys and rotations, paid with the cash available and what gets sold."""
+    recs = {r.ticker: r for r in list_recommendations(kind="live")}
+    snap = current_holdings()
+    value = acct.value_of(snap)
+    investor = get_profile().profile
+    holdings = {h.ticker: h for h in snap.holdings}
+    held = [
+        rotation.Held(
+            ticker=h.ticker, score=recs[h.ticker].score if h.ticker in recs else 0.0, value=h.value,
+            quantity=h.quantity, action=recs[h.ticker].action if h.ticker in recs else "keep",
+            out_of_profile=bool(h.ticker in recs and recs[h.ticker].signal_breakdown.out_of_profile),
+        )
+        for h in snap.holdings if h.currency == "ARS"
+    ]
+    buys = []
+    for r in recs.values():
+        if r.action != "buy" or r.held or r.ticker in holdings:
+            continue
+        price = r.price_at_rec or paper.last_price(r.ticker)
+        try:
+            sized = size_buy(r.ticker, price, holdings, value.total, 0.0, investor)
+        except Exception:
+            log.warning("could not size %s for the plan", r.ticker)
+            continue
+        buys.append(rotation.Candidate(r.ticker, r.score, price, sized.quantity * price))
+    real_rate = trade_cost_rate()
+    plan = rotation.build(value.cash_ars, value.total, held, buys, real_rate if real_rate is not None else 0.006)
+    return PortfolioPlan(
+        cash=plan.cash, cash_left=plan.cash_left,
+        steps=[PlanStep(**s.__dict__) for s in plan.steps],
+        unfunded=[UnfundedBuy(**u.__dict__) for u in plan.unfunded],
+        rotation_gap=rotation.ROTATION_GAP, min_trade=rotation.MIN_TRADE,
+    )
 
 
 @app.get("/portfolio/advice", response_model=list[RecommendationRow])

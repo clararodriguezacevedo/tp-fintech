@@ -235,6 +235,16 @@ sube, vender si baja; mantener algo que tenés acierta si no cae más de 1,5%.
   las 20 líderes del Merval en partes iguales (IOL no publica el índice).
 - `GET /track-record/signals`: cuántas veces acertó cada señal por separado.
 
+### Plan del día y rotación
+
+`GET /portfolio/plan` (`backend/app/analysis/rotation.py`) convierte las recomendaciones en un plan
+para toda la cartera, con la plata que hay: primero se venden las posiciones que dicen vender;
+después cada compra, de mejor a peor puntaje y del tamaño del panel de compra, se paga con el
+efectivo. Si no alcanza, propone rotar: vender parte de una posición que la compra supera por
+0,35 o más de puntaje y que no se espera que suba (puntaje hasta 0,1), primero las que están fuera
+del perfil. Lo que no se puede pagar se informa en vez de recomendarse igual. Las operaciones de
+menos del 1% de la cartera quedan afuera.
+
 ### Perfil de inversor (CNV)
 
 Cada activo tiene un riesgo (`backend/app/analysis/suitability.py`): **bajo** para bonos y ONs que

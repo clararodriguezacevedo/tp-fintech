@@ -1469,6 +1469,53 @@
         }
       }
     },
+    "/portfolio/plan": {
+      "get": {
+        "summary": "Portfolio Plan",
+        "description": "Today's sells, buys and rotations, paid with the cash available and what gets sold.",
+        "operationId": "portfolio_plan",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioPlan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/portfolio/advice": {
       "get": {
         "summary": "Portfolio Advice",
@@ -2795,6 +2842,69 @@
         ],
         "title": "NewsOut"
       },
+      "PlanStep": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "sell",
+              "buy"
+            ],
+            "title": "Action"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "why": {
+            "type": "string",
+            "enum": [
+              "recommended",
+              "rotation",
+              "cash"
+            ],
+            "title": "Why"
+          },
+          "group": {
+            "type": "integer",
+            "title": "Group"
+          },
+          "pair": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pair"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "ticker",
+          "quantity",
+          "amount",
+          "score",
+          "why",
+          "group"
+        ],
+        "title": "PlanStep"
+      },
       "PortfolioOut": {
         "properties": {
           "captured_at": {
@@ -2849,6 +2959,51 @@
         ],
         "title": "PortfolioOut",
         "description": "The account now. total_ars = the holdings in pesos + cash_ars + cash_usd_ars, the same\ndefinition as every point of /portfolio/history (app.account)."
+      },
+      "PortfolioPlan": {
+        "properties": {
+          "cash": {
+            "type": "number",
+            "title": "Cash"
+          },
+          "cash_left": {
+            "type": "number",
+            "title": "Cash Left"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlanStep"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "unfunded": {
+            "items": {
+              "$ref": "#/components/schemas/UnfundedBuy"
+            },
+            "type": "array",
+            "title": "Unfunded"
+          },
+          "rotation_gap": {
+            "type": "number",
+            "title": "Rotation Gap"
+          },
+          "min_trade": {
+            "type": "number",
+            "title": "Min Trade"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cash",
+          "cash_left",
+          "steps",
+          "unfunded",
+          "rotation_gap",
+          "min_trade"
+        ],
+        "title": "PortfolioPlan",
+        "description": "Today's plan for the whole portfolio, within the money there is (app.analysis.rotation)."
       },
       "PortfolioValuePoint": {
         "properties": {
@@ -4139,6 +4294,29 @@
           "amount"
         ],
         "title": "Transfer"
+      },
+      "UnfundedBuy": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "score",
+          "amount"
+        ],
+        "title": "UnfundedBuy"
       },
       "ValidationError": {
         "properties": {

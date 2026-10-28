@@ -86,6 +86,34 @@ class BuyRequest(BaseModel):
     accept_out_of_profile: bool = False  # the user confirmed buying above their profile
 
 
+class PlanStep(BaseModel):
+    action: Literal["sell", "buy"]
+    ticker: str
+    quantity: int
+    amount: float  # pesos
+    score: float
+    why: Literal["recommended", "rotation", "cash"]  # sell: recommended or to pay a buy; buy: cash or rotation
+    group: int  # a rotation's sell and buy share it
+    pair: str | None = None  # the other ticker of a rotation
+
+
+class UnfundedBuy(BaseModel):
+    ticker: str
+    score: float
+    amount: float  # pesos the plan couldn't pay for
+
+
+class PortfolioPlan(BaseModel):
+    """Today's plan for the whole portfolio, within the money there is (app.analysis.rotation)."""
+
+    cash: float  # pesos available before the plan
+    cash_left: float  # after it
+    steps: list[PlanStep]
+    unfunded: list[UnfundedBuy]
+    rotation_gap: float
+    min_trade: float  # share of the portfolio below which a trade is left out
+
+
 class ProfileRequest(BaseModel):
     profile: Literal["conservador", "moderado", "arriesgado"]
 
