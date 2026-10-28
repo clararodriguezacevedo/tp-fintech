@@ -3,7 +3,7 @@ import Link from "next/link";
 import { CloseTrade } from "@/components/close-trade";
 import { ApiFailure, attempt, Delta, Notice, PageTitle } from "@/components/ui";
 import { api, type Health, type Trade } from "@/lib/api/client";
-import { dateTime, integer, money, price } from "@/lib/format";
+import { dateTime, fromEntry, integer, money, price } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
 export const metadata = { title: "Operaciones | El Parqué" };
@@ -14,7 +14,7 @@ const STATUS: Record<Trade["status"], string> = {
   filled: "Abierta",
   stopped_out: "Cerrada por stop loss",
   took_profit: "Cerrada por take profit",
-  closed: "Vendiste",
+  closed: "Vendiste a mano",
   cancelled: "Cancelada",
   failed: "Falló",
 };
@@ -50,7 +50,7 @@ export default async function TradesPage() {
     <div>
       <PageTitle>Operaciones</PageTitle>
       {mode === "paper" && (
-        <p className="-mt-3 mb-6 text-sm text-text-2">Son simuladas con precios reales de IOL: tu cuenta de IOL no cambia.</p>
+        <p className="-mt-3 mb-6 text-sm text-text-2">Son simuladas con precios reales de IOL.</p>
       )}
       {trades.data.length === 0 ? (
         <Notice>
@@ -98,8 +98,11 @@ export default async function TradesPage() {
                           Compraste a {price(t.fill_price ?? t.entry_price)}
                           {t.exit_price != null ? `, vendiste a ${price(t.exit_price)}` : now(t) != null && t.status === "filled" ? `, ahora ${price(now(t))}` : ""}
                         </p>
+                        {t.closed_at && t.status !== "cancelled" && <p className="text-text-3">Vendida el {dateTime(t.closed_at)}</p>}
                         {t.stop_loss != null && t.take_profit != null && (
-                          <p className="text-text-3">Stop loss {price(t.stop_loss)}, take profit {price(t.take_profit)}</p>
+                          <p className="text-text-3">
+                            Stop loss {fromEntry(t.stop_loss, t.fill_price ?? t.entry_price)}, take profit {fromEntry(t.take_profit, t.fill_price ?? t.entry_price)}
+                          </p>
                         )}
                       </>
                     )}

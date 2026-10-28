@@ -27,6 +27,13 @@ export function roundToTotal(values: number[], digits = 0, total = values.reduce
   return out.map((v) => v / k);
 }
 
+/** Stop loss / take profit as a move from the entry price: (7378.57, 8030) -> "−8,1%". */
+export const fromEntry = (level: number | null | undefined, entry: number | null | undefined) => {
+  if (level == null || !entry) return "-";
+  const x = level / entry - 1;
+  return `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toLocaleString("es-AR", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
+};
+
 /** 0.0523 -> "+5,2%" */
 export const pct = (x: number | null | undefined, digits = 1) =>
   x == null ? "-" : `${x > 0 ? "+" : ""}${(x * 100).toLocaleString("es-AR", { maximumFractionDigits: digits, minimumFractionDigits: digits })}%`;

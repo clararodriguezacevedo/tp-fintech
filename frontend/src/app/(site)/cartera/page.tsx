@@ -4,7 +4,7 @@ import { LineChart } from "@/components/charts";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api, type Holding, type Recommendation } from "@/lib/api/client";
-import { dayShort, integer, money, pctPoints, price, roundToTotal } from "@/lib/format";
+import { integer, money, pctPoints, price, roundToTotal } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
 export const metadata = { title: "Mi cartera | El Parqué" };
@@ -195,23 +195,6 @@ export default async function PortfolioPage() {
             valueFormat="moneyCompact"
             timeFormat="dayShort"
           />
-          {moves.length > 0 && (
-            <div className="mt-6 max-w-sm">
-              <p className="mb-2 flex items-center gap-2 text-sm font-medium">
-                <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4" fill="var(--bg)" stroke="var(--text-2)" strokeWidth="2" /></svg>
-                Depósitos y retiros
-              </p>
-              <ul className="divide-y divide-border border-y border-border text-sm">
-                {moves.map((m) => (
-                  <li key={`${m.day}-${m.amount}`} className="flex justify-between gap-4 py-1.5">
-                    <span className="text-text-2">{dayShort(m.day + "T12:00:00")}</span>
-                    <span className="num">{m.amount >= 0 ? "+" : "−"}{money(Math.abs(m.amount))}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-sm text-text-3">Plata que entró o salió de la cuenta: no es ganancia ni pérdida.</p>
-            </div>
-          )}
         </section>
       )}
     </div>

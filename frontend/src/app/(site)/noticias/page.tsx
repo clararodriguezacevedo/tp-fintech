@@ -12,9 +12,6 @@ export default async function NewsPage() {
   return (
     <div>
       <PageTitle>Noticias</PageTitle>
-      <p className="-mt-3 mb-6 text-sm text-text-2">
-        <span style={{ color: "var(--buy)" }}>▲</span> podría subir, <span style={{ color: "var(--sell)" }}>▼</span> podría bajar.
-      </p>
       <div className="grid gap-12 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section>
           {!news.ok ? <ApiFailure error={news.error} /> : <NewsList news={news.data} />}

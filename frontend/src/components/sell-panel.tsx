@@ -29,7 +29,7 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
         <p className="text-lg font-semibold">Venta hecha</p>
         <p className="mt-2 text-text-2">
           Vendiste {integer(t.quantity)} {t.ticker} a {price(t.exit_price ?? t.entry_price)}.
-          {mode === "paper" && " Es una venta simulada: tu cuenta de IOL no cambia."}
+          {mode === "paper" && " Es una venta simulada."}
         </p>
         <Link href="/operaciones" className="mt-4 inline-block text-sm underline">Ver mis operaciones</Link>
       </div>
@@ -45,7 +45,7 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
       <p className="text-lg font-semibold">Vender {plan.ticker}</p>
       <p className="text-sm text-text-3">
         {recommended ? "La recomendación de hoy es vender. " : ""}
-        {mode === "paper" ? "Simulación: tu cuenta de IOL no cambia." : "Orden real en IOL."}
+        {mode === "paper" ? "Simulación." : "Orden real en IOL."}
       </p>
 
       {!review ? (

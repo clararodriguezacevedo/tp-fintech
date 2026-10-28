@@ -4,7 +4,7 @@ import { LineChart } from "@/components/charts";
 import { ActionBadge, Reasons, threeMonths, track } from "@/components/signals";
 import { attempt, Card, Delta, Notice, SectionTitle, Stat } from "@/components/ui";
 import { api } from "@/lib/api/client";
-import { integer, money, pct, pctPoints } from "@/lib/format";
+import { fromEntry, integer, money, pct, pctPoints } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
 export async function generateMetadata({ params }: { params: Promise<{ symbol: string }> }) {
@@ -93,8 +93,8 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
             refLines={
               plan.ok && !position
                 ? [
-                    { value: plan.data.take_profit, label: "Take profit", tone: "buy" },
-                    { value: plan.data.stop_loss, label: "Stop loss", tone: "sell" },
+                    { value: plan.data.take_profit, label: `Take profit ${fromEntry(plan.data.take_profit, plan.data.entry)}`, tone: "buy" },
+                    { value: plan.data.stop_loss, label: `Stop loss ${fromEntry(plan.data.stop_loss, plan.data.entry)}`, tone: "sell" },
                   ]
                 : []
             }

@@ -7,7 +7,7 @@ import { useActionState, useState } from "react";
 
 import { buyAction, type BuyState } from "@/app/(site)/actions";
 import type { TradePlan } from "@/lib/api/client";
-import { money, pct, price } from "@/lib/format";
+import { fromEntry, money, pct } from "@/lib/format";
 
 /** Why the suggested quantity is what it is: the limit that binds. */
 function sizeReason(plan: TradePlan, ticker: string) {
@@ -41,8 +41,12 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
   ticker: string; plan: TradePlan; mode: "paper" | "live"; recommendationId?: string;
 }) {
   const [quantity, setQuantity] = useState(plan.quantity);
-  const [stopLoss, setStopLoss] = useState(plan.stop_loss);
-  const [takeProfit, setTakeProfit] = useState(plan.take_profit);
+  // Entered as % below / above the price; the order still carries the price levels.
+  const distance = (level: number) => Math.round(Math.abs(level / plan.entry - 1) * 1000) / 10;
+  const [slPct, setSlPct] = useState(distance(plan.stop_loss));
+  const [tpPct, setTpPct] = useState(distance(plan.take_profit));
+  const stopLoss = Math.round(plan.entry * (1 - slPct / 100) * 100) / 100;
+  const takeProfit = Math.round(plan.entry * (1 + tpPct / 100) * 100) / 100;
   const [review, setReview] = useState(false);
   const [state, action, pending] = useActionState<BuyState, FormData>(buyAction, { status: "idle" });
 
@@ -52,8 +56,8 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
   const maxGain = quantity * (takeProfit - entry);
   const problem =
     quantity < 1 ? "La cantidad tiene que ser al menos 1."
-    : stopLoss >= entry ? "El stop loss tiene que ser menor al precio actual."
-    : takeProfit <= entry ? "El take profit tiene que ser mayor al precio actual."
+    : !(slPct > 0 && slPct < 100) ? "El stop loss tiene que ser una baja entre 0% y 100%."
+    : !(tpPct > 0) ? "El take profit tiene que ser una suba mayor a 0%."
     : null;
 
   if (state.status === "ok") {
@@ -94,16 +98,16 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
                 {plan.portfolio_share != null && plan.portfolio_share > 0 && ` Es el ${pct(plan.portfolio_share).replace("+", "")} de tu cartera.`}
               </p>
             )}
-            <Field id="sl" label="Stop loss" hint="Vende solo si baja a este precio" step="0.01" value={stopLoss} onChange={setStopLoss} />
-            <Field id="tp" label="Take profit" hint="Vende solo si sube a este precio" step="0.01" value={takeProfit} onChange={setTakeProfit} />
+            <Field id="sl" label="Stop loss (%)" hint="Vende sola si baja este porcentaje" step="0.1" value={slPct} onChange={setSlPct} />
+            <Field id="tp" label="Take profit (%)" hint="Vende sola si sube este porcentaje" step="0.1" value={tpPct} onChange={setTpPct} />
           </div>
           <dl className="mt-5 space-y-1 border-t border-border pt-4">
             <div className="flex justify-between"><dt className="text-text-2">Total</dt><dd className="num font-semibold">{money(total)}</dd></div>
             {plan.fees != null && quantity === plan.quantity && (
               <div className="flex justify-between"><dt className="text-text-2">Costos de IOL</dt><dd className="num">{money(plan.fees)}</dd></div>
             )}
-            <div className="flex justify-between"><dt className="text-text-2">Si toca el stop loss</dt><dd className="num">−{money(maxLoss)}</dd></div>
-            <div className="flex justify-between"><dt className="text-text-2">Si toca el take profit</dt><dd className="num">+{money(maxGain)}</dd></div>
+            <div className="flex justify-between"><dt className="text-text-2">Si baja {fromEntry(stopLoss, entry).replace("−", "")} (stop loss)</dt><dd className="num">−{money(maxLoss)}</dd></div>
+            <div className="flex justify-between"><dt className="text-text-2">Si sube {fromEntry(takeProfit, entry).replace("+", "")} (take profit)</dt><dd className="num">+{money(maxGain)}</dd></div>
           </dl>
           {problem && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{problem}</p>}
           <button
@@ -119,8 +123,8 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
         <>
           <p className="mt-5 leading-relaxed">
             Vas a comprar <strong>{quantity} {ticker}</strong> por <strong className="num">{money(total)}</strong>.
-            Se vende sola si baja a <span className="num">{price(stopLoss)}</span> (stop loss) o si sube a{" "}
-            <span className="num">{price(takeProfit)}</span> (take profit).
+            Se vende sola si baja <span className="num">{fromEntry(stopLoss, entry).replace("−", "")}</span> (stop loss) o si sube{" "}
+            <span className="num">{fromEntry(takeProfit, entry).replace("+", "")}</span> (take profit).
           </p>
           {!plan.market_open && (
             <p className="mt-3 text-sm text-text-2">
