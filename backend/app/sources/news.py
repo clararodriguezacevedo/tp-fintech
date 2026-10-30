@@ -1,6 +1,7 @@
 """Recent news from RSS feeds and GDELT."""
 
 import hashlib
+import logging
 from datetime import datetime, timezone
 from time import mktime
 
@@ -9,6 +10,8 @@ import httpx
 
 from app.models.domain import NewsRecord
 from app.models.gdelt import ArtList
+
+log = logging.getLogger(__name__)
 
 RSS_FEEDS = {
     "ambito": "https://www.ambito.com/rss/pages/economia.xml",
@@ -58,7 +61,20 @@ def fetch_rss(client: httpx.Client) -> list[NewsRecord]:
     return out
 
 
+GDELT_TIMEOUT = 12  # seconds; it often takes 10+ and sometimes never answers
+
+
 def fetch_gdelt(client: httpx.Client, timespan: str = "1h") -> list[NewsRecord]:
+    """Never raises: GDELT rate-limits (429), times out and sometimes answers with broken JSON,
+    and none of that should stop the RSS news from being saved."""
+    try:
+        return _fetch_gdelt(client, timespan)
+    except (httpx.HTTPError, ValueError) as e:  # ValueError covers bad JSON and validation errors
+        log.warning("GDELT unavailable: %s", type(e).__name__)
+        return []
+
+
+def _fetch_gdelt(client: httpx.Client, timespan: str) -> list[NewsRecord]:
     r = client.get(
         GDELT_URL,
         params={
@@ -70,6 +86,7 @@ def fetch_gdelt(client: httpx.Client, timespan: str = "1h") -> list[NewsRecord]:
             "sort": "datedesc",
         },
         headers=HEADERS,
+        timeout=GDELT_TIMEOUT,
     )
     # GDELT answers rate-limited calls with a plain-text body (sometimes with a 200).
     if "json" not in r.headers.get("content-type", ""):

@@ -86,3 +86,31 @@ def test_send_goes_out_once_per_key(monkeypatch):
     assert alerts.send("k", "Hola", ["x"]) is True
     assert alerts.send("k", "Hola", ["x"]) is False
     assert calls == ["Hola"]
+
+
+def test_gdelt_failures_never_stop_the_news(monkeypatch):
+    import httpx
+
+    from app.sources import news
+
+    def timeout(*_a, **_k):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(news, "_fetch_gdelt", timeout)
+    assert news.fetch_gdelt(httpx.Client()) == []
+
+    def bad_json(*_a, **_k):
+        raise ValueError("Expecting value")
+
+    monkeypatch.setattr(news, "_fetch_gdelt", bad_json)
+    assert news.fetch_gdelt(httpx.Client()) == []
+
+
+def test_breakdown_with_an_event_date_can_be_saved():
+    import json
+    from datetime import date
+
+    from app.models.db import SignalBreakdown
+
+    b = SignalBreakdown(news=0, markets=0, trend=0, event_kind="dividend", event_date=date(2026, 10, 30))
+    assert json.loads(json.dumps(b.model_dump(mode="json")))["event_date"] == "2026-10-30"

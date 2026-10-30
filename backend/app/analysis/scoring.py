@@ -647,7 +647,7 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
             "driver": r.driver,
             "held": r.held,
             "price_at_rec": r.price,
-            "signal_breakdown": r.breakdown.model_dump(),
+            "signal_breakdown": r.breakdown.model_dump(mode="json"),  # dates (event_date) as text
             "evidence": [e.model_dump(mode="json") for e in r.evidence],
             "target_date": target.isoformat(),
             "kind": kind,
