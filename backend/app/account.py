@@ -4,7 +4,9 @@
 
 That is how IOL values the account in its daily history (checked on 2026-10-27: yesterday's
 equity minus positions at yesterday's prices, peso cash and dollar cash at the MEP rate left
-$ 294 of sale fees), so today's value and every past day compare one to one. Selling moves
+$ 294 of sale fees; on 2026-11-01, with unsettled buys, it matched to the cent using available
+cash, since a buy not settled yet is already in the positions), so today's value and every past
+day compare one to one. Selling moves
 value from positions to cash; only deposits and withdrawals change it without a gain or a loss.
 """
 
@@ -54,7 +56,7 @@ def mep_rate() -> float | None:
 
 def _balances() -> tuple[float, float]:
     b = get_iol().balances()
-    return b.ars.totals.total, b.usd.totals.total
+    return b.ars.available.total, b.usd.available.total
 
 
 def value_of(snap: Snapshot) -> AccountValue:

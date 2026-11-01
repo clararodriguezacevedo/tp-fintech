@@ -78,10 +78,11 @@ def _fetch_from_iol() -> list[Holding]:
 
 
 def _fetch_cash() -> tuple[float | None, float | None]:
-    """(pesos, dollars) in the account, settled or not; (None, None) if IOL can't answer."""
+    """(pesos, dollars) available; (None, None) if IOL can't answer. Not `totals`: it still
+    includes the money of unsettled buys, which are already in the positions."""
     try:
         b = get_iol().balances()
-        return b.ars.totals.total, b.usd.totals.total
+        return b.ars.available.total, b.usd.available.total
     except Exception:
         log.warning("no balances from IOL; snapshot without cash")
         return None, None

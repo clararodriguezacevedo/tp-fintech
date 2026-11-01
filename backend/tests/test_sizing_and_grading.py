@@ -167,3 +167,27 @@ def test_out_of_profile_is_never_a_buy():
     assert inside.action == "buy" and not inside.breakdown.out_of_profile
     assert outside.action == "keep" and outside.breakdown.out_of_profile
     assert outside.score == inside.score
+
+
+# Account value
+
+def test_unsettled_buys_are_not_counted_twice(monkeypatch):
+    """Real balances of 2026-11-01: four buys of 30/10 unsettled, already in the positions."""
+    from datetime import datetime, timezone
+
+    from app import account, portfolio
+    from app.models.iol import Balances
+
+    balances = Balances.model_validate({
+        "ars": {"currency": "ARS", "totals": {"t0": 1129278.69}, "available": {"t0": 11047.57}, "committed": {"t0": 1118231.12}},
+        "usd": {"currency": "USD", "totals": {"t0": 12.84}, "available": {"t0": 12.84}, "committed": {"t0": 0}},
+    })
+    monkeypatch.setattr(portfolio, "get_iol", lambda: type("I", (), {"balances": lambda self: balances})())
+    assert portfolio._fetch_cash() == (11047.57, 12.84)
+
+    monkeypatch.setattr(account, "mep_rate", lambda: 1588.67924528)
+    holding = portfolio.Holding(
+        ticker="X", description="", type="CEDEARS", quantity=1, last_price=6004449.42, avg_price=1, value=6004449.42, gain_pct=0,
+    )
+    snap = portfolio.Snapshot(captured_at=datetime.now(timezone.utc), holdings=[holding], cash_ars=11047.57, cash_usd=12.84)
+    assert account.value_of(snap).total == pytest.approx(6035895.63, abs=0.05)  # IOL's close of 31/10

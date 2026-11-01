@@ -34,7 +34,7 @@ class Token(IOLModel):
 # Accounts
 
 class BySettlement(IOLModel):
-    """Amounts by settlement term, each term on its own (a sale settling tomorrow is in t1)."""
+    """Amounts by settlement term, each term on its own."""
 
     t0: float
     t1: float = 0
@@ -47,6 +47,9 @@ class BySettlement(IOLModel):
 
 
 class CurrencyBalance(IOLModel):
+    """totals = available + committed. Committed is money of buys not settled yet: those assets
+    are already in the positions, so the account's cash is `available`, never `totals`."""
+
     currency: str
     totals: BySettlement
     available: BySettlement
