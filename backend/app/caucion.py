@@ -18,19 +18,15 @@ CACHE_KEY = "caucion_rate"
 MAX_RATE_AGE = timedelta(days=4)  # covers a long weekend
 
 
-def annual_rate(quoted: float) -> float:
-    """IOL's docs say the rate is a TNA, not whether 30% comes as 30 or 0.30."""
-    return quoted / 100 if quoted > 1 else quoted
-
-
 def gain(amount: float, rate: float, days: int) -> float:
     return amount * rate * days / 365
 
 
 def _best_rate(term_id: int) -> float | None:
-    """A lender placing at market takes what the best borrower asks."""
-    quotes = sorted(get_iol().repo_quotes(term_id), key=lambda q: q.position)
-    return next((annual_rate(q.ask.rate) for q in quotes if q.ask.rate > 0), None)
+    """The nominal annual rate a lender gets at market, as a fraction: IOL quotes it in percent.
+    It's the book's highest bid; the asks are lenders waiting for more (22% with bids at 21.8%)."""
+    bids = [q.bid.rate for q in get_iol().repo_quotes(term_id) if q.bid.rate > 0]
+    return max(bids) / 100 if bids else None
 
 
 def _shortest_term():
