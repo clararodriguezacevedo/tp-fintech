@@ -4,7 +4,7 @@ import { CloseTrade } from "@/components/close-trade";
 import { ApiFailure, attempt, Delta, Notice, PageTitle } from "@/components/ui";
 import { api, type Health, type Trade } from "@/lib/api/client";
 import { dateTime, fromEntry, integer, money, price } from "@/lib/format";
-import { nameOf } from "@/lib/names";
+import { assetNames, nameOf } from "@/lib/names";
 
 export const metadata = { title: "Operaciones | El Parqué" };
 
@@ -23,7 +23,7 @@ const STATUS: Record<Trade["status"], string> = {
 const ROW = "grid gap-x-6 gap-y-1 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)_8rem_9rem_7rem] sm:items-center";
 
 export default async function TradesPage() {
-  const [trades, health] = await Promise.all([attempt(() => api.trades()), attempt(api.health)]);
+  const [trades, health, names] = await Promise.all([attempt(() => api.trades()), attempt(api.health), assetNames()]);
   if (!trades.ok) return <ApiFailure error={trades.error} />;
   const mode: Health["mode"] = health.ok ? health.data.mode : "paper";
 
@@ -87,7 +87,7 @@ export default async function TradesPage() {
                       <span className="text-text-2">{t.side === "sell" ? "Venta" : "Compra"}</span>{" "}
                       <Link href={`/ticker/${t.ticker}`} className="font-semibold hover:underline">{integer(t.quantity)} {t.ticker}</Link>
                     </p>
-                    <p className="text-sm text-text-3">{nameOf(t.ticker)}, {dateTime(t.created_at)}</p>
+                    <p className="text-sm text-text-3">{nameOf(t.ticker, names[t.ticker])}, {dateTime(t.created_at)}</p>
                   </div>
                   <div className="num text-sm text-text-2">
                     {t.side === "sell" ? (

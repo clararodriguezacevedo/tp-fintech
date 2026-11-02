@@ -78,7 +78,7 @@ def _yield(ticker: str, ex_date: date, amount: float) -> float | None:
         return None
 
 
-def fetch_dividends(day: date, tradable: set[str], client: httpx.Client) -> list[CorporateEvent]:
+def fetch_dividends(day: date, tradable: set[str], client: httpx.Client, with_yield: set[str] | None = None) -> list[CorporateEvent]:
     r = client.get(NASDAQ, params={"date": day.isoformat()}, headers=HEADERS)
     r.raise_for_status()
     rows = ((r.json().get("data") or {}).get("calendar") or {}).get("rows") or []
@@ -91,12 +91,14 @@ def fetch_dividends(day: date, tradable: set[str], client: httpx.Client) -> list
         amount = float(row["dividend_Rate"])
         out.append(CorporateEvent(
             ticker=ticker, ex_date=ex, kind="dividend", amount=amount,
-            yield_=_yield(ticker, ex, amount), source="nasdaq",
+            yield_=_yield(ticker, ex, amount) if with_yield is None or ticker in with_yield else None, source="nasdaq",
         ))
     return out
 
 
-def refresh(tradable: set[str], today: date | None = None, back: int = 5, ahead: int = 7) -> int:
+def refresh(
+    tradable: set[str], today: date | None = None, back: int = 5, ahead: int = 7, with_yield: set[str] | None = None,
+) -> int:
     """Store dividends from `back` days ago to `ahead` days out, plus this year's and next
     year's coupons. Returns how many events were saved."""
     today = today or date.today()
@@ -107,7 +109,7 @@ def refresh(tradable: set[str], today: date | None = None, back: int = 5, ahead:
             if day.weekday() >= 5:
                 continue
             try:
-                events += fetch_dividends(day, tradable, client)
+                events += fetch_dividends(day, tradable, client, with_yield)
             except Exception:
                 log.warning("no dividend calendar for %s", day)
     for year in (today.year, today.year + 1):

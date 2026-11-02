@@ -39,9 +39,8 @@ from datetime import date, datetime, timedelta
 
 from pydantic import BaseModel
 
-from app import prices
+from app import prices, universe
 from app.analysis import market_hours, risk, rotation, suitability
-from app.analysis.tagger import UNIVERSE
 from app.brokers.iol import trade_cost_rate
 from app.config import get_settings
 from app.db import get_db, rows_as
@@ -243,7 +242,7 @@ def simulate() -> Simulation:
             if r is None:
                 r = px.day_return(t, day, dividends.get((t, day), 0.0)) or 0.0
             hold[t] *= 1 + r
-        leaders = [x for x in (px.day_return(t, day, dividends.get((t, day), 0.0)) for t in UNIVERSE["acciones"])
+        leaders = [x for x in (px.day_return(t, day, dividends.get((t, day), 0.0)) for t in sorted(universe.groups().leaders))
                    if x is not None]
         if merval_value is not None and leaders:
             merval_value *= 1 + statistics.mean(leaders)

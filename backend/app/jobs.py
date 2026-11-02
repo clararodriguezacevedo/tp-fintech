@@ -7,7 +7,7 @@ from typing import Literal
 
 import httpx
 
-from app import alerts
+from app import alerts, universe
 from app.analysis import market_hours, scoring, track_record
 from app.analysis.tagger import TagInput, tag_items
 from app.db import get_db, rows_as
@@ -89,10 +89,10 @@ def _holding_descriptions() -> dict[str, str]:
 
 
 def _save_tags(table: str, kind: Literal["news", "market"], items: list[TagInput],
-               holdings: dict[str, str]) -> None:
+               holdings: dict[str, str], assets: dict[str, str]) -> None:
     db = get_db()
     impacts = []
-    for item in tag_items(items, holdings):
+    for item in tag_items(items, holdings, assets):
         db.table(table).update({"ai_summary": item.summary, "tagged_at": _now()}).eq(
             "id", item.id
         ).execute()
@@ -107,6 +107,7 @@ def tag_pending() -> None:
     """Tag news and markets that haven't been through the LLM yet."""
     db = get_db()
     holdings = _holding_descriptions()
+    assets = universe.groups().names
     pending_news = rows_as(
         NewsRow,
         db.table("news_items").select("*").is_("tagged_at", "null")
@@ -115,7 +116,7 @@ def tag_pending() -> None:
     if pending_news:
         _save_tags("news_items", "news", [
             TagInput(id=n.id, kind="news", title=n.title, text=n.summary or "") for n in pending_news
-        ], holdings)
+        ], holdings, assets)
 
     pending_markets = rows_as(
         MarketRow,
@@ -125,7 +126,7 @@ def tag_pending() -> None:
     if pending_markets:
         _save_tags("prediction_markets", "market", [
             TagInput(id=m.id, kind="market", title=m.title) for m in pending_markets
-        ], holdings)
+        ], holdings, assets)
 
 
 def score_live() -> None:
@@ -141,7 +142,8 @@ def score_daily() -> None:
 
 def refresh_events() -> None:
     held = {h.ticker for h in get_holdings()}
-    corporate_events.refresh(corporate_events.tradable_tickers(held))
+    # Dividends of every asset, but the yield (an IOL call each) only of the usual ones.
+    corporate_events.refresh(corporate_events.tradable_tickers(held) | set(universe.groups().names), with_yield=corporate_events.tradable_tickers(held))
 
 
 def _run_all(steps: list[tuple[str, Callable[[], object]]]) -> list[str]:
@@ -174,6 +176,7 @@ def _alert_failures(job: str, failed: list[str]) -> list[str]:
 
 def run_cycle() -> list[str]:
     return _alert_failures("collect", _run_all([
+        ("refresh_universe", universe.refresh_if_stale),
         ("refresh_holdings", refresh_holdings),
         ("collect_markets", collect_markets),
         ("collect_news", collect_news),

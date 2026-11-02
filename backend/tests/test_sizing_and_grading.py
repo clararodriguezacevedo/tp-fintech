@@ -231,3 +231,34 @@ def test_trades_before_a_split_are_restated_like_the_chart():
     got = adjust_for_splits([before, after], raw, prices.adjust_splits(raw))
     assert (got[0].quantity, got[0].price, got[0].split_adjusted) == (50, 8275, True)
     assert got[1] == after
+
+
+# The universe
+
+def _row(symbol, last=100.0, currency="ARS", name="X"):
+    return {"instrument": {"symbol": symbol, "name": name, "currency": currency}, "quotes": {"last": last}}
+
+
+def test_universe_keeps_priced_peso_assets_and_flags_groups():
+    from app import universe
+
+    panels = {
+        "acciones": [_row("GGAL", name="Grupo Galicia"), _row("GGALD", currency="USD"), _row("DEAD", last=0)],
+        "cedears": [_row("KO", name="Cedear The Coca Cola Company"), _row("KOD", currency="USD"), _row("GGAL")],
+        "bonos": [_row("AL30"), _row("BLL26", last=0)],
+    }
+    got = {a.ticker: a for a in universe.build_assets(panels, {"GGAL"}, {"AL30"})}
+    assert sorted(got) == ["AL30", "GGAL", "KO"]
+    assert got["GGAL"].category == "acciones" and got["GGAL"].leader and not got["KO"].leader
+    assert got["AL30"].sovereign and got["KO"].name == "The Coca Cola Company"
+
+
+def test_scoring_keeps_holdings_and_the_strongest_news_when_over_the_cap(monkeypatch):
+    from app.analysis import scoring
+    from app.models.db import Evidence
+
+    monkeypatch.setattr(scoring, "MAX_SCORED", 3)
+    ev = lambda c: Evidence(kind="news", item_id="a", title="t", direction="up", strength="low", reason="", contribution=c)
+    signals = {"A": scoring.TickerSignals([ev(0.1)]), "B": scoring.TickerSignals([ev(0.9)]), "C": scoring.TickerSignals([ev(-0.5)])}
+    assert scoring.pick_scored({"A", "B", "C", "HELD"}, {"HELD"}, signals) == {"HELD", "B", "C"}
+    assert scoring.pick_scored({"A", "HELD"}, {"HELD"}, signals) == {"A", "HELD"}

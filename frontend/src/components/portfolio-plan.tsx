@@ -41,7 +41,7 @@ export function PlanView({ plan }: { plan: PortfolioPlan }) {
           const buy = g.find((s) => s.action === "buy");
           if (sell && buy) {
             return (
-              <Line key={sell.group} marker="swap" note={`${buy.ticker} puntúa ${signed(buy.score)} y ${sell.ticker} ${signed(sell.score)}: conviene cambiar uno por otro.`}>
+              <Line key={sell.group} marker="swap" note={`${buy.ticker} puntúa ${signed(buy.score)} y ${sell.ticker} ${signed(sell.score)}.`}>
                 Rotá: vendé {integer(sell.quantity)} <Ticker t={sell.ticker} /> ({money(sell.amount)}) y con eso comprá {integer(buy.quantity)}{" "}
                 <Ticker t={buy.ticker} /> ({money(buy.amount)}).
               </Line>
@@ -49,7 +49,7 @@ export function PlanView({ plan }: { plan: PortfolioPlan }) {
           }
           if (sell) {
             return (
-              <Line key={sell.group} marker="sell" note="La recomendación de hoy es vender. La plata queda disponible para lo que sigue.">
+              <Line key={sell.group} marker="sell" note="La recomendación de hoy es vender.">
                 Vendé {integer(sell.quantity)} <Ticker t={sell.ticker} /> ({money(sell.amount)}).
               </Line>
             );
@@ -61,7 +61,7 @@ export function PlanView({ plan }: { plan: PortfolioPlan }) {
           ) : null;
         })}
         {plan.unfunded.map((u) => (
-          <Line key={`u-${u.ticker}`} marker="buy" note={`No te alcanza la plata y no tenés nada que puntúe al menos ${plan.rotation_gap.toLocaleString("es-AR")} menos para cambiarlo.`}>
+          <Line key={`u-${u.ticker}`} marker="buy" note="No te alcanza la plata y no hay nada mucho peor para cambiar.">
             <Ticker t={u.ticker} /> es para comprar, pero faltan {money(u.amount)}.
           </Line>
         ))}

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { logout } from "@/app/login/actions";
 import { api, type Recommendation } from "@/lib/api/client";
-import { nameOf } from "@/lib/names";
+import { assetNames, nameOf } from "@/lib/names";
 import { authEnabled } from "@/lib/session";
 
 import { NavLinks } from "./nav";
@@ -13,11 +13,11 @@ import { attempt } from "./ui";
 const LABEL = { buy: "Comprar", sell: "Vender", keep: "Mantener" } as const;
 const COLOR = { buy: "var(--buy)", sell: "var(--sell)", keep: "var(--keep)" } as const;
 
-function TapeItem({ r }: { r: Recommendation }) {
+function TapeItem({ r, names }: { r: Recommendation; names: Record<string, string> }) {
   return (
     <Link href={`/ticker/${r.ticker}`} className="inline-flex items-center gap-2 px-5 hover:underline">
       <span className="font-semibold">{r.ticker}</span>
-      <span className="text-text-3">{nameOf(r.ticker)}</span>
+      <span className="text-text-3">{nameOf(r.ticker, names[r.ticker])}</span>
       <span className="inline-flex items-center gap-1.5 font-medium">
         <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: COLOR[r.action] }} />
         {LABEL[r.action]}
@@ -28,7 +28,7 @@ function TapeItem({ r }: { r: Recommendation }) {
 
 /** Scrolling strip with today's buys and what to do with each holding. */
 async function Tape() {
-  const recs = await attempt(() => api.recommendations());
+  const [recs, names] = await Promise.all([attempt(() => api.recommendations()), assetNames()]);
   if (!recs.ok) return null;
   const items = recs.data
     .filter((r) => r.action !== "keep" || r.held)
@@ -43,21 +43,22 @@ async function Tape() {
       </span>
       <div className="tape-mask min-w-0 flex-1 overflow-hidden py-2" aria-label="Recomendaciones de hoy">
         <TapeTrack>
-          {[...items, ...items].map((r, i) => <TapeItem key={`${r.ticker}-${i}`} r={r} />)}
+          {[...items, ...items].map((r, i) => <TapeItem key={`${r.ticker}-${i}`} r={r} names={names} />)}
         </TapeTrack>
       </div>
     </div>
   );
 }
 
-export function Header() {
+export async function Header() {
+  const assets = await attempt(api.assets);
   return (
     <header className="border-b border-border">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-3">
         <Link href="/" className="text-lg font-semibold tracking-tight">El Parqué</Link>
         <div className="flex items-center gap-2">
           <NavLinks />
-          <TickerSearch />
+          <TickerSearch assets={assets.ok ? assets.data : []} />
           {authEnabled() && (
             <form action={logout}>
               <button className="rounded-md px-3 py-1.5 text-sm text-text-3 hover:text-text">Salir</button>

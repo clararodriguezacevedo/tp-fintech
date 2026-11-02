@@ -251,6 +251,13 @@ const status = z
     z.null(),
   ])
   .optional();
+const AssetOut = z
+  .object({
+    ticker: z.string(),
+    name: z.string(),
+    category: z.enum(["acciones", "cedears", "bonos"]),
+  })
+  .passthrough();
 const TickerTrade = z
   .object({
     day: z.string(),
@@ -506,6 +513,7 @@ export const schemas = {
   BuyRequest,
   TradeRow,
   status,
+  AssetOut,
   TickerTrade,
   SellPlan,
   SellRequest,

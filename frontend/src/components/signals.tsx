@@ -92,7 +92,7 @@ function marketReasons(b: Breakdown | undefined) {
     out.push({
       up: false,
       text: `Es de riesgo ${RISK_NAME[b.risk_level]} y tu perfil es ${b.profile}: no te la recomendamos comprar.`,
-      note: "Por las reglas de la CNV, solo te recomendamos lo que va con tu perfil de inversor.",
+      note: "Solo te recomendamos lo que va con tu perfil.",
     });
   }
   if (Math.abs(b.macro ?? 0) >= 0.3 && b.macro_source && b.macro_change != null) {
@@ -115,7 +115,7 @@ function marketReasons(b: Breakdown | undefined) {
     out.push({
       up: false,
       text: `Ya tenés ${pctText(b.group_share)} de tu cartera en ${GROUP[b.risk_group] ?? b.risk_group}.`,
-      note: "Sumar más de lo mismo concentra el riesgo, así que pedimos una razón más fuerte para recomendar comprar.",
+      note: "Sumar más de lo mismo concentra el riesgo.",
     });
   }
   if (Math.abs(b.context) >= 0.3) {
@@ -199,7 +199,7 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
                 <p className="text-sm text-text-3">{e.title}</p>
               )}
               {e.sources > 1 && <span className="text-sm text-text-3"> (lo publicaron {e.sources} medios)</span>}
-              {e.via && <p className="text-sm text-text-3">Es sobre {e.via}, del mismo sector: cuenta menos que una noticia propia.</p>}
+              {e.via && <p className="text-sm text-text-3">Sobre {e.via}, del mismo sector.</p>}
             </div>
           </li>
         );

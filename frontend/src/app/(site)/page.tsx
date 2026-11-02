@@ -5,16 +5,16 @@ import { ActionBadge, threeMonths, track } from "@/components/signals";
 import { ApiFailure, attempt, Card, Notice, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type CalibrationBucket, type PortfolioPlan, type Recommendation } from "@/lib/api/client";
 import { money, timeAgo } from "@/lib/format";
-import { nameOf } from "@/lib/names";
+import { assetNames, nameOf } from "@/lib/names";
 
-function BuyCard({ r, calibration, plan }: { r: Recommendation; calibration: CalibrationBucket[]; plan: PortfolioPlan | null }) {
+function BuyCard({ r, calibration, plan, names }: { r: Recommendation; calibration: CalibrationBucket[]; plan: PortfolioPlan | null; names: Record<string, string> }) {
   const funding = fundingOf(plan, r.ticker);
   return (
     <Card className="flex flex-col">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xl font-semibold">{r.ticker}</p>
-          <p className="text-sm text-text-2">{nameOf(r.ticker)}</p>
+          <p className="text-sm text-text-2">{nameOf(r.ticker, names[r.ticker])}</p>
         </div>
         <ActionBadge action="buy" />
       </div>
@@ -34,12 +34,12 @@ function BuyCard({ r, calibration, plan }: { r: Recommendation; calibration: Cal
   );
 }
 
-function HoldingRow({ r }: { r: Recommendation }) {
+function HoldingRow({ r, names }: { r: Recommendation; names: Record<string, string> }) {
   return (
     <li>
       <Link href={`/ticker/${r.ticker}`} className="flex items-center justify-between gap-4 py-3 hover:bg-surface">
         <span>
-          <span className="font-semibold">{r.ticker}</span> <span className="text-text-2">{nameOf(r.ticker)}</span>
+          <span className="font-semibold">{r.ticker}</span> <span className="text-text-2">{nameOf(r.ticker, names[r.ticker])}</span>
         </span>
         <ActionBadge action={r.action} />
       </Link>
@@ -48,8 +48,8 @@ function HoldingRow({ r }: { r: Recommendation }) {
 }
 
 export default async function Home() {
-  const [recs, cal, profile, plan] = await Promise.all([
-    attempt(() => api.recommendations()), attempt(api.calibration), attempt(api.profile), attempt(api.portfolioPlan),
+  const [recs, cal, plan, names] = await Promise.all([
+    attempt(() => api.recommendations()), attempt(api.calibration), attempt(api.portfolioPlan), assetNames(),
   ]);
   if (!recs.ok) return <ApiFailure error={recs.error} />;
   const calibration = cal.ok ? cal.data : [];
@@ -65,16 +65,11 @@ export default async function Home() {
         <PageTitle aside={updated && <span className="text-sm text-text-3">Actualizado {timeAgo(updated)}</span>}>
           Para comprar
         </PageTitle>
-        {profile.ok && (
-          <p className="-mt-3 mb-4 text-sm text-text-2">
-            Para tu perfil <Link href="/perfil" className="underline">{profile.data.profile}</Link>.
-          </p>
-        )}
         {buys.length === 0 ? (
           <Notice>Hoy no hay compras recomendadas para tu perfil.</Notice>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {buys.slice(0, 6).map((r) => <BuyCard key={r.ticker} r={r} calibration={calibration} plan={plan.ok ? plan.data : null} />)}
+            {buys.slice(0, 6).map((r) => <BuyCard key={r.ticker} r={r} calibration={calibration} plan={plan.ok ? plan.data : null} names={names} />)}
           </div>
         )}
       </section>
@@ -94,7 +89,7 @@ export default async function Home() {
             : `Conviene vender ${sells.length === 1 ? "1 posición" : `${sells.length} posiciones`}.`}
         </p>
         <ul className="divide-y divide-border border-y border-border">
-          {held.map((r) => <HoldingRow key={r.ticker} r={r} />)}
+          {held.map((r) => <HoldingRow key={r.ticker} r={r} names={names} />)}
         </ul>
         <Link href="/cartera" className="mt-3 inline-block text-sm text-text-2 hover:text-text hover:underline">Ver mi cartera</Link>
       </section>

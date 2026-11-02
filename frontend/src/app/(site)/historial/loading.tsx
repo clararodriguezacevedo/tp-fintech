@@ -14,7 +14,6 @@ export default function Loading() {
       <div className="space-y-3">
         {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12" />)}
       </div>
-      <p className="text-sm text-text-3">Calculando cómo te habría ido siguiendo las recomendaciones...</p>
     </div>
   );
 }

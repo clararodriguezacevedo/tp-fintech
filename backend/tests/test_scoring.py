@@ -197,3 +197,27 @@ def test_broken_accents_are_detected():
     assert not has_broken_accents(ok)
     assert has_broken_accents(bad)
     assert not has_broken_accents(TaggedItem(id="c", summary="Subió 3% en el G20 y el S3.", impacts=[]))
+
+
+def test_markets_about_to_resolve_dont_count_and_many_markets_are_capped():
+    from datetime import timezone
+
+    from app.models.db import MarketRow, TickerImpactRow
+
+    now = datetime(2026, 11, 2, 12, tzinfo=timezone.utc)
+    imp = TickerImpactRow(id="i", item_kind="market", item_id="m", ticker="VIST", direction="up", strength="high", created_at=now)
+
+    def market(days):
+        return MarketRow.model_construct(
+            id="m", source="polymarket", title="WTI", url=None, probability=0.1, change_24h=-0.2,
+            end_date=now + timedelta(days=days),
+        )
+
+    assert scoring._market_evidence(imp, market(-5), now) is None  # already over
+    assert scoring._market_evidence(imp, market(1), now) is None  # moves by the clock
+    assert scoring._market_evidence(imp, market(30), now) is not None
+
+    many = [ev(str(k), -0.5, kind="market") for k in range(4)] + [ev("n", 0.4)]
+    rec = _combine(inputs(own=many), gap=0.0)
+    assert rec.breakdown.markets == pytest.approx(-scoring.MARKETS_CAP)
+    assert rec.breakdown.news == pytest.approx(0.4)  # news isn't scaled

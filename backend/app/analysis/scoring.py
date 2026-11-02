@@ -27,6 +27,10 @@ Per ticker:
   score = 0.65 * tanh((news + markets) / 2) + 0.05 * trend + 0.1 * context + 0.1 * gap
           + 0.1 * macro + concentration
 
+Prediction markets about to resolve are ignored: a "hits $130 this week" falls just because the
+week runs out. All of a ticker's markets together add up to at most MARKETS_CAP, since many are
+bets on the same thing (oil at $105, $115, $130).
+
 Market wrap-ups ("así cerró el mercado", "las acciones subieron hasta 6%") are ignored: they only
 report moves that already happened. Previews of what is coming ("Big Tech's earnings are on
 deck", "qué mirar esta semana") are ignored too: they announce an event, not which way it goes.
@@ -53,11 +57,10 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel
 
-from app import account, prices
+from app import account, prices, universe
 from app.analysis import market_hours, risk, suitability
 from app.assets import asset_types
 from app.profile import get_profile
-from app.analysis.tagger import UNIVERSE
 from app.sources import corporate_events, macro
 from app.brokers.iol import get_iol
 from app.db import get_db, rows_as
@@ -92,6 +95,8 @@ BUY_THRESHOLD = 0.3
 PRICED_IN_FULL = 1.5  # typical daily moves in the expected direction = fully priced in
 SAME_STORY = 0.4  # title word overlap (Jaccard) above which two news items are one story
 GAP_UNIT = 0.01  # a 1% premium versus usual counts as a strong gap signal
+MIN_MARKET_DAYS = 3  # markets resolving sooner move by the clock, not by news
+MARKETS_CAP = 1.0  # all of a ticker's prediction markets together, either way
 FAR_MARKET_DAYS = 180  # prediction markets resolving later than this weigh less...
 FAR_MARKET_MIN_WEIGHT = 0.25  # ...down to this share
 SELL_THRESHOLD_HELD = -0.45  # selling something you hold needs more evidence than buying
@@ -99,6 +104,8 @@ CONCENTRATION_LIMIT = 0.60  # above this share of the portfolio in one risk grou
 CONCENTRATION_PENALTY = 2.0  # score points per unit of share above the limit (70% -> -0.2)
 CONCENTRATION_MAX = 0.3
 MAX_EVIDENCE_SHOWN = 8
+MAX_SCORED = 100  # tickers scored per cycle (the universe has ~600)
+MAX_GAPS = 40  # CEDEARs whose gap versus the US share is measured per cycle
 BROAD_TICKERS = ("MERVAL", "BONOS")
 CEDEAR_TYPES = {"CEDEARS", "Cedears"}
 
@@ -185,6 +192,8 @@ def _market_evidence(imp: TickerImpactRow, item: MarketRow, now: datetime) -> Ev
     horizon = 1.0
     if item.end_date:
         days_left = (item.end_date - now).days
+        if days_left < MIN_MARKET_DAYS:
+            return None
         if days_left > FAR_MARKET_DAYS:
             horizon = max(FAR_MARKET_MIN_WEIGHT, FAR_MARKET_DAYS / days_left)
     return Evidence(
@@ -337,9 +346,10 @@ def market_context() -> dict[str, float]:
             us = trend_score(spy, get_iol().quote("SPY", "US").price or spy[-1].close)
     except Exception:
         log.warning("no S&P 500 data for market context")
+    g = universe.groups()
     return {
-        "stocks": median_trend(UNIVERSE["acciones"]),
-        "bonds": median_trend(UNIVERSE["bonos"]),
+        "stocks": median_trend(sorted(g.leaders)),
+        "bonds": median_trend(sorted(g.sovereign)),
         "us": us,
     }
 
@@ -455,6 +465,18 @@ def three_month_context(bars: list[DailyBar], price: float) -> tuple[float | Non
     return price / window[0].close - 1, price / high - 1
 
 
+def cap_markets(evidence: list[Evidence]) -> list[Evidence]:
+    """Scale a ticker's prediction markets so they add up to at most MARKETS_CAP either way."""
+    total = abs(sum(e.contribution for e in evidence if e.kind == "market"))
+    if total <= MARKETS_CAP:
+        return evidence
+    scale = MARKETS_CAP / total
+    return [
+        e.model_copy(update={"contribution": round(e.contribution * scale, 4)}) if e.kind == "market" else e
+        for e in evidence
+    ]
+
+
 def _combine(i: _Inputs, gap: float) -> Recommendation:
     # A news item tagged for this ticker, for the whole market or for a peer counts once,
     # at the weight of the most direct tag.
@@ -469,7 +491,7 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
     total = abs(sum(e.contribution for e in sector)) * SECTOR_WEIGHT
     scale = SECTOR_WEIGHT * (min(1.0, SECTOR_CAP / total) if total > 0 else 1.0)
     sector = [e.model_copy(update={"contribution": round(e.contribution * scale, 4)}) for e in sector]
-    evidence = i.own + broad + sector
+    evidence = cap_markets(i.own + broad + sector)
     news = sum(e.contribution for e in evidence if e.kind == "news")
     markets = sum(e.contribution for e in evidence if e.kind == "market")
     evidence_part = W_EVIDENCE * math.tanh((news + markets) / 2)
@@ -526,6 +548,17 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
     )
 
 
+def pick_scored(tickers: set[str], held: set[str], signals: dict[str, TickerSignals]) -> set[str]:
+    """At most MAX_SCORED tickers, so a cycle fits its time: holdings always, then the ones with
+    the strongest news and markets of their own."""
+    if len(tickers) <= MAX_SCORED:
+        return tickers
+    strength = lambda t: sum(abs(e.contribution) for e in signals[t].evidence) if t in signals else 0.0
+    rest = sorted(tickers - held, key=lambda t: (-strength(t), t))
+    log.warning("scoring %d of %d tickers", MAX_SCORED, len(tickers))
+    return held | set(rest[: max(0, MAX_SCORED - len(held))])
+
+
 def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommendation]:
     """Score every ticker with evidence plus every holding, and save the results.
 
@@ -540,16 +573,19 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
         log.exception("could not load holdings; scoring without portfolio")
         holdings = {}
 
-    stocks = set(UNIVERSE["acciones"]) | {t for t, h in holdings.items() if h.type in EQUITY_TYPES}
-    bonds = set(UNIVERSE["bonos"]) | {t for t, h in holdings.items() if h.type in BOND_TYPES}
-    cedears = set(UNIVERSE["cedears"]) | {t for t, h in holdings.items() if h.type in CEDEAR_TYPES}
+    g = universe.groups()
+    stocks = g.stocks | {t for t, h in holdings.items() if h.type in EQUITY_TYPES}
+    bonds = g.bonds | {t for t, h in holdings.items() if h.type in BOND_TYPES}
+    cedears = g.cedears | {t for t, h in holdings.items() if h.type in CEDEAR_TYPES}
     tickers = {t for t in signals if t not in BROAD_TICKERS} | set(holdings)
     # Peers of a ticker with news get scored too, so the news can spread to them.
     tickers |= {p for t in list(tickers) if t in SECTOR_OF for p in SECTORS[SECTOR_OF[t]]}
+    # Broad news is scored on the leaders, not on all of the hundreds of assets it also reaches.
     if "MERVAL" in signals:
-        tickers |= stocks
+        tickers |= g.leaders
     if "BONOS" in signals:
-        tickers |= bonds
+        tickers |= g.sovereign
+    tickers = pick_scored(tickers, set(holdings), signals)
 
     # Share of the portfolio in each risk group: positions valued in pesos over the whole
     # portfolio, cash included (cash is in neither group, and selling a position lowers it).
@@ -588,6 +624,12 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
         events = {}
 
     try:
+        live = universe.live_prices()
+    except Exception:
+        log.warning("no panel prices; asking IOL ticker by ticker")
+        live = {}
+
+    try:
         context = market_context()
     except Exception:
         log.exception("market context failed; left at 0")
@@ -603,11 +645,12 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
         except Exception:
             # IOL answers some bonds' history with a 500 (seen with TXMD9).
             log.warning("no history for %s", ticker)
-        price: float | None = None
-        try:
-            price = get_iol().quote(ticker).price or None
-        except Exception:
-            log.warning("no live price for %s; using the last close", ticker)
+        price: float | None = live.get(ticker)
+        if not price:
+            try:
+                price = get_iol().quote(ticker).price or None
+            except Exception:
+                log.warning("no live price for %s; using the last close", ticker)
         if not price and bars:
             price = bars[-1].close
         own = signals[ticker].evidence if ticker in signals else []
@@ -634,7 +677,12 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
             risk=suitability.risk_level(ticker, kinds.get(ticker), bars), profile=profile,
         ))
 
-    gaps = cedear_gaps({i.ticker: i.price for i in inputs if i.ticker in cedears and i.price})
+    # The gap takes a US quote per CEDEAR: only for the ones with the most evidence.
+    by_evidence = sorted(
+        (i for i in inputs if i.ticker in cedears and i.price),
+        key=lambda i: (not i.held, -sum(abs(e.contribution) for e in i.own)),
+    )
+    gaps = cedear_gaps({i.ticker: i.price or 0.0 for i in by_evidence[:MAX_GAPS]})
     recs = [_combine(i, gaps.get(i.ticker, 0.0)) for i in inputs]
 
     if recs:

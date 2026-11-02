@@ -23,7 +23,7 @@ HISTORY_DAYS = 365
 
 def from_operations(ops: list[Trade], ticker: str) -> list[TickerTrade]:
     """Completed buys and sells of `ticker`; cancelled orders, dividends and the rest are left out."""
-    dollar_species = {f"{ticker}D", f"{ticker}C"}
+    dollar_species = {f"{ticker}{s}" for s in ("D", "C", ".D", ".C")}  # BMA's is BMA.D
     out = []
     for o in ops:
         side = SIDES.get(o.type)

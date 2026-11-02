@@ -22,11 +22,11 @@ function sizeReason(plan: TradePlan, ticker: string) {
     }
   }
   switch (plan.limited_by) {
-    case "risk": return `Calculada para que, si toca el stop loss, pierdas como máximo ${money(plan.max_loss)}. Cuanto más se mueve el precio, menos se compra.`;
-    case "cash": return "Limitada por el efectivo que tenés disponible.";
-    case "position": return `Limitada para que ${ticker} no pase el máximo por activo de tu perfil.`;
-    case "concentration": return "Limitada para no concentrar todavía más tu cartera en el mismo tipo de riesgo.";
-    case "liquidity": return "Limitada al 10% de lo que se opera por día, para que tu orden no mueva el precio.";
+    case "risk": return `Si toca el stop loss, perdés como máximo ${money(plan.max_loss)}.`;
+    case "cash": return "Limitada por tu efectivo.";
+    case "position": return "Limitada por el máximo por activo de tu perfil.";
+    case "concentration": return "Limitada para no concentrar más tu cartera.";
+    case "liquidity": return "Limitada por lo poco que se opera por día.";
     default: return null;
   }
 }

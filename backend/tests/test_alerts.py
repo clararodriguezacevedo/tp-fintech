@@ -114,3 +114,20 @@ def test_breakdown_with_an_event_date_can_be_saved():
 
     b = SignalBreakdown(news=0, markets=0, trend=0, event_kind="dividend", event_date=date(2026, 10, 30))
     assert json.loads(json.dumps(b.model_dump(mode="json")))["event_date"] == "2026-10-30"
+
+
+def test_garbled_ids_and_unknown_tickers_are_dropped(monkeypatch):
+    from app.analysis import tagger
+
+    answer = tagger.TagBatch(items=[
+        tagger.TaggedItem(id="news-1", summary="Sube.", impacts=[
+            tagger.TickerImpact(ticker="ASML", direction="up", strength="low", reason="r"),
+            tagger.TickerImpact(ticker="INVENTADO", direction="up", strength="low", reason="r"),
+        ]),
+        tagger.TaggedItem(id="news-1x", summary="Id roto.", impacts=[]),
+    ])
+    fake = SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_: SimpleNamespace(parsed=answer)))
+    monkeypatch.setattr(tagger, "_get_client", lambda: fake)
+    got = tagger.tag_items([tagger.TagInput(id="news-1", kind="news", title="t")], universe={"ASML": "Asml Holding Nv"})
+    assert [i.id for i in got] == ["news-1"]
+    assert [x.ticker for x in got[0].impacts] == ["ASML"]

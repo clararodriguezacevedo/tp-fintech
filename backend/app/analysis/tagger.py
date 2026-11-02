@@ -10,7 +10,8 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 
-# Tickers we can actually trade on IOL. ADRs map to their local BYMA ticker.
+# The short list used until IOL's full universe is loaded (app.universe), and by the backtest.
+# ADRs map to their local BYMA ticker.
 UNIVERSE = {
     "acciones": ["GGAL", "YPFD", "PAMP", "BMA", "TXAR", "ALUA", "CEPU", "TGSU2", "LOMA", "SUPV",
                  "BBAR", "CRES", "EDN", "TECO2", "VALO", "COME", "BYMA", "METR", "TGNO4", "TRAN"],
@@ -21,6 +22,8 @@ UNIVERSE = {
 ALL_TICKERS = sorted({t for group in UNIVERSE.values() for t in group})
 
 log = logging.getLogger(__name__)
+
+NAME_CHARS = 28  # of each asset's name in the prompt, to keep it small
 
 SYSTEM = """You tag financial news and prediction markets for an Argentine retail investor.
 
@@ -41,13 +44,19 @@ news until its numbers are out. Tag the result once it is reported, not the wait
 Write the summary in Spanish, one or two plain sentences an average investor understands."""
 
 
-def _system(holdings: dict[str, str]) -> str:
-    """holdings: ticker -> description, for positions outside the base universe."""
+def _system(holdings: dict[str, str], universe: dict[str, str] | None = None) -> str:
+    """holdings: ticker -> description, for positions outside the base universe.
+    universe: ticker -> name of everything IOL offers; the base list if empty."""
     extra = ""
     if holdings:
         lines = "\n".join(f"- {t}: {d}" for t, d in sorted(holdings.items()))
         extra = f"\nThe investor also holds these, which are on the list too:\n{lines}\n"
-    return SYSTEM.format(tickers=", ".join(sorted(set(ALL_TICKERS) | set(holdings))), holdings=extra)
+    if universe:
+        # With names: nobody knows a local ticker or a small CEDEAR by its symbol alone.
+        listed = "; ".join(f"{t} ({n[:NAME_CHARS]})" for t, n in sorted(universe.items()))
+    else:
+        listed = ", ".join(sorted(set(ALL_TICKERS) | set(holdings)))
+    return SYSTEM.format(tickers=listed, holdings=extra)
 
 
 class TagInput(BaseModel):
@@ -84,12 +93,16 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def tag_items(items: list[TagInput], holdings: dict[str, str] | None = None) -> list[TaggedItem]:
+def tag_items(
+    items: list[TagInput], holdings: dict[str, str] | None = None, universe: dict[str, str] | None = None,
+) -> list[TaggedItem]:
     """Tag a batch of news and markets. Send ~20 per call.
 
     holdings: ticker -> description of the user's positions, so they can be tagged too.
+    universe: ticker -> name of everything IOL offers.
     """
     holdings = holdings or {}
+    universe = universe or {}
     if not items:
         return []
     lines = [f"[{it.id}] ({it.kind}) {it.title}\n{it.text[:600]}" for it in items]
@@ -98,7 +111,7 @@ def tag_items(items: list[TagInput], holdings: dict[str, str] | None = None) -> 
             model=get_settings().tagger_model,
             contents="\n\n".join(lines),
             config=types.GenerateContentConfig(
-                system_instruction=_system(holdings),
+                system_instruction=_system(holdings, universe),
                 response_mime_type="application/json",
                 response_schema=TagBatch,
             ),
@@ -114,7 +127,11 @@ def tag_items(items: list[TagInput], holdings: dict[str, str] | None = None) -> 
     batch = response.parsed
     if not isinstance(batch, TagBatch):
         return []
-    allowed = set(ALL_TICKERS) | set(holdings) | {"MERVAL", "BONOS"}
+    allowed = (set(universe) or set(ALL_TICKERS)) | set(holdings) | {"MERVAL", "BONOS"}
+    # Gemini sometimes garbles an id, which the database would refuse, losing the whole batch.
+    # An item left out stays untagged and is tried again on the next cycle.
+    sent = {it.id for it in items}
+    batch.items = [item for item in batch.items if item.id in sent]
     for item in batch.items:
         item.impacts = [i for i in item.impacts if i.ticker in allowed]
     # Gemini sometimes writes "3" for an accented letter ("posici3n", "petr3leo"). Those items

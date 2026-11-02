@@ -1,4 +1,6 @@
-// Plain names for the tickers the app follows, so "YPFD" reads as "YPF".
+// Plain names for the tickers the app follows most, so "YPFD" reads as "YPF".
+import { api } from "@/lib/api/client";
+
 const NAMES: Record<string, string> = {
   GGAL: "Grupo Galicia", YPFD: "YPF", PAMP: "Pampa Energía", BMA: "Banco Macro", TXAR: "Ternium Argentina",
   ALUA: "Aluar", CEPU: "Central Puerto", TGSU2: "Transportadora de Gas del Sur", LOMA: "Loma Negra",
@@ -15,3 +17,12 @@ const NAMES: Record<string, string> = {
 };
 
 export const nameOf = (ticker: string, fallback?: string) => NAMES[ticker] ?? fallback ?? ticker;
+
+/** ticker -> IOL's name for every asset, for nameOf's fallback. Empty if the list can't be read. */
+export async function assetNames(): Promise<Record<string, string>> {
+  try {
+    return Object.fromEntries((await api.assets()).map((a) => [a.ticker, a.name]));
+  } catch {
+    return {};
+  }
+}

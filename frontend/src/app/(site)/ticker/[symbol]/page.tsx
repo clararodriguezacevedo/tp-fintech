@@ -5,7 +5,7 @@ import { ActionBadge, Reasons, RiskBadge, threeMonths, track } from "@/component
 import { attempt, Card, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api, type TickerTrade } from "@/lib/api/client";
 import { fromEntry, integer, money, pct, pctPoints, price } from "@/lib/format";
-import { nameOf } from "@/lib/names";
+import { assetNames, nameOf } from "@/lib/names";
 
 export async function generateMetadata({ params }: { params: Promise<{ symbol: string }> }) {
   const { symbol } = await params;
@@ -31,7 +31,7 @@ function tradeMarksOf(trades: TickerTrade[], points: { t: string }[]): TradeMark
 
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const ticker = (await params).symbol.toUpperCase();
-  const [recs, bars, plan, health, holdings, calibration, quote, sellPlan, trades] = await Promise.all([
+  const [recs, bars, plan, health, holdings, calibration, quote, sellPlan, trades, names] = await Promise.all([
     attempt(() => api.recommendations({ ticker })),
     attempt(() => api.bars(ticker, 365)),
     attempt(() => api.tradePlan(ticker)),
@@ -41,6 +41,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
     attempt(() => api.quote(ticker)),
     attempt(() => api.sellPlan(ticker)),
     attempt(() => api.tickerTrades(ticker)),
+    assetNames(),
   ]);
 
   const rec = recs.ok ? recs.data[0] : undefined;
@@ -56,7 +57,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
   const dayChange = quote.ok ? quote.data.change_pct : null;
   const position = holdings.ok ? holdings.data.holdings.find((h) => h.ticker === ticker) : undefined;
   const mode = health.ok ? health.data.mode : "paper";
-  const name = nameOf(ticker, position?.description);
+  const name = nameOf(ticker, names[ticker] ?? position?.description);
   // Days as noon, so they don't read as the day before in Argentina. On a weekday the chart ends
   // on the price shown above it, and today's trades have a point to sit on.
   const points = closes.map((b) => ({ t: `${b.day}T12:00:00`, v: b.close }));

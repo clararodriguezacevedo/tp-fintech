@@ -1230,6 +1230,57 @@
         }
       }
     },
+    "/assets": {
+      "get": {
+        "summary": "Assets",
+        "description": "Every asset IOL offers in our categories, for the search box and for showing names.",
+        "operationId": "assets",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssetOut"
+                  },
+                  "title": "Response Assets"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tickers/{ticker}/trades": {
       "get": {
         "summary": "Ticker Trades",
@@ -2003,6 +2054,34 @@
           "cash_usd"
         ],
         "title": "AccountSummary"
+      },
+      "AssetOut": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "acciones",
+              "cedears",
+              "bonos"
+            ],
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "name",
+          "category"
+        ],
+        "title": "AssetOut"
       },
       "BuyRequest": {
         "properties": {

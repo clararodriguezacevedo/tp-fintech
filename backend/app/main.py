@@ -11,11 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from app import account as acct, alerts, jobs, prices
+from app import account as acct, alerts, jobs, prices, universe
 from app.analysis import market_hours, risk, rotation, scoring, simulation, suitability, track_record
 from app.assets import asset_types
 from app.profile import InvestorProfile, declare, get_profile
-from app.analysis.tagger import UNIVERSE
 from app.analysis.simulation import Simulation
 from app.brokers.iol import IOLUnavailable, get_iol, trade_cost_rate
 from app.config import get_settings
@@ -24,10 +23,10 @@ from app.models.db import (
     Action, MarketRow, NewsRow, RecommendationRow, SnapshotRow, TickerImpactRow, TradeRow,
     TradeStatus,
 )
-from app.portfolio import BOND_TYPES, EQUITY_TYPES, current_holdings, get_holdings, value_history
+from app.portfolio import current_holdings, get_holdings, value_history
 from app.models.iol import DailyBar
 from app.schemas import (
-    AccountSummary, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
+    AccountSummary, AssetOut, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
     ModelInfo, NewsOut, PlanStep, PortfolioOut, PortfolioPlan, UnfundedBuy, PortfolioValuePoint, ProbabilityPoint, SignalStats,
     ProfileRequest, Quote, SellPlan, SellRequest, TickerTrade, TrackRecordSummary, TradePlan, Transfer,
 )
@@ -384,6 +383,12 @@ def buy(req: BuyRequest) -> TradeRow:
         return paper.create_buy(**req.model_dump(exclude={"accept_out_of_profile"}))
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.get("/assets", response_model=list[AssetOut])
+def assets() -> list[AssetOut]:
+    """Every asset IOL offers in our categories, for the search box and for showing names."""
+    return [AssetOut(ticker=a.ticker, name=a.name, category=a.category) for a in universe.load()]  # type: ignore[arg-type]
 
 
 @app.get("/tickers/{ticker}/trades", response_model=list[TickerTrade])

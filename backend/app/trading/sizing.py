@@ -4,9 +4,8 @@ Sized from the ticker's volatility and capped by cash, the investor profile's ma
 asset, concentration and liquidity (app.analysis.risk.plan_buy).
 """
 
-from app import prices
+from app import prices, universe
 from app.analysis import risk, scoring, suitability
-from app.analysis.tagger import UNIVERSE
 from app.portfolio import BOND_TYPES, EQUITY_TYPES, Holding
 
 
@@ -22,8 +21,9 @@ def size_buy(
     bars = prices.daily_bars(ticker)
     if len(bars) < 15:
         raise ValueError(f"not enough price history for {ticker}")
-    stocks = set(UNIVERSE["acciones"]) | {t for t, h in holdings.items() if h.type in EQUITY_TYPES}
-    bonds = set(UNIVERSE["bonos"]) | {t for t, h in holdings.items() if h.type in BOND_TYPES}
+    g = universe.groups()
+    stocks = g.stocks | {t for t, h in holdings.items() if h.type in EQUITY_TYPES}
+    bonds = g.bonds | {t for t, h in holdings.items() if h.type in BOND_TYPES}
     group = scoring.risk_group(ticker, stocks, bonds)
     volumes = [b.volume for b in bars[-20:] if b.volume]
     return risk.plan_buy(

@@ -21,10 +21,7 @@ export default async function ProfilePage() {
   return (
     <div className="max-w-2xl">
       <PageTitle>Perfil de inversor</PageTitle>
-      <p className="text-text-2">
-        Por las reglas de la CNV, solo te recomendamos activos que van con tu perfil. Todo lo que se mueve más que eso
-        aparece como &quot;fuera de tu perfil&quot;: no se recomienda comprarlo, y para comprarlo igual tenés que confirmarlo.
-      </p>
+      <p className="text-text-2">Por las reglas de la CNV, solo te recomendamos activos que van con tu perfil.</p>
       <p className="mt-4">
         Tu perfil: <strong className="capitalize">{p.profile}</strong>
         <span className="text-text-2">
@@ -74,7 +71,6 @@ export default async function ProfilePage() {
             <li><strong className="text-text">Medio:</strong> el resto de los bonos, y acciones, CEDEARs y ETFs que se mueven hasta {pct(model.data.equity_mid_vol)} al año.</li>
             <li><strong className="text-text">Alto:</strong> acciones, CEDEARs y ETFs que se mueven más, y cualquier activo sin historial suficiente.</li>
           </ul>
-          <p className="mt-2 text-sm text-text-3">El movimiento se mide con los precios de los últimos 3 meses y se actualiza cada día.</p>
         </section>
       )}
     </div>

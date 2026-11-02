@@ -126,6 +126,12 @@ class TickerTrade(BaseModel):
     split_adjusted: bool = False  # price and quantity restated for a later split, like the chart
 
 
+class AssetOut(BaseModel):
+    ticker: str
+    name: str
+    category: Literal["acciones", "cedears", "bonos"]
+
+
 class ProfileRequest(BaseModel):
     profile: Literal["conservador", "moderado", "arriesgado"]
 

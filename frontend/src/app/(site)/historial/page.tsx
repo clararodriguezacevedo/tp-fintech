@@ -3,8 +3,8 @@ import Link from "next/link";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Card, Delta, Notice, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type Recommendation } from "@/lib/api/client";
-import { dayLong, dayShort, money, pct } from "@/lib/format";
-import { nameOf } from "@/lib/names";
+import { dayLong, money, pct } from "@/lib/format";
+import { assetNames, nameOf } from "@/lib/names";
 
 export const metadata = { title: "Resultados | El Parqué" };
 
@@ -25,10 +25,11 @@ const SIGNAL: Record<string, string> = {
 const change = (value: number | null | undefined, start: number) => (value != null && start ? value / start - 1 : null);
 
 export default async function HistoryPage() {
-  const [sim, history, signals] = await Promise.all([
+  const [sim, history, signals, names] = await Promise.all([
     attempt(api.simulation),
     attempt(() => api.trackRecordHistory(1000)),
     attempt(api.signals),
+    assetNames(),
   ]);
   if (!sim.ok) return <ApiFailure error={sim.error} />;
   const s = sim.data;
@@ -77,7 +78,7 @@ export default async function HistoryPage() {
         </div>
         <ul className="divide-y divide-border border-y border-border">
           {[
-            { label: "Siguiendo el plan de cada día", value: s.follow_value, note: "ventas, compras y rotaciones, con la plata que había" },
+            { label: "Siguiendo el plan de cada día", value: s.follow_value, note: "" },
             {
               label: "Lo que hiciste",
               value: s.base_value,
@@ -85,8 +86,8 @@ export default async function HistoryPage() {
                 ? `tu cuenta real${s.transfers ? `, sin contar ${s.transfers < 0 ? "lo que retiraste" : "lo que depositaste"} (${money(Math.abs(s.transfers))})` : ""}`
                 : "tu cartera real de cada día",
             },
-            { label: "Quedarte quieto", value: s.hold_value, note: "la cartera del primer día, sin tocarla" },
-            { label: "Comprar las líderes del Merval", value: s.merval_value, note: "las 20 en partes iguales" },
+            { label: "Quedarte quieto", value: s.hold_value, note: "" },
+            { label: "Comprar las líderes del Merval", value: s.merval_value, note: "" },
           ].map((x) => {
             const c = change(x.value, s.start_value);
             return (
@@ -104,7 +105,7 @@ export default async function HistoryPage() {
           })}
         </ul>
         <p className="mt-3 text-sm text-text-3">
-          Todo arranca del mismo valor, tu cartera real del primer día. Cada día se sigue el mismo plan que ves en Hoy, sobre tu cartera de ese día: se vende lo que dice vender, cada compra (del tamaño del panel de compra, en promedio {(s.buy_allocation * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}% de la cartera) se paga con la plata disponible y, si no alcanza, rotando desde lo que puntúa mucho peor, y lo que no se puede pagar no se compra. Todo se opera a la apertura del día siguiente y cada operación paga tus costos reales de IOL ({(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%). IOL no publica el índice Merval, por eso la referencia son sus acciones líderes. Los dividendos se suman el día que se cobran.
+          Todo arranca de tu cartera del primer día. El plan se opera a la apertura del día siguiente, con los costos reales de IOL ({(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%). Las líderes del Merval reemplazan al índice, que IOL no publica.
         </p>
       </section>
 
@@ -123,7 +124,7 @@ export default async function HistoryPage() {
             ))}
           </ul>
           <p className="mt-3 text-sm text-text-3">
-            Cuántas veces cada señal anticipó bien si el precio iba a subir o bajar al día siguiente. 50% es lo mismo que tirar una moneda. Con pocos días todavía no es concluyente.
+            50% es lo mismo que tirar una moneda. Con pocos días todavía no es concluyente.
           </p>
         </section>
       )}
@@ -158,7 +159,7 @@ export default async function HistoryPage() {
                       <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
                         <span>
                           <Link href={`/ticker/${r.ticker}`} className="font-semibold hover:underline">{r.ticker}</Link>{" "}
-                          <span className="text-text-2">{nameOf(r.ticker)}</span>
+                          <span className="text-text-2">{nameOf(r.ticker, names[r.ticker])}</span>
                         </span>
                         <span className="flex items-center gap-4">
                           <ActionBadge action={r.action} />
@@ -174,8 +175,7 @@ export default async function HistoryPage() {
           })}
         </ul>
         <p className="mt-3 text-sm text-text-3">
-          Se mide desde la apertura del día siguiente, que es cuando se puede comprar o vender. Comprar acierta si sube. Vender acierta si baja. Mantener algo que tenés acierta si no cae más de 1,5%.
-          Las fechas son del día en que se midió el resultado ({dayShort(asDay(s.days[0].day))} es el primero).
+          Se mide de apertura a cierre. Mantener algo que tenés acierta si no cae más de 1,5%.
         </p>
       </section>
     </div>

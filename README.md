@@ -196,7 +196,9 @@ subieron hasta 6%") se ignoran porque solo cuentan lo que ya pasó. Una noticia 
 ticker, para todo el Merval o para otra empresa del sector cuenta una sola vez, con el peso de la
 etiqueta más directa. Las noticias generales del Merval o de los bonos cuentan 50%; las de otra
 empresa del mismo sector (bancos, petróleo y gas, electricidad, materiales, tecnología) cuentan
-30%, y todas juntas suman como máximo 0,25. Los adelantos de algo cuyo resultado no se conoce
+30%, y todas juntas suman como máximo 0,25. Los mercados que resuelven en menos de 3 días no
+cuentan (caen porque se acaba el tiempo) y todos los de un ticker suman como máximo 1, porque
+muchos son apuestas sobre lo mismo. Los adelantos de algo cuyo resultado no se conoce
 ("se vienen los balances", "qué mirar esta semana") tampoco cuentan. Los mercados de predicción que resuelven en más de 6 meses pesan menos.
 
 **Concentración**: si ya tenés más de 60% de la cartera en el mismo riesgo (riesgo argentino:
@@ -235,6 +237,15 @@ sube, vender si baja; mantener algo que tenés acierta si no cae más de 1,5%.
   comparado con lo que hiciste, con quedarte quieto con la cartera del primer día y con comprar
   las 20 líderes del Merval en partes iguales (IOL no publica el índice).
 - `GET /track-record/signals`: cuántas veces acertó cada señal por separado.
+
+### Universo de activos
+
+`backend/app/universe.py` trae de los paneles de IOL, una vez por día, todas las acciones, CEDEARs
+(los ETFs vienen adentro) y bonos en pesos con precio: unos 590. Gemini puede etiquetar cualquiera.
+Por tiempo, cada ciclo puntúa como máximo 100: primero la cartera, después los que tienen las
+noticias y mercados más fuertes. Las noticias generales se aplican a las líderes del Merval y a los
+bonos soberanos en dólares, que también forman el contexto de mercado. Las obligaciones negociables
+y las letras no se incluyen.
 
 ### Plan del día y rotación
 

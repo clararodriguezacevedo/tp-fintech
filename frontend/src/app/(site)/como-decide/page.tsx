@@ -5,7 +5,7 @@ import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Card, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type ModelInfo, type Recommendation } from "@/lib/api/client";
 import { roundToTotal, score } from "@/lib/format";
-import { nameOf } from "@/lib/names";
+import { assetNames, nameOf } from "@/lib/names";
 
 export const metadata = { title: "Cómo decide | El Parqué" };
 
@@ -22,7 +22,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /** The example: every part of one real recommendation's score, adding up to it. */
-function Example({ r, m }: { r: Recommendation; m: ModelInfo }) {
+function Example({ r, m, name }: { r: Recommendation; m: ModelInfo; name: string }) {
   const b = r.signal_breakdown;
   const w = m.weights;
   const rows = [
@@ -41,7 +41,7 @@ function Example({ r, m }: { r: Recommendation; m: ModelInfo }) {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href={`/ticker/${r.ticker}`} className="text-xl font-semibold hover:underline">{r.ticker}</Link>
-          <p className="text-sm text-text-2">{nameOf(r.ticker)}{r.held ? ", la tenés en cartera" : ""}</p>
+          <p className="text-sm text-text-2">{name}{r.held ? ", la tenés en cartera" : ""}</p>
         </div>
         <ActionBadge action={r.action} />
       </div>
@@ -94,7 +94,7 @@ function Example({ r, m }: { r: Recommendation; m: ModelInfo }) {
 }
 
 export default async function HowItDecides() {
-  const [model, recs] = await Promise.all([attempt(api.model), attempt(() => api.recommendations())]);
+  const [model, recs, names] = await Promise.all([attempt(api.model), attempt(() => api.recommendations()), assetNames()]);
   if (!model.ok) return <ApiFailure error={model.error} />;
   const m = model.data;
   const w = m.weights;
@@ -109,14 +109,14 @@ export default async function HowItDecides() {
       <section>
         <PageTitle>Cómo decide</PageTitle>
         <p className="max-w-3xl text-lg leading-relaxed text-text-2">
-          Cada 10 minutos, para cada acción, bono y CEDEAR, se juntan varias señales en un solo puntaje entre −1 y +1. Positivo quiere decir que se espera que suba al día siguiente; negativo, que baje. Según el puntaje sale comprar, vender o mantener.
+          Cada 10 minutos, para las acciones, bonos y CEDEARs de tu cartera y los que tienen noticias o mercados de predicción, se juntan varias señales en un solo puntaje entre −1 y +1. Positivo quiere decir que se espera que suba al día siguiente; negativo, que baje. Según el puntaje sale comprar, vender o mantener.
         </p>
       </section>
 
       {example && (
         <section>
           <SectionTitle>Un ejemplo de hoy</SectionTitle>
-          <Example r={example} m={m} />
+          <Example r={example} m={m} name={nameOf(example.ticker, names[example.ticker])} />
         </section>
       )}
 
