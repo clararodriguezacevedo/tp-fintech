@@ -9,6 +9,7 @@ share, which makes both parts add up to the move shown on the page.
 
 import logging
 import statistics
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 from pydantic import BaseModel
@@ -41,16 +42,22 @@ def _change(q: Quote) -> float | None:
 
 def _from_quotes(today: date) -> DollarMove | None:
     """None until both markets have traded today (New York opens after BYMA)."""
-    diffs = []
-    for ticker in BASKET:
+    def difference(ticker: str) -> float | None:
         try:
             local, us = get_iol().quote(ticker), get_iol().quote(ticker, "US")
         except Exception:
             log.warning("no quotes for %s", ticker)
-            continue
+            return None
         a, b = _change(local), _change(us)
         if a is not None and b is not None and local.last_updated.date() == today == us.last_updated.date():
-            diffs.append(a - b)
+            return a - b
+        return None
+
+    # The first one alone, so an expired IOL session is renewed once and not by every thread.
+    found = [difference(BASKET[0])]
+    with ThreadPoolExecutor(max_workers=len(BASKET)) as pool:
+        found += pool.map(difference, BASKET[1:])
+    diffs = [d for d in found if d is not None]
     if len(diffs) < MIN_PAIRS:
         return None
     return DollarMove(day=today, change=statistics.median(diffs), live=True, pairs=len(diffs))

@@ -36,7 +36,6 @@ export type Quote = z.infer<typeof schemas.Quote>;
 export type TickerTrade = z.infer<typeof schemas.TickerTrade>;
 export type Asset = z.infer<typeof schemas.AssetOut>;
 export type AccountCheck = z.infer<typeof schemas.AccountCheck>;
-export type DollarMove = z.infer<typeof schemas.DollarMove>;
 export type InvestorProfile = z.infer<typeof schemas.InvestorProfile>;
 export type ProfileName = InvestorProfile["profile"];
 export type PortfolioPlan = z.infer<typeof schemas.PortfolioPlan>;

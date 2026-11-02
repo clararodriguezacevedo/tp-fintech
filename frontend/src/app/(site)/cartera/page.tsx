@@ -1,10 +1,11 @@
 import Link from "next/link";
 
+import { HoldingSplit, loadDollar } from "@/components/cedear-move";
 import { LineChart } from "@/components/charts";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api, type Holding, type Recommendation } from "@/lib/api/client";
-import { cedearSplit, dayShort, integer, money, pctPoints, price, roundToTotal } from "@/lib/format";
+import { dayShort, integer, money, pctPoints, price, roundToTotal } from "@/lib/format";
 import { cedearTickers, nameOf } from "@/lib/names";
 
 export const metadata = { title: "Mi cartera | El Parqué" };
@@ -23,18 +24,16 @@ function concentration(holdings: Holding[], total: number) {
 }
 
 export default async function PortfolioPage() {
-  const [portfolio, advice, history, transfers, check, dollar, cedears] = await Promise.all([
+  const dollar = loadDollar();
+  const [portfolio, advice, history, transfers, check, cedears] = await Promise.all([
     attempt(api.portfolio),
     attempt(api.portfolioAdvice),
     attempt(() => api.portfolioHistory(90)),
     attempt(() => api.transfers(90)),
     attempt(api.accountCheck),
-    attempt(api.cedearDollar),
     cedearTickers(),
   ]);
   if (!portfolio.ok) return <ApiFailure error={portfolio.error} />;
-  // Only while "Hoy" is today's move: the dollar has to be from the same session.
-  const dollarToday = dollar.ok && dollar.data?.live ? dollar.data.change : null;
 
   const all = portfolio.data.holdings.slice().sort((a, b) => b.value - a.value);
   const ars = all.filter((h) => h.currency === "ARS");
@@ -156,8 +155,8 @@ export default async function PortfolioPage() {
                     <td className="num py-3 text-right">{h.currency === "USD" ? usd(h.last_price) : price(h.last_price)}</td>
                     <td className="py-3 text-right">
                       <Delta value={h.day_change_pct}>{pctPoints(h.day_change_pct)}</Delta>
-                      {dollarToday != null && h.currency === "ARS" && h.day_change_pct !== 0 && cedears.has(h.ticker) && (
-                        <p className="num whitespace-nowrap text-sm text-text-2">{cedearSplit(h.day_change_pct / 100, dollarToday)}</p>
+                      {h.currency === "ARS" && h.day_change_pct !== 0 && cedears.has(h.ticker) && (
+                        <HoldingSplit dollar={dollar} total={h.day_change_pct / 100} />
                       )}
                     </td>
                     <td className="num py-3 text-right">{fmt(h, h.value)}</td>
