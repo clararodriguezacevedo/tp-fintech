@@ -7,7 +7,7 @@ from typing import Literal
 
 import httpx
 
-from app import alerts, universe
+from app import alerts, reconcile, universe
 from app.analysis import market_hours, scoring, track_record
 from app.analysis.tagger import TagInput, tag_items
 from app.db import get_db, rows_as
@@ -182,6 +182,7 @@ def run_cycle() -> list[str]:
         ("collect_news", collect_news),
         ("tag_pending", tag_pending),
         ("score_live", score_live),
+        ("check_account", reconcile.run),
     ]))
 
 

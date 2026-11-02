@@ -221,3 +221,53 @@ def test_markets_about_to_resolve_dont_count_and_many_markets_are_capped():
     rec = _combine(inputs(own=many), gap=0.0)
     assert rec.breakdown.markets == pytest.approx(-scoring.MARKETS_CAP)
     assert rec.breakdown.news == pytest.approx(0.4)  # news isn't scaled
+
+
+@pytest.mark.parametrize("title, deadline", [
+    ("Will WTI Crude Oil (WTI) hit (HIGH) $115 in November?", True),
+    ("Will Trump meet with Javier Milei by November 30, 2026?", True),
+    ("Will Gold (GC) hit (HIGH) $5,000 by end of December?", True),
+    ("Next Fed rate cut?: Before July 2027", True),
+    ("Will Amazon be the third-largest company in the world by market cap?", False),
+    ("Fed funds rate at end of 2027: Above 2.25%", False),
+    ("Will Mauricio Macri win the 2027 Argentina presidential election?", False),
+])
+def test_deadline_markets_are_detected(title, deadline):
+    assert scoring.is_deadline_market(title) == deadline
+
+
+def test_time_decay_grows_near_the_deadline():
+    far = scoring.time_decay(0.40, 0.0, 60)
+    near = scoring.time_decay(0.40, 0.0, 5)
+    assert near < far < 0
+    assert far == pytest.approx(-0.0049, abs=0.001)
+    assert near == pytest.approx(-0.0540, abs=0.002)
+    assert scoring.time_decay(0.0, 0.0, 5) == 0
+    assert scoring.time_decay(0.4, 0.0, 0) == 0
+
+
+def test_only_the_move_beyond_the_clock_counts():
+    from datetime import timezone
+
+    from app.models.db import MarketRow, TickerImpactRow
+
+    now = datetime(2026, 11, 2, 12, tzinfo=timezone.utc)
+    imp = TickerImpactRow(id="i", item_kind="market", item_id="m", ticker="VIST", direction="up", strength="high", created_at=now)
+
+    def market(title, prob, change, days=5):
+        return MarketRow.model_construct(
+            id="m", source="polymarket", title=title, url=None, probability=prob, change_24h=change,
+            end_date=now + timedelta(days=days),
+        )
+
+    # Falls about what the clock explains: no signal.
+    assert scoring._market_evidence(imp, market("Will WTI hit $115 in November?", 0.36, -0.04), now) is None
+    # Falls more: only the rest counts, and the detail says how much was the clock.
+    e = scoring._market_evidence(imp, market("Will WTI hit $115 in November?", 0.30, -0.10), now)
+    assert e is not None and -1 < e.contribution < 0
+    assert abs(e.contribution) < 1.0 * 0.10 / scoring.MARKET_MOVE_UNIT
+    assert "paso del tiempo" in e.detail
+    # Not a deadline market: the whole move counts.
+    same = scoring._market_evidence(imp, market("Fed funds rate at end of 2027: Above 2.25%", 0.30, -0.10), now)
+    assert same is not None and same.contribution == pytest.approx(-1.0)
+    assert "paso del tiempo" not in same.detail

@@ -131,6 +131,15 @@ const AccountSummary = z
     cash_usd: z.number(),
   })
   .passthrough();
+const AccountCheck = z
+  .object({
+    day: z.string(),
+    site: z.number(),
+    iol: z.number(),
+    diff: z.number(),
+    ok: z.boolean(),
+  })
+  .passthrough();
 const Transfer = z
   .object({ day: z.string(), amount: z.number() })
   .passthrough();
@@ -417,6 +426,10 @@ const SignalStats = z
     hit_rate: z.union([z.number(), z.null()]),
     avg_when_up: z.union([z.number(), z.null()]),
     avg_when_down: z.union([z.number(), z.null()]),
+    n_vs_day: z.number().int().optional().default(0),
+    hits_vs_day: z.number().int().optional().default(0),
+    rate_vs_day: z.union([z.number(), z.null()]).optional(),
+    days: z.number().int().optional().default(0),
   })
   .passthrough();
 const CalibrationBucket = z
@@ -503,6 +516,7 @@ export const schemas = {
   PortfolioOut,
   PortfolioValuePoint,
   AccountSummary,
+  AccountCheck,
   Transfer,
   Quote,
   DailyBar,

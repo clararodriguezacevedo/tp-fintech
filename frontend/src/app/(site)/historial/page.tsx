@@ -109,22 +109,22 @@ export default async function HistoryPage() {
         </p>
       </section>
 
-      {signals.ok && signals.data.some((x) => x.n > 0) && (
+      {signals.ok && signals.data.some((x) => x.n_vs_day > 0) && (
         <section>
           <SectionTitle>Qué señal funciona</SectionTitle>
           <ul className="divide-y divide-border border-y border-border">
-            {signals.data.filter((x) => x.n > 0).map((x) => (
+            {signals.data.filter((x) => x.n_vs_day > 0).map((x) => (
               <li key={x.signal} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <span>{SIGNAL[x.signal]}</span>
                 <span className="flex items-center gap-4">
-                  <span className="num text-sm text-text-2">{x.hits} de {x.n}</span>
-                  <span className="num w-14 text-right font-semibold">{Math.round((x.hit_rate ?? 0) * 100)}%</span>
+                  <span className="num text-sm text-text-2">{x.hits_vs_day} de {x.n_vs_day}, {x.days} {x.days === 1 ? "día" : "días"}</span>
+                  <span className="num w-14 text-right font-semibold">{Math.round((x.rate_vs_day ?? 0) * 100)}%</span>
                 </span>
               </li>
             ))}
           </ul>
           <p className="mt-3 text-sm text-text-3">
-            50% es lo mismo que tirar una moneda. Con pocos días todavía no es concluyente.
+            Cuántas veces el activo le ganó o perdió contra el resto ese día, como decía la señal. 50% es tirar una moneda, y con tan pocos días todavía no es concluyente.
           </p>
         </section>
       )}

@@ -16,6 +16,7 @@ see but close -> close does. So on an ex-date the dividend yield is added back t
 """
 
 import logging
+import statistics
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
@@ -175,27 +176,43 @@ SIGNAL_MIN = 0.05  # a component smaller than this didn't really point anywhere
 
 
 def signal_stats() -> list[SignalStats]:
-    """For each score component: how often its sign matched the next day's open -> close move."""
+    """For each score component: how often its sign matched the next day's open -> close move,
+    and how often the asset beat or lagged that day's median as the signal said. The second doesn't
+    depend on whether the whole market rose or fell that day, which is what a day's signals share."""
     rows = rows_as(
         RecommendationRow,
         get_db().table("recommendations").select("*").eq("kind", "daily")
         .not_.is_("realized_return", "null").execute().data,
     )
+    by_day: dict[date, list[float]] = defaultdict(list)
+    for r in rows:
+        if r.realized_return is not None:
+            by_day[r.target_date].append(r.realized_return)
+    median = {d: statistics.median(v) for d, v in by_day.items()}
     out = []
     for name in SIGNALS:
         ups: list[float] = []
         downs: list[float] = []
+        n_vs_day = hits_vs_day = 0
+        days: set[date] = set()
         for r in rows:
             value = getattr(r.signal_breakdown, name)
             if abs(value) < SIGNAL_MIN or r.realized_return is None:
                 continue
             (ups if value > 0 else downs).append(r.realized_return)
+            days.add(r.target_date)
+            excess = r.realized_return - median[r.target_date]
+            if excess != 0:
+                n_vs_day += 1
+                hits_vs_day += (value > 0) == (excess > 0)
         n = len(ups) + len(downs)
         hits = sum(1 for x in ups if x > 0) + sum(1 for x in downs if x < 0)
         out.append(SignalStats(
             signal=name, n=n, hits=hits, hit_rate=round(hits / n, 3) if n else None,
             avg_when_up=round(sum(ups) / len(ups), 5) if ups else None,
             avg_when_down=round(sum(downs) / len(downs), 5) if downs else None,
+            n_vs_day=n_vs_day, hits_vs_day=hits_vs_day,
+            rate_vs_day=round(hits_vs_day / n_vs_day, 3) if n_vs_day else None, days=len(days),
         ))
     return out
 

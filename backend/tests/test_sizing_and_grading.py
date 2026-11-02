@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -262,3 +263,46 @@ def test_scoring_keeps_holdings_and_the_strongest_news_when_over_the_cap(monkeyp
     signals = {"A": scoring.TickerSignals([ev(0.1)]), "B": scoring.TickerSignals([ev(0.9)]), "C": scoring.TickerSignals([ev(-0.5)])}
     assert scoring.pick_scored({"A", "B", "C", "HELD"}, {"HELD"}, signals) == {"HELD", "B", "C"}
     assert scoring.pick_scored({"A", "HELD"}, {"HELD"}, signals) == {"A", "HELD"}
+
+
+# Checks against IOL and the day's median
+
+def test_account_check_tolerates_price_timing_but_not_counting_errors():
+    from app import reconcile
+
+    day = date(2026, 10, 30)
+    assert reconcile.compare(day, 5049765, 5054767).ok  # the worst real day: -0.10%
+    assert not reconcile.compare(day, 7154127, 6035896).ok  # unsettled buys counted twice
+    assert not reconcile.compare(day, 6307660, 6035896).ok
+    assert reconcile.compare(day, 5000000, 5100000, transfers_after=100000).ok  # a deposit after the snapshot
+
+
+def test_last_trading_day_skips_weekends():
+    from app import reconcile
+
+    assert reconcile.last_trading_day(date(2026, 11, 2)) == date(2026, 10, 30)  # Monday -> Friday
+    assert reconcile.last_trading_day(date(2026, 11, 3)) == date(2026, 11, 2)
+
+
+def test_signals_are_measured_against_the_days_median(monkeypatch):
+    from app.analysis import track_record
+
+    now = datetime(2026, 10, 1, tzinfo=timezone.utc)
+
+    def row(ticker, day, news, ret):
+        return RecommendationRow(
+            id=ticker + str(day), ticker=ticker, action="keep", kind="daily", score=0, confidence=0, held=False,
+            signal_breakdown=SignalBreakdown(news=news, markets=0, trend=0), evidence=[], target_date=day,
+            realized_return=ret, created_at=now, updated_at=now,
+        )
+
+    d1, d2 = date(2026, 10, 1), date(2026, 10, 2)
+    # A day when everything falls: "up" is wrong in direction, but right if the asset beat the rest.
+    rows = [row("A", d1, 0.5, -0.01), row("B", d1, 0.0, -0.03), row("C", d1, -0.5, -0.05), row("D", d2, 0.5, 0.02), row("E", d2, 0.0, 0.01)]
+
+    monkeypatch.setattr(track_record, "get_db", MagicMock())
+    monkeypatch.setattr(track_record, "rows_as", lambda _m, _data: rows)
+    news = next(s for s in track_record.signal_stats() if s.signal == "news")
+    assert (news.n, news.hits) == (3, 2)
+    assert (news.n_vs_day, news.hits_vs_day, news.days) == (3, 3, 2)
+    assert news.rate_vs_day == 1.0

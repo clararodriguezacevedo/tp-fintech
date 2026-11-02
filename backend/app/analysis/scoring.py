@@ -28,7 +28,8 @@ Per ticker:
           + 0.1 * macro + concentration
 
 Prediction markets about to resolve are ignored: a "hits $130 this week" falls just because the
-week runs out. All of a ticker's markets together add up to at most MARKETS_CAP, since many are
+week runs out. For the rest of the deadline markets ("hits $115 in November", "by November 30")
+what counts is the 24h move minus what the day passing alone explains (time_decay). All of a ticker's markets together add up to at most MARKETS_CAP, since many are
 bets on the same thing (oil at $105, $115, $130).
 
 Market wrap-ups ("así cerró el mercado", "las acciones subieron hasta 6%") are ignored: they only
@@ -182,12 +183,47 @@ def _news_evidence(imp: TickerImpactRow, item: NewsRow, now: datetime) -> Eviden
     )
 
 
+# "Happens by a date" markets: the chance shrinks as days pass without it happening. Not "above
+# X at the end of 2027" or "by market cap", which are measured once.
+_MONTH = r"(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)"
+_DEADLINE = re.compile(
+    rf"\b(hits?|reach(es)?|dips?)\b|\bbefore\b|\bby\s+(the\s+)?(end\b|{_MONTH}\b|\d)",
+    re.IGNORECASE,
+)
+
+
+def is_deadline_market(title: str) -> bool:
+    return bool(_DEADLINE.search(title))
+
+
+def time_decay(probability: float, change_24h: float, days_left: float) -> float:
+    """How much a deadline market's probability should have moved in 24 hours (<= 0) just from
+    the day passing, if the chance of it happening stays the same each day.
+
+    A probability p with d days to go means a daily hazard h with p = 1 - exp(-h * d); with one
+    day less and no news, it becomes 1 - exp(-h * (d - 1)).
+    """
+    before = probability - change_24h
+    if not 0 < before < 1 or days_left <= 0:
+        return 0.0
+    hazard = -math.log(1 - before) / (days_left + 1)
+    return (1 - math.exp(-hazard * days_left)) - before
+
+
 def _market_evidence(imp: TickerImpactRow, item: MarketRow, now: datetime) -> Evidence | None:
     if item.change_24h is None:
         return None
     sign = 1 if imp.direction == "up" else -1
-    scaled = max(-MARKET_MOVE_CAP, min(MARKET_MOVE_CAP, item.change_24h / MARKET_MOVE_UNIT))
+    decay = 0.0
+    if item.end_date and item.probability is not None and is_deadline_market(item.title):
+        decay = time_decay(item.probability, item.change_24h, (item.end_date - now).total_seconds() / 86400)
+    move = item.change_24h - decay
+    # A fall smaller than the clock explains isn't news, in either direction.
+    if item.change_24h < 0 <= move:
+        return None
+    scaled = max(-MARKET_MOVE_CAP, min(MARKET_MOVE_CAP, move / MARKET_MOVE_UNIT))
     prob = f"{item.probability * 100:.0f}% " if item.probability is not None else ""
+    clock = f", {decay * 100:+.1f} por el paso del tiempo" if abs(decay) >= 0.005 else ""
     # A market resolving years from now says little about tomorrow: weight falls past 6 months.
     horizon = 1.0
     if item.end_date:
@@ -200,7 +236,7 @@ def _market_evidence(imp: TickerImpactRow, item: MarketRow, now: datetime) -> Ev
         kind="market", item_id=item.id, title=item.title, url=item.url, direction=imp.direction,
         strength=imp.strength, reason=imp.reason or "",
         contribution=round(sign * STRENGTH[imp.strength] * scaled * horizon, 4),
-        detail=f"{item.source}: {prob}({item.change_24h * 100:+.1f} pts en 24 h)".replace(".", ","),
+        detail=f"{item.source}: {prob}({item.change_24h * 100:+.1f} pts en 24 h{clock})".replace(".", ","),
         since=now - timedelta(hours=24),
     )
 

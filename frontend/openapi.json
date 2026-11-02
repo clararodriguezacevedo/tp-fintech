@@ -683,6 +683,61 @@
         }
       }
     },
+    "/account/check": {
+      "get": {
+        "summary": "Account Check",
+        "description": "The latest daily comparison of the site's account value with IOL's.",
+        "operationId": "account_check",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AccountCheck"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Account Check"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/account/transfers": {
       "get": {
         "summary": "Account Transfers",
@@ -2032,6 +2087,40 @@
   },
   "components": {
     "schemas": {
+      "AccountCheck": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "site": {
+            "type": "number",
+            "title": "Site"
+          },
+          "iol": {
+            "type": "number",
+            "title": "Iol"
+          },
+          "diff": {
+            "type": "number",
+            "title": "Diff"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "site",
+          "iol",
+          "diff",
+          "ok"
+        ],
+        "title": "AccountCheck"
+      },
       "AccountSummary": {
         "properties": {
           "total_value": {
@@ -3826,6 +3915,32 @@
               }
             ],
             "title": "Avg When Down"
+          },
+          "n_vs_day": {
+            "type": "integer",
+            "title": "N Vs Day",
+            "default": 0
+          },
+          "hits_vs_day": {
+            "type": "integer",
+            "title": "Hits Vs Day",
+            "default": 0
+          },
+          "rate_vs_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Vs Day"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "default": 0
           }
         },
         "type": "object",

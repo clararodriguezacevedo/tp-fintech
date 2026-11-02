@@ -11,10 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from app import account as acct, alerts, jobs, prices, universe
+from app import account as acct, alerts, jobs, prices, reconcile, universe
 from app.analysis import market_hours, risk, rotation, scoring, simulation, suitability, track_record
 from app.assets import asset_types
 from app.profile import InvestorProfile, declare, get_profile
+from app.reconcile import AccountCheck
 from app.analysis.simulation import Simulation
 from app.brokers.iol import IOLUnavailable, get_iol, trade_cost_rate
 from app.config import get_settings
@@ -262,6 +263,12 @@ def account() -> AccountSummary:
     return AccountSummary(
         total_value=v.total, cash_ars=balances.ars.available.t0, cash_usd=balances.usd.available.t0,
     )
+
+
+@app.get("/account/check", response_model=AccountCheck | None)
+def account_check() -> AccountCheck | None:
+    """The latest daily comparison of the site's account value with IOL's."""
+    return reconcile.latest()
 
 
 @app.get("/account/transfers", response_model=list[Transfer])

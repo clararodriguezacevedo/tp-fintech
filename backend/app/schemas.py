@@ -202,6 +202,10 @@ class SignalStats(BaseModel):
     hit_rate: float | None
     avg_when_up: float | None  # average move when the signal said up
     avg_when_down: float | None  # average move when it said down
+    n_vs_day: int = 0  # cases where the asset moved differently from the day's median
+    hits_vs_day: int = 0  # ... and it did better or worse than that median as the signal said
+    rate_vs_day: float | None = None
+    days: int = 0  # different trading days behind these numbers
 
 
 class TrackRecordSummary(BaseModel):

@@ -4,7 +4,7 @@ import { LineChart } from "@/components/charts";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api, type Holding, type Recommendation } from "@/lib/api/client";
-import { integer, money, pctPoints, price, roundToTotal } from "@/lib/format";
+import { dayShort, integer, money, pctPoints, price, roundToTotal } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
 export const metadata = { title: "Mi cartera | El Parqué" };
@@ -23,11 +23,12 @@ function concentration(holdings: Holding[], total: number) {
 }
 
 export default async function PortfolioPage() {
-  const [portfolio, advice, history, transfers] = await Promise.all([
+  const [portfolio, advice, history, transfers, check] = await Promise.all([
     attempt(api.portfolio),
     attempt(api.portfolioAdvice),
     attempt(() => api.portfolioHistory(90)),
     attempt(() => api.transfers(90)),
+    attempt(api.accountCheck),
   ]);
   if (!portfolio.ok) return <ApiFailure error={portfolio.error} />;
 
@@ -102,6 +103,12 @@ export default async function PortfolioPage() {
           {dollars.length > 0 && ` Además tenés ${dollars.length} posición${dollars.length > 1 ? "es" : ""} en dólares, que no se suman al total.`}
         </p>
       </section>
+
+      {check.ok && check.data && !check.data.ok && (
+        <div role="alert" className="rounded-xl px-5 py-4" style={{ background: "var(--sell-soft)" }}>
+          Al cierre del {dayShort(check.data.day + "T12:00:00")} este total no coincidió con IOL: acá {money(check.data.site)}, en IOL {money(check.data.iol)}. Hasta revisarlo, confiá en el número de IOL.
+        </div>
+      )}
 
       {sells.length > 0 ? (
         <Notice>

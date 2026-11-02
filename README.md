@@ -197,7 +197,8 @@ ticker, para todo el Merval o para otra empresa del sector cuenta una sola vez, 
 etiqueta más directa. Las noticias generales del Merval o de los bonos cuentan 50%; las de otra
 empresa del mismo sector (bancos, petróleo y gas, electricidad, materiales, tecnología) cuentan
 30%, y todas juntas suman como máximo 0,25. Los mercados que resuelven en menos de 3 días no
-cuentan (caen porque se acaba el tiempo) y todos los de un ticker suman como máximo 1, porque
+cuentan, y en los que tienen fecha límite ("llega a $ 115 en noviembre") se descuenta lo que cae su
+probabilidad solo porque pasa el tiempo y todos los de un ticker suman como máximo 1, porque
 muchos son apuestas sobre lo mismo. Los adelantos de algo cuyo resultado no se conoce
 ("se vienen los balances", "qué mirar esta semana") tampoco cuentan. Los mercados de predicción que resuelven en más de 6 meses pesan menos.
 
@@ -246,6 +247,11 @@ Por tiempo, cada ciclo puntúa como máximo 100: primero la cartera, después lo
 noticias y mercados más fuertes. Las noticias generales se aplican a las líderes del Merval y a los
 bonos soberanos en dólares, que también forman el contexto de mercado. Las obligaciones negociables
 y las letras no se incluyen.
+
+### Control contra IOL
+
+`backend/app/reconcile.py` compara cada día hábil el valor del sitio al cierre con el que publica
+IOL. Si difieren más de 0,3%, manda un mail y muestra un aviso en Mi cartera.
 
 ### Plan del día y rotación
 
