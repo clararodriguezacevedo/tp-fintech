@@ -137,6 +137,14 @@ function marketReasons(b: Breakdown | undefined) {
   return out;
 }
 
+/** A reason in words. A market's reason describes what happens if its YES comes true, but what
+ * counts is how its probability moved: when it fell, the arrow goes against the reason, so say so. */
+export function evidenceText(e: Evidence) {
+  if (e.kind !== "market" || e.contribution === 0) return e.reason;
+  const against = e.contribution > 0 !== (e.direction === "up");
+  return `${against ? "Bajó" : "Subió"} la probabilidad de esto: ${e.reason}`;
+}
+
 function Marker({ up, faded = false }: { up: boolean; faded?: boolean }) {
   return (
     <span
@@ -184,7 +192,7 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
           <li key={`${e.item_id}-${e.broad}`} className="flex gap-3">
             <Marker up={up} faded={e.priced_in >= 0.95} />
             <div className="min-w-0">
-              <p className="text-text">{e.reason}</p>
+              <p className="text-text">{evidenceText(e)}</p>
               {priced && (
                 <p className="text-sm text-text-2">
                   {e.priced_in >= 0.95 ? "Ya está reflejado en el precio" : "En parte ya está reflejado en el precio"}:{" "}
@@ -198,6 +206,7 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
               ) : (
                 <p className="text-sm text-text-3">{e.title}</p>
               )}
+              {e.kind === "market" && e.detail && <span className="num text-sm text-text-3"> ({e.detail})</span>}
               {e.sources > 1 && <span className="text-sm text-text-3"> (lo publicaron {e.sources} medios)</span>}
               {e.via && <p className="text-sm text-text-3">Sobre {e.via}, del mismo sector.</p>}
             </div>

@@ -53,12 +53,20 @@ def _today() -> date:
     return market_hours.now_art().date()
 
 
+def evidence_text(e) -> str:
+    """A market's reason describes its YES coming true; what counts is how its probability moved."""
+    if e.kind != "market" or not e.contribution:
+        return e.reason
+    against = (e.contribution > 0) != (e.direction == "up")
+    return f"{'Bajó' if against else 'Subió'} la probabilidad de esto: {e.reason}"
+
+
 def sell_signals(recs: list, target: date) -> None:
     """recs: scoring.Recommendation. One e-mail per held ticker and target day."""
     for r in recs:
         if not (r.held and r.action == "sell"):
             continue
-        reasons = [e.reason for e in r.evidence[:3] if e.reason]
+        reasons = [evidence_text(e) for e in r.evidence[:3] if e.reason]
         send(
             f"sell:{r.ticker}:{target.isoformat()}",
             f"Vender {r.ticker}: la recomendación cambió",

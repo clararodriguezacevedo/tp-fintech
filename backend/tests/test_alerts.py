@@ -131,3 +131,28 @@ def test_garbled_ids_and_unknown_tickers_are_dropped(monkeypatch):
     got = tagger.tag_items([tagger.TagInput(id="news-1", kind="news", title="t")], universe={"ASML": "Asml Holding Nv"})
     assert [i.id for i in got] == ["news-1"]
     assert [x.ticker for x in got[0].impacts] == ["ASML"]
+
+
+def test_market_reasons_say_how_the_probability_moved():
+    down = SimpleNamespace(kind="market", contribution=-0.4, direction="up", reason="Petróleo caro ayuda a VIST.")
+    up = SimpleNamespace(kind="market", contribution=0.4, direction="up", reason="Petróleo caro ayuda a VIST.")
+    # A market betting on a fall: its probability falling is good news for the ticker.
+    bet_on_fall = SimpleNamespace(kind="market", contribution=0.4, direction="down", reason="Apuesta a la baja.")
+    news = SimpleNamespace(kind="news", contribution=-0.4, direction="down", reason="Mala noticia.")
+    assert alerts.evidence_text(down).startswith("Bajó la probabilidad")
+    assert alerts.evidence_text(up).startswith("Subió la probabilidad")
+    assert alerts.evidence_text(bet_on_fall).startswith("Bajó la probabilidad")
+    assert alerts.evidence_text(news) == "Mala noticia."
+
+
+def test_other_broken_accents_are_caught_and_entities_repaired(monkeypatch):
+    from app.analysis import tagger
+
+    answer = tagger.TagBatch(items=[
+        tagger.TaggedItem(id="a", summary="La inversi&oacute;n crece.", impacts=[]),
+        tagger.TaggedItem(id="b", summary="El plan econ##mico.", impacts=[]),
+    ])
+    fake = SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_: SimpleNamespace(parsed=answer)))
+    monkeypatch.setattr(tagger, "_get_client", lambda: fake)
+    got = tagger.tag_items([tagger.TagInput(id=i, kind="news", title="t") for i in "ab"])
+    assert [(i.id, i.summary) for i in got] == [("a", "La inversión crece.")]

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { fundingOf, PlanView } from "@/components/portfolio-plan";
-import { ActionBadge, threeMonths, track } from "@/components/signals";
+import { ActionBadge, evidenceText, threeMonths, track } from "@/components/signals";
 import { ApiFailure, attempt, Card, Notice, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type CalibrationBucket, type PortfolioPlan, type Recommendation } from "@/lib/api/client";
 import { money, timeAgo } from "@/lib/format";
@@ -18,7 +18,7 @@ function BuyCard({ r, calibration, plan, names }: { r: Recommendation; calibrati
         </div>
         <ActionBadge action="buy" />
       </div>
-      <p className="mt-4 flex-1 text-text">{r.evidence[0]?.reason ?? "Su precio viene subiendo."}</p>
+      <p className="mt-4 flex-1 text-text">{r.evidence[0] ? evidenceText(r.evidence[0]) : "Su precio viene subiendo."}</p>
       {threeMonths(r.signal_breakdown) && <p className="mt-2 text-sm text-text-3">{threeMonths(r.signal_breakdown)}</p>}
       <div className="mt-4 flex items-end justify-between gap-3">
         <div>

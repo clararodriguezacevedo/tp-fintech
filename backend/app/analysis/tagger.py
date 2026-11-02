@@ -1,5 +1,6 @@
 """Links news and prediction markets to tickers with Gemini (free tier)."""
 
+import html
 import logging
 import re
 from typing import Literal
@@ -134,15 +135,20 @@ def tag_items(
     batch.items = [item for item in batch.items if item.id in sent]
     for item in batch.items:
         item.impacts = [i for i in item.impacts if i.ticker in allowed]
-    # Gemini sometimes writes "3" for an accented letter ("posici3n", "petr3leo"). Those items
-    # are left out, so they stay untagged and are tagged again on the next cycle.
+    for item in batch.items:
+        # Some answers come with HTML entities ("inversi&oacute;n").
+        item.summary = html.unescape(item.summary)
+        for impact in item.impacts:
+            impact.reason = html.unescape(impact.reason)
+    # Gemini sometimes writes "3" or "##" for an accented letter ("petr3leo", "econ##mico"). Those
+    # items are left out, so they stay untagged and are tagged again on the next cycle.
     clean = [it for it in batch.items if not has_broken_accents(it)]
     if len(clean) < len(batch.items):
         log.warning("dropped %d tagged items with broken accents", len(batch.items) - len(clean))
     return clean
 
 
-_BROKEN = re.compile(r"[A-Za-záéíóúñÁÉÍÓÚÑ]3[a-záéíóúñ]")
+_BROKEN = re.compile(r"[A-Za-záéíóúñÁÉÍÓÚÑ](3|#+)[a-záéíóúñ]")
 
 
 def has_broken_accents(item: TaggedItem) -> bool:

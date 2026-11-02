@@ -24,10 +24,18 @@ export default async function NewsPage() {
                 <li key={m.id} className="py-3">
                   <div className="flex items-start justify-between gap-4">
                     <a href={m.url ?? undefined} target="_blank" rel="noreferrer" className="hover:underline">{m.title}</a>
-                    <span className="num shrink-0 text-lg font-semibold" title="Probabilidad de que pase">{prob(m.probability)}</span>
+                    <span className="shrink-0 text-right">
+                      <span className="num block text-lg font-semibold" title="Probabilidad de que pase">{prob(m.probability)}</span>
+                      {m.change_24h != null && m.change_24h !== 0 && (
+                        <span className="num block text-sm text-text-2" title="Cambio en 24 horas">
+                          {m.change_24h > 0 ? "+" : "−"}{Math.abs(m.change_24h * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })} pts
+                        </span>
+                      )}
+                    </span>
                   </div>
                   {m.ai_summary && <p className="mt-1 text-sm text-text-2">{m.ai_summary}</p>}
-                  <ImpactList impacts={m.impacts} />
+                  {/* What counts is the move: if the probability fell, the effect goes the other way. */}
+                  <ImpactList impacts={(m.change_24h ?? 0) < 0 ? m.impacts.map((i) => ({ ...i, direction: i.direction === "up" ? "down" as const : "up" as const })) : m.impacts} />
                 </li>
               ))}
             </ul>
