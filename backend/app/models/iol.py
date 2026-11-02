@@ -9,7 +9,7 @@ break parsing, but a missing or retyped field we rely on fails loudly.
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class IOLModel(BaseModel):
@@ -153,15 +153,29 @@ class Movement(IOLModel):
     net_amount: float  # what came into (+) or left (-) the account's cash
 
 
+class Executed(IOLModel):
+    qty: float
+    price: float
+    amount: float
+
+
 class Trade(IOLModel):
     """One item of GET /broker/accounts/activities/operations"""
 
     order_id: str | int
     order_date: datetime
-    type: str
-    status: str
+    execution_date: datetime | None = None
+    type: str  # "Compra", "Venta", "Pago de Dividendos", "Suscripción FCI", ...
+    status: str  # "completed", "cancelled", ...
     symbol: str
     currency: str
+    executed: Executed | None = None
+
+    # IOL sends "" for orders that never executed (cancelled ones).
+    @field_validator("execution_date", mode="before")
+    @classmethod
+    def _empty_date(cls, v):
+        return v or None
 
 
 # Market data

@@ -2,7 +2,8 @@
 
 // A single-series line chart with a hover tooltip, optional dashed reference lines, and optional
 // marks: a thin bar at a point showing how much of that day's jump was money moved in or out.
-// Marks carry no text on the plot; their label shows in the tooltip (and callers list them below).
+// Marks carry no text on the plot; their label shows in the tooltip. Optional trade marks: a
+// triangle at each day the user bought (below the line, pointing up) or sold (above, pointing down).
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { dateTime, dayShort, money, moneyCompact, price } from "@/lib/format";
@@ -17,9 +18,13 @@ export type Point = { t: string; v: number };
 export type RefLine = { value: number; label: string; tone: "buy" | "sell" };
 /** At point i, the value moved by `delta` that isn't a gain or loss (a deposit or withdrawal). */
 export type Mark = { i: number; delta: number; label: string };
+/** At point i, the user's buys or sells that day; `lines` is what the tooltip says about them. */
+export type TradeMark = { i: number; side: "buy" | "sell"; lines: string[] };
 
 const MONTH = new Intl.DateTimeFormat("es-AR", { month: "short", timeZone: "America/Argentina/Buenos_Aires" });
 const monthKey = (t: string) => new Date(t).toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).slice(0, 7);
+
+const MAX_DATED = 10; // more marks than this and their dates would crowd the axis
 
 function niceTicks(min: number, max: number, count = 4) {
   const span = max - min || Math.abs(max) || 1;
@@ -37,6 +42,7 @@ export function LineChart({
   height = 240,
   refLines = [],
   marks = [],
+  trades = [],
   label,
 }: {
   points: Point[];
@@ -45,6 +51,7 @@ export function LineChart({
   height?: number;
   refLines?: RefLine[];
   marks?: Mark[];
+  trades?: TradeMark[];
   label: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -87,21 +94,24 @@ export function LineChart({
   const h = hover != null ? points[hover] : null;
   const hMark = hover != null ? marks.find((m) => m.i === hover) : undefined;
   const shown = marks.filter((m) => points[m.i]);
-  // Time axis: with marks, the date of each one (a second line when two are close); without, the
-  // first day of each month on a long span, else the two ends.
+  const shownTrades = trades.filter((t) => points[t.i]);
+  const hTrades = hover != null ? shownTrades.filter((t) => t.i === hover) : [];
+  const dated = [...new Set([...shown.map((m) => m.i), ...shownTrades.map((t) => t.i)])].sort((a, b) => a - b);
+  // Time axis: with a few marks, the date of each one (a second line when two are close); else
+  // the first day of each month on a long span, else the two ends.
   type Tick = { i: number; text: string; anchor: "start" | "middle" | "end"; row: number; mark: boolean };
   const monthStarts = points.flatMap((p, i) => (i > 0 && monthKey(p.t) !== monthKey(points[i - 1].t) ? [i] : []));
   let xTicks: Tick[];
-  if (shown.length > 0) {
+  if (dated.length > 0 && dated.length <= MAX_DATED) {
     const ends: number[] = [];
-    xTicks = [...shown].sort((a, b) => a.i - b.i).map((m) => {
-      const text = dayShort(points[m.i].t);
+    xTicks = dated.map((i) => {
+      const text = dayShort(points[i].t);
       const half = text.length * 3.3;
-      const cx = Math.min(Math.max(x(m.i), left + half), width - right - half);
+      const cx = Math.min(Math.max(x(i), left + half), width - right - half);
       let row = ends.findIndex((end) => cx - half > end + 6);
       if (row < 0) row = ends.length;
       ends[row] = cx + half;
-      return { i: m.i, text, anchor: "middle" as const, row, mark: true };
+      return { i, text, anchor: "middle" as const, row, mark: true };
     });
   } else if (points.length > 40 && monthStarts.length >= 2) {
     xTicks = monthStarts.map((i) => ({ i, text: MONTH.format(new Date(points[i].t)).replace(".", ""), anchor: "middle" as const, row: 0, mark: false }));
@@ -124,8 +134,8 @@ export function LineChart({
           const px = e.clientX - e.currentTarget.getBoundingClientRect().left;
           let i = Math.max(0, Math.min(points.length - 1, Math.round(((px - left) / innerW) * (points.length - 1))));
           // A mark within 8px is easier to hit than the exact day.
-          const near = shown.find((m) => Math.abs(x(m.i) - px) <= 8);
-          if (near) i = near.i;
+          const near = dated.find((d) => Math.abs(x(d) - px) <= 8);
+          if (near != null) i = near;
           setHover(i);
         }}
       >
@@ -177,15 +187,37 @@ export function LineChart({
         {h && hover != null && (
           <circle cx={x(hover)} cy={y(h.v)} r="4.5" fill="var(--text)" stroke="var(--bg)" strokeWidth="2" />
         )}
+        {shownTrades.map((t) => {
+          const px = x(t.i);
+          const py = y(points[t.i].v);
+          const d = t.side === "buy" ? `M${px} ${py + 6}l6 10h-12z` : `M${px} ${py - 6}l6 -10h-12z`;
+          return (
+            <path
+              key={`${t.side}-${t.i}`}
+              d={d}
+              fill={t.side === "buy" ? "var(--buy)" : "var(--sell)"}
+              stroke="var(--bg)"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+            />
+          );
+        })}
       </svg>
       {h && hover != null && (
         <div
           className="pointer-events-none absolute top-0 rounded-md border border-border bg-bg px-2 py-1 text-xs shadow-sm"
-          style={{ left: Math.min(Math.max(x(hover) - 70, 0), width - (hMark ? 200 : 150)) }}
+          style={{ left: Math.max(0, Math.min(x(hover) - 70, width - (hTrades.length ? 250 : hMark ? 200 : 150))) }}
         >
           <p><span className="num font-medium">{fmtExact(h.v)}</span> <span className="text-text-3">{fmtTime(h.t)}</span></p>
           {hMark && <p className="num text-text-2">{hMark.label}</p>}
+          {hTrades.flatMap((t) => t.lines).map((line) => <p key={line} className="num whitespace-nowrap text-text-2">{line}</p>)}
         </div>
+      )}
+      {shownTrades.length > 0 && (
+        <p className="mt-1 flex gap-4 text-sm text-text-2">
+          <span><span aria-hidden style={{ color: "var(--buy)" }}>▲</span> Compraste</span>
+          <span><span aria-hidden style={{ color: "var(--sell)" }}>▼</span> Vendiste</span>
+        </p>
       )}
     </div>
   );

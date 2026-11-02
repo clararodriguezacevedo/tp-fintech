@@ -589,6 +589,53 @@
         }
       }
     },
+    "/alerts/test": {
+      "post": {
+        "summary": "Alerts Test",
+        "description": "Send a test e-mail, to check RESEND_API_KEY and ALERT_EMAIL. failed lists \"send\" if it didn't go out.",
+        "operationId": "alerts_test",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/account": {
       "get": {
         "summary": "Account",
@@ -1166,6 +1213,66 @@
                     "$ref": "#/components/schemas/TradeRow"
                   },
                   "title": "Response List Trades"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tickers/{ticker}/trades": {
+      "get": {
+        "summary": "Ticker Trades",
+        "description": "The user's buys and sells of this ticker in the last year, real and simulated.",
+        "operationId": "ticker_trades",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TickerTrade"
+                  },
+                  "title": "Response Ticker Trades"
                 }
               }
             }
@@ -3886,6 +3993,59 @@
           "created_at"
         ],
         "title": "TickerImpactRow"
+      },
+      "TickerTrade": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "ARS",
+              "USD"
+            ],
+            "title": "Currency"
+          },
+          "simulated": {
+            "type": "boolean",
+            "title": "Simulated",
+            "default": false
+          },
+          "split_adjusted": {
+            "type": "boolean",
+            "title": "Split Adjusted",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "side",
+          "quantity",
+          "price",
+          "currency"
+        ],
+        "title": "TickerTrade",
+        "description": "A buy or sell of a ticker, for its price chart."
       },
       "TrackRecordSummary": {
         "properties": {

@@ -1,10 +1,10 @@
 import { BuyPanel } from "@/components/buy-panel";
 import { SellPanel } from "@/components/sell-panel";
-import { LineChart } from "@/components/charts";
+import { LineChart, type TradeMark } from "@/components/charts";
 import { ActionBadge, Reasons, RiskBadge, threeMonths, track } from "@/components/signals";
 import { attempt, Card, Delta, Notice, SectionTitle } from "@/components/ui";
-import { api } from "@/lib/api/client";
-import { fromEntry, integer, money, pct, pctPoints } from "@/lib/format";
+import { api, type TickerTrade } from "@/lib/api/client";
+import { fromEntry, integer, money, pct, pctPoints, price } from "@/lib/format";
 import { nameOf } from "@/lib/names";
 
 export async function generateMetadata({ params }: { params: Promise<{ symbol: string }> }) {
@@ -12,21 +12,44 @@ export async function generateMetadata({ params }: { params: Promise<{ symbol: s
   return { title: `${symbol.toUpperCase()} | El Parqué` };
 }
 
+/** One mark per day and side. A trade on a day without a candle goes on the next one that has it. */
+function tradeMarksOf(trades: TickerTrade[], points: { t: string }[]): TradeMark[] {
+  const marks = new Map<string, TradeMark>();
+  for (const t of trades) {
+    const found = points.findIndex((p) => p.t.slice(0, 10) >= t.day);
+    if (found < 0) continue;
+    const key = `${found}-${t.side}`;
+    const amount = `${integer(t.quantity)} a ${t.currency === "USD" ? "US$ " : "$ "}${price(t.price)}`;
+    const note = [t.split_adjusted && "ajustado por split", t.simulated && "simulada"].filter(Boolean).join(", ");
+    const line = `${t.side === "buy" ? "Compraste" : "Vendiste"} ${amount}${note ? ` (${note})` : ""}`;
+    const mark = marks.get(key) ?? { i: found, side: t.side, lines: [] };
+    mark.lines.push(line);
+    marks.set(key, mark);
+  }
+  return [...marks.values()];
+}
+
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const ticker = (await params).symbol.toUpperCase();
-  const [recs, bars, plan, health, holdings, calibration, quote, sellPlan] = await Promise.all([
+  const [recs, bars, plan, health, holdings, calibration, quote, sellPlan, trades] = await Promise.all([
     attempt(() => api.recommendations({ ticker })),
-    attempt(() => api.bars(ticker, 90)),
+    attempt(() => api.bars(ticker, 365)),
     attempt(() => api.tradePlan(ticker)),
     attempt(api.health),
     attempt(api.portfolio),
     attempt(api.calibration),
     attempt(() => api.quote(ticker)),
     attempt(() => api.sellPlan(ticker)),
+    attempt(() => api.tickerTrades(ticker)),
   ]);
 
   const rec = recs.ok ? recs.data[0] : undefined;
-  const closes = bars.ok ? bars.data : [];
+  const allCloses = bars.ok ? bars.data : [];
+  const myTrades = trades.ok ? trades.data : [];
+  // The chart goes back 3 months, or to the first trade of the last year if that's earlier.
+  const threeMonthsAgo = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+  const firstDay = myTrades.length && myTrades[0].day < threeMonthsAgo ? myTrades[0].day : threeMonthsAgo;
+  const closes = allCloses.filter((b) => b.day >= firstDay);
   const last = closes.at(-1);
   // Price and today's change from the same IOL quote the portfolio uses, so both pages agree.
   const priceNow = quote.ok ? quote.data.price : plan.ok ? plan.data.entry : last?.close;
@@ -34,6 +57,13 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
   const position = holdings.ok ? holdings.data.holdings.find((h) => h.ticker === ticker) : undefined;
   const mode = health.ok ? health.data.mode : "paper";
   const name = nameOf(ticker, position?.description);
+  // Days as noon, so they don't read as the day before in Argentina. On a weekday the chart ends
+  // on the price shown above it, and today's trades have a point to sit on.
+  const points = closes.map((b) => ({ t: `${b.day}T12:00:00`, v: b.close }));
+  const todayArt = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  const weekday = ![0, 6].includes(new Date(`${todayArt}T12:00:00`).getDay());
+  if (quote.ok && weekday && last && last.day < todayArt) points.push({ t: `${todayArt}T12:00:00`, v: quote.data.price });
+  const tradeMarks = tradeMarksOf(myTrades, points);
 
   return (
     <div className="space-y-10">
@@ -93,11 +123,12 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
       </div>
 
       <section>
-        <SectionTitle>Precio de los últimos 3 meses</SectionTitle>
-        {closes.length >= 2 ? (
+        <SectionTitle>{firstDay < threeMonthsAgo ? "Precio desde tu primera operación" : "Precio de los últimos 3 meses"}</SectionTitle>
+        {points.length >= 2 ? (
           <LineChart
-            label={`Precio de ${ticker} en los últimos 3 meses`}
-            points={closes.map((b) => ({ t: b.day, v: b.close }))}
+            label={`Precio de ${ticker}${tradeMarks.length ? ", con tus compras y ventas" : ""}`}
+            points={points}
+            trades={tradeMarks}
             valueFormat="price"
             refLines={
               plan.ok && !position

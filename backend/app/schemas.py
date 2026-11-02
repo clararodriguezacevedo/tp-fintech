@@ -114,6 +114,18 @@ class PortfolioPlan(BaseModel):
     min_trade: float  # share of the portfolio below which a trade is left out
 
 
+class TickerTrade(BaseModel):
+    """A buy or sell of a ticker, for its price chart."""
+
+    day: date
+    side: Literal["buy", "sell"]
+    quantity: float
+    price: float  # per unit as traded, in `currency` (bonds: per 100 nominal)
+    currency: Literal["ARS", "USD"]
+    simulated: bool = False
+    split_adjusted: bool = False  # price and quantity restated for a later split, like the chart
+
+
 class ProfileRequest(BaseModel):
     profile: Literal["conservador", "moderado", "arriesgado"]
 

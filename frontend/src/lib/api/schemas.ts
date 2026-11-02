@@ -251,6 +251,17 @@ const status = z
     z.null(),
   ])
   .optional();
+const TickerTrade = z
+  .object({
+    day: z.string(),
+    side: z.enum(["buy", "sell"]),
+    quantity: z.number(),
+    price: z.number(),
+    currency: z.enum(["ARS", "USD"]),
+    simulated: z.boolean().optional().default(false),
+    split_adjusted: z.boolean().optional().default(false),
+  })
+  .passthrough();
 const SellPlan = z
   .object({
     ticker: z.string(),
@@ -495,6 +506,7 @@ export const schemas = {
   BuyRequest,
   TradeRow,
   status,
+  TickerTrade,
   SellPlan,
   SellRequest,
   action,

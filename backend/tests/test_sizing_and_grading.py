@@ -191,3 +191,43 @@ def test_unsettled_buys_are_not_counted_twice(monkeypatch):
     )
     snap = portfolio.Snapshot(captured_at=datetime.now(timezone.utc), holdings=[holding], cash_ars=11047.57, cash_usd=12.84)
     assert account.value_of(snap).total == pytest.approx(6035895.63, abs=0.05)  # IOL's close of 31/10
+
+
+# Trades on the price chart
+
+def _op(symbol, kind="Compra", status="completed", currency="ARS", qty=10.0, price=100.0):
+    from app.models.iol import Executed, Trade
+
+    when = datetime(2026, 10, 5, 12, 45)
+    return Trade(order_id=1, order_date=when, execution_date=when, type=kind, status=status, symbol=symbol,
+                 currency=currency, executed=Executed(qty=qty, price=price, amount=qty * price))
+
+
+def test_trades_include_the_dollar_species_and_only_real_buys_and_sells():
+    from app.trading.history import from_operations
+
+    ops = [
+        _op("VIST"), _op("VISTD", currency="USD", price=23.03), _op("VIST", kind="Venta"),
+        _op("VIST", status="cancelled"), _op("VIST", kind="Pago de Dividendos", qty=0), _op("VIST", qty=0),
+        _op("VISTA"), _op("GGAL"), _op("VISTD"),  # a peso "VISTD" isn't the dollar species
+    ]
+    got = from_operations(ops, "VIST")
+    assert [(t.side, t.currency, t.price) for t in got] == [("buy", "ARS", 100.0), ("buy", "USD", 23.03), ("sell", "ARS", 100.0)]
+    assert got[0].day == date(2026, 10, 5)
+    # YPFD is a peso ticker of its own, not YPF's dollar species.
+    assert from_operations([_op("YPFD")], "YPF") == []
+
+
+def test_trades_before_a_split_are_restated_like_the_chart():
+    from app import prices
+    from app.schemas import TickerTrade
+    from app.trading.history import adjust_for_splits
+
+    days = [date(2026, 7, 31), date(2026, 8, 3)]
+    raw = [DailyBar(day=days[0], open=83000, high=83000, low=83000, close=83000),
+           DailyBar(day=days[1], open=8100, high=8100, low=8100, close=8105)]
+    before = TickerTrade(day=date(2026, 7, 30), side="buy", quantity=5, price=82750, currency="ARS")
+    after = TickerTrade(day=date(2026, 8, 3), side="sell", quantity=50, price=8100, currency="ARS")
+    got = adjust_for_splits([before, after], raw, prices.adjust_splits(raw))
+    assert (got[0].quantity, got[0].price, got[0].split_adjusted) == (50, 8275, True)
+    assert got[1] == after

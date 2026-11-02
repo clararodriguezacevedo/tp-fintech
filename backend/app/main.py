@@ -29,10 +29,10 @@ from app.models.iol import DailyBar
 from app.schemas import (
     AccountSummary, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
     ModelInfo, NewsOut, PlanStep, PortfolioOut, PortfolioPlan, UnfundedBuy, PortfolioValuePoint, ProbabilityPoint, SignalStats,
-    ProfileRequest, Quote, SellPlan, SellRequest, TrackRecordSummary, TradePlan, Transfer,
+    ProfileRequest, Quote, SellPlan, SellRequest, TickerTrade, TrackRecordSummary, TradePlan, Transfer,
 )
 from app.sources import polymarket
-from app.trading import paper
+from app.trading import history, paper
 from app.trading.sizing import size_buy
 
 logging.basicConfig(level=logging.INFO)
@@ -384,6 +384,12 @@ def buy(req: BuyRequest) -> TradeRow:
         return paper.create_buy(**req.model_dump(exclude={"accept_out_of_profile"}))
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.get("/tickers/{ticker}/trades", response_model=list[TickerTrade])
+def ticker_trades(ticker: str) -> list[TickerTrade]:
+    """The user's buys and sells of this ticker in the last year, real and simulated."""
+    return history.ticker_trades(ticker.upper())
 
 
 @app.get("/tickers/{ticker}/sell-plan", response_model=SellPlan)

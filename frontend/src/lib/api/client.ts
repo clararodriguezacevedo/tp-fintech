@@ -33,6 +33,7 @@ export type CalibrationBucket = z.infer<typeof schemas.CalibrationBucket>;
 export type ModelInfo = z.infer<typeof schemas.ModelInfo>;
 export type Transfer = z.infer<typeof schemas.Transfer>;
 export type Quote = z.infer<typeof schemas.Quote>;
+export type TickerTrade = z.infer<typeof schemas.TickerTrade>;
 export type InvestorProfile = z.infer<typeof schemas.InvestorProfile>;
 export type ProfileName = InvestorProfile["profile"];
 export type PortfolioPlan = z.infer<typeof schemas.PortfolioPlan>;
@@ -96,6 +97,7 @@ export const api = {
   setProfile: (profile: ProfileName) =>
     request(schemas.InvestorProfile, "/profile", { method: "PUT", body: JSON.stringify({ profile }) }),
   transfers: (days = 90) => request(z.array(schemas.Transfer), "/account/transfers", { query: { days } }),
+  tickerTrades: (ticker: string) => request(z.array(schemas.TickerTrade), `/tickers/${ticker}/trades`),
   quote: (ticker: string) => request(schemas.Quote, `/tickers/${ticker}/quote`),
   bars: (ticker: string, days = 90) =>
     request(z.array(schemas.DailyBar), `/tickers/${ticker}/bars`, { query: { days } }),
