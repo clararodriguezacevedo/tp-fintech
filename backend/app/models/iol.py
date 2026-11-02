@@ -298,6 +298,26 @@ class RepoTerm(IOLModel):
     due_date: datetime
 
 
+class RepoQuoteSide(IOLModel):
+    rate: float  # nominal annual rate
+    amount: float
+
+
+class RepoQuote(IOLModel):
+    """One level of GET /broker/market-data/repos/quotes. Empty while the market is closed."""
+
+    position: int
+    bid: RepoQuoteSide
+    ask: RepoQuoteSide
+
+
+class RepoFee(IOLModel):
+    """One item of POST /broker/repos/estimate: previews costs, places nothing."""
+
+    amount: float
+    vat_amount: float
+
+
 # Orders
 
 class Money(IOLModel):

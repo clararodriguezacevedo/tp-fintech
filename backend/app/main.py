@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
-from app import account as acct, alerts, jobs, prices, reconcile, universe
+from app import account as acct, alerts, caucion, cedears, jobs, prices, reconcile, universe
 from app.analysis import market_hours, risk, rotation, scoring, simulation, suitability, track_record
 from app.assets import asset_types
 from app.profile import InvestorProfile, declare, get_profile
@@ -302,6 +302,12 @@ def ticker_quote(ticker: str) -> Quote:
     )
 
 
+@app.get("/cedears/dollar", response_model=cedears.DollarMove | None)
+def cedear_dollar() -> cedears.DollarMove | None:
+    """The dollar's part of every CEDEAR's move: today's, or the last close's if the market hasn't traded today."""
+    return cedears.dollar_move()
+
+
 @app.get("/tickers/{ticker}/bars", response_model=list[DailyBar])
 def ticker_bars(ticker: str, days: int = Query(90, ge=10, le=365)) -> list[DailyBar]:
     """Closed daily candles, oldest first (cached in Supabase)."""
@@ -492,11 +498,16 @@ def portfolio_plan() -> PortfolioPlan:
         buys.append(rotation.Candidate(r.ticker, r.score, price, sized.quantity * price))
     real_rate = trade_cost_rate()
     plan = rotation.build(value.cash_ars, value.total, held, buys, real_rate if real_rate is not None else 0.006)
+    idle = None
+    try:
+        idle = caucion.suggest(plan.cash_left)
+    except Exception:
+        log.warning("no caución suggestion")
     return PortfolioPlan(
         cash=plan.cash, cash_left=plan.cash_left,
         steps=[PlanStep(**s.__dict__) for s in plan.steps],
         unfunded=[UnfundedBuy(**u.__dict__) for u in plan.unfunded],
-        rotation_gap=rotation.ROTATION_GAP, min_trade=rotation.MIN_TRADE,
+        rotation_gap=rotation.ROTATION_GAP, min_trade=rotation.MIN_TRADE, caucion=idle,
     )
 
 

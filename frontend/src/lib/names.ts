@@ -18,6 +18,15 @@ const NAMES: Record<string, string> = {
 
 export const nameOf = (ticker: string, fallback?: string) => NAMES[ticker] ?? fallback ?? ticker;
 
+/** Every CEDEAR's ticker. Empty if the list can't be read. */
+export async function cedearTickers(): Promise<Set<string>> {
+  try {
+    return new Set((await api.assets()).filter((a) => a.category === "cedears").map((a) => a.ticker));
+  } catch {
+    return new Set();
+  }
+}
+
 /** ticker -> IOL's name for every asset, for nameOf's fallback. Empty if the list can't be read. */
 export async function assetNames(): Promise<Record<string, string>> {
   try {

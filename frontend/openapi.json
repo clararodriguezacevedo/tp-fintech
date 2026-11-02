@@ -857,6 +857,61 @@
         }
       }
     },
+    "/cedears/dollar": {
+      "get": {
+        "summary": "Cedear Dollar",
+        "description": "The dollar's part of every CEDEAR's move: today's, or the last close's if the market hasn't traded today.",
+        "operationId": "cedear_dollar",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DollarMove"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Cedear Dollar"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tickers/{ticker}/bars": {
       "get": {
         "summary": "Ticker Bars",
@@ -2269,6 +2324,64 @@
         ],
         "title": "CalibrationBucket"
       },
+      "CaucionSuggestion": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "term_days": {
+            "type": "integer",
+            "title": "Term Days"
+          },
+          "due_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Due Date"
+          },
+          "rate": {
+            "type": "number",
+            "title": "Rate"
+          },
+          "rate_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Rate At"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          },
+          "gain": {
+            "type": "number",
+            "title": "Gain"
+          },
+          "costs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "term_days",
+          "due_date",
+          "rate",
+          "rate_at",
+          "live",
+          "gain",
+          "costs"
+        ],
+        "title": "CaucionSuggestion",
+        "description": "Lending what the plan leaves idle (app.caucion)."
+      },
       "DailyBar": {
         "properties": {
           "day": {
@@ -2314,6 +2427,35 @@
         ],
         "title": "DailyBar",
         "description": "Our own daily candle, built from Bar rows."
+      },
+      "DollarMove": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "change": {
+            "type": "number",
+            "title": "Change"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          },
+          "pairs": {
+            "type": "integer",
+            "title": "Pairs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "change",
+          "live",
+          "pairs"
+        ],
+        "title": "DollarMove"
       },
       "Evidence": {
         "properties": {
@@ -3266,6 +3408,16 @@
           "min_trade": {
             "type": "number",
             "title": "Min Trade"
+          },
+          "caucion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaucionSuggestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

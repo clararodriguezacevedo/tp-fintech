@@ -27,6 +27,13 @@ export function roundToTotal(values: number[], digits = 0, total = values.reduce
   return out.map((v) => v / k);
 }
 
+/** A CEDEAR's move, as fractions, in its two parts, which add up to the move shown:
+ * (0.03, 0.02) -> "la acción +1,0%, el dólar +2,0%". */
+export function cedearSplit(total: number, dollar: number) {
+  const [stock, usd] = roundToTotal([(total - dollar) * 100, dollar * 100], 1, total * 100);
+  return `la acción ${pctPoints(stock)}, el dólar ${pctPoints(usd)}`;
+}
+
 /** Stop loss / take profit as a move from the entry price: (7378.57, 8030) -> "−8,1%". */
 export const fromEntry = (level: number | null | undefined, entry: number | null | undefined) => {
   if (level == null || !entry) return "-";

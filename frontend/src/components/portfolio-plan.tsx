@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import type { PortfolioPlan } from "@/lib/api/client";
-import { integer, money } from "@/lib/format";
+import { dateTime, dayShort, integer, money } from "@/lib/format";
 
 type Step = PortfolioPlan["steps"][number];
 
@@ -26,12 +26,29 @@ function Line({ marker, children, note }: { marker: "sell" | "buy" | "swap"; chi
   );
 }
 
+/** What's left after the plan, lent at the shortest term. Only a suggestion: it's done in IOL. */
+function Caucion({ c }: { c: NonNullable<PortfolioPlan["caucion"]> }) {
+  const rate = (c.rate * 100).toLocaleString("es-AR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  const costs = c.costs != null ? `Ya descontados ${money(c.costs)} de costos.` : "Antes de costos.";
+  const when = c.live ? "" : ` Tasa de ${dateTime(c.rate_at)}, con el mercado cerrado no hay una nueva.`;
+  return (
+    <Line marker="swap" note={`${costs} Vuelve el ${dayShort(`${c.due_date}T12:00:00`)}. Se hace en IOL.${when}`}>
+      Lo que queda ({money(c.amount)}) en caución a {c.term_days === 1 ? "1 día" : `${c.term_days} días`}, al {rate}% anual, gana {money(c.gain - (c.costs ?? 0))}.
+    </Line>
+  );
+}
+
 export function PlanView({ plan }: { plan: PortfolioPlan }) {
   const groups = new Map<number, Step[]>();
   for (const s of plan.steps) groups.set(s.group, [...(groups.get(s.group) ?? []), s]);
 
   if (plan.steps.length === 0 && plan.unfunded.length === 0) {
-    return <p className="text-text-2">Hoy no hace falta mover nada. Tenés {money(plan.cash)} disponibles.</p>;
+    return (
+      <div>
+        <p className="text-text-2">Hoy no hace falta mover nada. Tenés {money(plan.cash)} disponibles.</p>
+        {plan.caucion && <ul className="mt-3 border-y border-border"><Caucion c={plan.caucion} /></ul>}
+      </div>
+    );
   }
   return (
     <div>
@@ -65,6 +82,7 @@ export function PlanView({ plan }: { plan: PortfolioPlan }) {
             <Ticker t={u.ticker} /> es para comprar, pero faltan {money(u.amount)}.
           </Line>
         ))}
+        {plan.caucion && <Caucion c={plan.caucion} />}
       </ul>
       <p className="mt-3 text-sm text-text-2">
         Tenés {money(plan.cash)} disponibles; después de esto te quedan {money(plan.cash_left)}.

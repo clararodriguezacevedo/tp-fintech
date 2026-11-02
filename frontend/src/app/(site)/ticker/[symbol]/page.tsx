@@ -3,9 +3,9 @@ import { SellPanel } from "@/components/sell-panel";
 import { LineChart, type TradeMark } from "@/components/charts";
 import { ActionBadge, Reasons, RiskBadge, threeMonths, track } from "@/components/signals";
 import { attempt, Card, Delta, Notice, SectionTitle } from "@/components/ui";
-import { api, type TickerTrade } from "@/lib/api/client";
-import { fromEntry, integer, money, pct, pctPoints, price } from "@/lib/format";
-import { assetNames, nameOf } from "@/lib/names";
+import { api, type DailyBar, type DollarMove, type TickerTrade } from "@/lib/api/client";
+import { cedearSplit, dayShort, fromEntry, integer, money, pct, pctPoints, price } from "@/lib/format";
+import { assetNames, cedearTickers, nameOf } from "@/lib/names";
 
 export async function generateMetadata({ params }: { params: Promise<{ symbol: string }> }) {
   const { symbol } = await params;
@@ -29,9 +29,18 @@ function tradeMarksOf(trades: TickerTrade[], points: { t: string }[]): TradeMark
   return [...marks.values()];
 }
 
+/** A CEDEAR's move in its two parts: today's, or the last close's while the market hasn't traded. */
+function moveSplit(dollar: DollarMove, dayChange: number | null, closes: DailyBar[]) {
+  if (dollar.live) return dayChange ? `De ese ${pct(dayChange)}: ${cedearSplit(dayChange, dollar.change)}.` : null;
+  const i = closes.findIndex((b) => b.day === dollar.day);
+  if (i < 1) return null;
+  const total = closes[i].close / closes[i - 1].close - 1;
+  return `El ${dayShort(`${dollar.day}T12:00:00`)} hizo ${pct(total)}: ${cedearSplit(total, dollar.change)}.`;
+}
+
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const ticker = (await params).symbol.toUpperCase();
-  const [recs, bars, plan, health, holdings, calibration, quote, sellPlan, trades, names] = await Promise.all([
+  const [recs, bars, plan, health, holdings, calibration, quote, sellPlan, trades, names, dollar, cedears] = await Promise.all([
     attempt(() => api.recommendations({ ticker })),
     attempt(() => api.bars(ticker, 365)),
     attempt(() => api.tradePlan(ticker)),
@@ -42,6 +51,8 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
     attempt(() => api.sellPlan(ticker)),
     attempt(() => api.tickerTrades(ticker)),
     assetNames(),
+    attempt(api.cedearDollar),
+    cedearTickers(),
   ]);
 
   const rec = recs.ok ? recs.data[0] : undefined;
@@ -65,6 +76,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
   const weekday = ![0, 6].includes(new Date(`${todayArt}T12:00:00`).getDay());
   if (quote.ok && weekday && last && last.day < todayArt) points.push({ t: `${todayArt}T12:00:00`, v: quote.data.price });
   const tradeMarks = tradeMarksOf(myTrades, points);
+  const split = dollar.ok && dollar.data && cedears.has(ticker) ? moveSplit(dollar.data, dayChange, allCloses) : null;
 
   return (
     <div className="space-y-10">
@@ -80,6 +92,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
             {dayChange != null && <span className="text-text-2"><Delta value={dayChange}>{pct(dayChange)} hoy</Delta></span>}
             {threeMonths(rec?.signal_breakdown) && <span className="text-sm text-text-3">{threeMonths(rec?.signal_breakdown)}</span>}
           </p>
+          {split && <p className="num mt-1 text-sm text-text-2">{split}</p>}
         </div>
         {rec && (
           <div className="text-right">

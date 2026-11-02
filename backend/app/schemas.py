@@ -103,6 +103,19 @@ class UnfundedBuy(BaseModel):
     amount: float  # pesos the plan couldn't pay for
 
 
+class CaucionSuggestion(BaseModel):
+    """Lending what the plan leaves idle (app.caucion)."""
+
+    amount: float  # the plan's cash_left
+    term_days: int
+    due_date: date
+    rate: float  # nominal annual, as a fraction
+    rate_at: datetime
+    live: bool  # False: the last rate seen, the market is closed
+    gain: float  # interest over the term, before costs
+    costs: float | None  # None if IOL couldn't estimate them
+
+
 class PortfolioPlan(BaseModel):
     """Today's plan for the whole portfolio, within the money there is (app.analysis.rotation)."""
 
@@ -112,6 +125,7 @@ class PortfolioPlan(BaseModel):
     unfunded: list[UnfundedBuy]
     rotation_gap: float
     min_trade: float  # share of the portfolio below which a trade is left out
+    caucion: CaucionSuggestion | None = None
 
 
 class TickerTrade(BaseModel):

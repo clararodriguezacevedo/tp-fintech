@@ -151,6 +151,14 @@ const Quote = z
     live: z.boolean(),
   })
   .passthrough();
+const DollarMove = z
+  .object({
+    day: z.string(),
+    change: z.number(),
+    live: z.boolean(),
+    pairs: z.number().int(),
+  })
+  .passthrough();
 const DailyBar = z
   .object({
     day: z.string(),
@@ -391,6 +399,18 @@ const PlanStep = z
 const UnfundedBuy = z
   .object({ ticker: z.string(), score: z.number(), amount: z.number() })
   .passthrough();
+const CaucionSuggestion = z
+  .object({
+    amount: z.number(),
+    term_days: z.number().int(),
+    due_date: z.string(),
+    rate: z.number(),
+    rate_at: z.string().datetime({ offset: true }),
+    live: z.boolean(),
+    gain: z.number(),
+    costs: z.union([z.number(), z.null()]),
+  })
+  .passthrough();
 const PortfolioPlan = z
   .object({
     cash: z.number(),
@@ -399,6 +419,7 @@ const PortfolioPlan = z
     unfunded: z.array(UnfundedBuy),
     rotation_gap: z.number(),
     min_trade: z.number(),
+    caucion: z.union([CaucionSuggestion, z.null()]).optional(),
   })
   .passthrough();
 const HitStats = z
@@ -519,6 +540,7 @@ export const schemas = {
   AccountCheck,
   Transfer,
   Quote,
+  DollarMove,
   DailyBar,
   portfolio_value,
   TradePlan,
@@ -538,6 +560,7 @@ export const schemas = {
   RecommendationRow,
   PlanStep,
   UnfundedBuy,
+  CaucionSuggestion,
   PortfolioPlan,
   HitStats,
   TrackRecordSummary,

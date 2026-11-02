@@ -36,6 +36,7 @@ export type Quote = z.infer<typeof schemas.Quote>;
 export type TickerTrade = z.infer<typeof schemas.TickerTrade>;
 export type Asset = z.infer<typeof schemas.AssetOut>;
 export type AccountCheck = z.infer<typeof schemas.AccountCheck>;
+export type DollarMove = z.infer<typeof schemas.DollarMove>;
 export type InvestorProfile = z.infer<typeof schemas.InvestorProfile>;
 export type ProfileName = InvestorProfile["profile"];
 export type PortfolioPlan = z.infer<typeof schemas.PortfolioPlan>;
@@ -99,6 +100,7 @@ export const api = {
   setProfile: (profile: ProfileName) =>
     request(schemas.InvestorProfile, "/profile", { method: "PUT", body: JSON.stringify({ profile }) }),
   accountCheck: () => request(schemas.AccountCheck.nullable(), "/account/check"),
+  cedearDollar: () => request(schemas.DollarMove.nullable(), "/cedears/dollar"),
   transfers: (days = 90) => request(z.array(schemas.Transfer), "/account/transfers", { query: { days } }),
   // The list changes once a day, and many pages use it for names: kept for an hour.
   assets: () => request(z.array(schemas.AssetOut), "/assets", { cache: "force-cache", next: { revalidate: 3600 } }),

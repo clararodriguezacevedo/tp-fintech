@@ -22,10 +22,11 @@ mercado argentino (acciones, CEDEARs, bonos).
   siguiente. Tasa de acierto por tipo de señal.
 - **SL/TP según volatilidad**: distancia en base al ATR de cada ticker, y tamaño de la
   posición para que un stop-out pierda un % fijo del portfolio.
-- **Dólar MEP / CCL**: calculado con bonos (AL30 vs AL30D / AL30C). Para cada CEDEAR se separa
-  cuánto del movimiento es la acción y cuánto es el dólar, en una frase simple.
-- **Caución para la plata parada**: si nada puntúa lo suficiente para comprar, sugerir
-  caución a la tasa actual.
+- **CEDEAR, acción o dólar**: para cada CEDEAR se separa cuánto del movimiento es la acción y
+  cuánto es el dólar, en una frase simple. El dólar es el mismo para todos ese día: la mediana de
+  lo que se movieron en pesos menos lo que se movió su acción afuera, en una canasta de nueve.
+- **Caución para la plata parada**: lo que queda después del plan del día, si llega al mínimo de
+  IOL, se sugiere en caución al plazo más corto, con la tasa y los costos reales. No la ejecuta.
 - **Cobertura con opciones**: para un ticker en cartera con señal fuerte de venta, sugerir un
   put protectivo de la cadena de opciones.
 - **Alertas de apuestas grandes**: trades grandes recientes en Polymarket sobre mercados que

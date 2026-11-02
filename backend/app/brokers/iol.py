@@ -21,7 +21,7 @@ from pydantic import BaseModel, TypeAdapter
 from app.config import get_settings
 from app.models.iol import (
     AccountHistory, ApiError, Balances, Bars, DailyBar, Movement, OptionRow, OrderEstimate, OrderResult,
-    Positions, Quote, RepoTerm, ScreenerRow, Token, Trade,
+    Positions, Quote, RepoFee, RepoQuote, RepoTerm, ScreenerRow, Token, Trade,
 )
 
 BASE_URL = "https://api.iolinversiones.com"
@@ -241,6 +241,14 @@ class IOLClient:
 
     def repo_terms(self, currency: str = "ARS") -> list[RepoTerm]:
         return self._get("/broker/market-data/repos/terms", list[RepoTerm], currency=currency)
+
+    def repo_quotes(self, term_id: int, currency: str = "ARS") -> list[RepoQuote]:
+        return self._get("/broker/market-data/repos/quotes", list[RepoQuote], term_id=term_id, currency=currency)
+
+    def estimate_repo(self, amount: float, term_id: int, currency: str = "ARS") -> list[RepoFee]:
+        """Costs of lending at the market rate, without placing it."""
+        body = {"amount": amount, "currency": currency, "price_type": "market", "term_id": term_id}
+        return TypeAdapter(list[RepoFee]).validate_python(self._request("POST", "/broker/repos/estimate", json=body))
 
     # Orders
 
