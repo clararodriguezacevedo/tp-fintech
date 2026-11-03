@@ -1,6 +1,7 @@
 // How a recommendation is shown: what to do, how sure we are, and why, in plain words.
 import Link from "next/link";
 
+import { Info } from "@/components/ui";
 import type { CalibrationBucket, Evidence, Impact, Recommendation } from "@/lib/api/client";
 import { dayShort, integer } from "@/lib/format";
 
@@ -57,7 +58,7 @@ export function RiskBadge({ level, volatility, outOfProfile }: { level: number; 
   return (
     <span
       title={volatility != null ? `Se mueve alrededor de ${Math.round(volatility * 100)}% al año` : "Sin historial de precios suficiente"}
-      className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-text-2"
+      className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-sm text-text-2"
       style={outOfProfile ? { borderColor: "var(--sell)", color: "var(--sell)" } : undefined}
     >
       Riesgo {RISK_NAME[level]}{outOfProfile ? ", fuera de tu perfil" : ""}
@@ -179,8 +180,7 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
         <li key={m.text} className="flex gap-3">
           <Marker up={m.up} />
           <div className="min-w-0">
-            <p className="text-text">{m.text}</p>
-            <p className="text-sm text-text-3">{m.note}</p>
+            <p className="text-text">{m.text}<Info>{m.note}</Info></p>
           </div>
         </li>
       ))}
@@ -192,13 +192,16 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
           <li key={`${e.item_id}-${e.broad}`} className="flex gap-3">
             <Marker up={up} faded={e.priced_in >= 0.95} />
             <div className="min-w-0">
-              <p className="text-text">{evidenceText(e)}</p>
-              {priced && (
-                <p className="text-sm text-text-2">
-                  {e.priced_in >= 0.95 ? "Ya está reflejado en el precio" : "En parte ya está reflejado en el precio"}:{" "}
-                  {(e.move_since ?? 0) >= 0 ? "subió" : "bajó"} {pctText(e.move_since ?? 0)} desde {e.kind === "news" ? "la noticia" : "ayer"}.
-                </p>
-              )}
+              <p className="text-text">
+                {evidenceText(e)}
+                {(priced || e.via) && (
+                  <Info>
+                    {priced && `${e.priced_in >= 0.95 ? "Ya está reflejado en el precio" : "En parte ya está reflejado en el precio"}: ${(e.move_since ?? 0) >= 0 ? "subió" : "bajó"} ${pctText(e.move_since ?? 0)} desde ${e.kind === "news" ? "la noticia" : "ayer"}.`}
+                    {priced && e.via && " "}
+                    {e.via && `Sobre ${e.via}, del mismo sector.`}
+                  </Info>
+                )}
+              </p>
               {e.url ? (
                 <a href={e.url} target="_blank" rel="noreferrer" className="text-sm text-text-3 hover:text-text-2 hover:underline">
                   {e.title}
@@ -208,7 +211,6 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
               )}
               {e.kind === "market" && e.detail && <span className="num text-sm text-text-3"> ({e.detail})</span>}
               {e.sources > 1 && <span className="text-sm text-text-3"> (lo publicaron {e.sources} medios)</span>}
-              {e.via && <p className="text-sm text-text-3">Sobre {e.via}, del mismo sector.</p>}
             </div>
           </li>
         );
@@ -220,10 +222,9 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
 function EventItem({ text, note }: { text: string; note: string }) {
   return (
     <div className="flex gap-3">
-      <span aria-hidden className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface text-xs text-text-3">i</span>
+      <span aria-hidden className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface text-xs text-text-3">!</span>
       <div className="min-w-0">
-        <p className="text-text">{text}</p>
-        <p className="text-sm text-text-3">{note}</p>
+        <p className="text-text">{text}<Info>{note}</Info></p>
       </div>
     </div>
   );

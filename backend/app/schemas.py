@@ -140,6 +140,28 @@ class TickerTrade(BaseModel):
     split_adjusted: bool = False  # price and quantity restated for a later split, like the chart
 
 
+class Operation(BaseModel):
+    """A real buy or sell in IOL, done or still waiting to execute."""
+
+    id: str
+    at: datetime
+    side: Literal["buy", "sell"]
+    ticker: str  # the asset: VIST also for VISTD, its dollar species
+    status: Literal["completed", "pending"]
+    quantity: float  # 0 for a pending order placed by amount
+    price: float  # per unit, in `currency` (bonds: per 100 nominal)
+    currency: Literal["ARS", "USD"]
+    amount: float  # in `currency`
+    result: float | None = None  # sells, in pesos: what it brought minus its average cost
+    cost: float | None = None  # sells with a result, in pesos: that average cost
+    rate: float | None = None  # that day's MEP rate, to show it in the other currency
+
+
+class OperationsOut(BaseModel):
+    operations: list[Operation]  # newest first
+    realized: float  # sum of the results
+
+
 class AssetOut(BaseModel):
     ticker: str
     name: str
@@ -188,7 +210,8 @@ class PortfolioOut(BaseModel):
 
     captured_at: datetime  # when these prices were read from IOL
     holdings: list[HoldingOut]
-    cash_ars: float  # pesos in the account, ready to invest
+    cash_ars: float  # pesos in the account, what pending buy orders hold back included
+    reserved_ars: float = 0.0  # that part: it counts in the total, but can't be spent
     cash_usd: float
     mep: float | None  # pesos per dollar used for cash_usd_ars
     cash_usd_ars: float  # cash_usd in pesos at the MEP rate

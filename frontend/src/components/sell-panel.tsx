@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 
 import { sellAction, type BuyState } from "@/app/(site)/actions";
+import { BUTTON, BUTTON_ALT } from "@/components/ui";
 import type { SellPlan } from "@/lib/api/client";
 import { integer, money, price } from "@/lib/format";
 
@@ -44,7 +45,6 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
 
       <p className="text-lg font-semibold">Vender {plan.ticker}</p>
       <p className="text-sm text-text-3">
-        {recommended ? "La recomendación de hoy es vender. " : ""}
         {mode === "paper" ? "Simulación." : "Orden real en IOL."}
       </p>
 
@@ -74,7 +74,7 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
           {problem && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{problem}</p>}
           <button
             type="button" disabled={!!problem} onClick={() => setReview(true)}
-            className="mt-5 w-full rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`mt-5 w-full ${BUTTON}`}
           >
             Continuar
           </button>
@@ -94,8 +94,8 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
           )}
           {state.status === "error" && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <button type="button" onClick={() => setReview(false)} className="rounded-lg border border-border px-4 py-2.5 hover:border-text">Volver</button>
-            <button type="submit" disabled={pending} className="rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:opacity-50">
+            <button type="button" onClick={() => setReview(false)} className={BUTTON_ALT}>Volver</button>
+            <button type="submit" disabled={pending} className={BUTTON}>
               {pending ? "Vendiendo..." : "Confirmar"}
             </button>
           </div>

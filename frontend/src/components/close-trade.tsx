@@ -5,6 +5,7 @@
 import { useActionState, useState } from "react";
 
 import { closeTradeAction, type BuyState } from "@/app/(site)/actions";
+import { BUTTON_SMALL, BUTTON_SMALL_ALT } from "@/components/ui";
 import { money, price } from "@/lib/format";
 
 export function CloseTrade({ tradeId, queued, quantity, ticker, now, result }: {
@@ -16,7 +17,7 @@ export function CloseTrade({ tradeId, queued, quantity, ticker, now, result }: {
   if (state.status === "ok") return <span className="text-sm text-text-2">{queued ? "Cancelada" : "Vendida"}</span>;
   if (!confirming) {
     return (
-      <button type="button" onClick={() => setConfirming(true)} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:border-text">
+      <button type="button" onClick={() => setConfirming(true)} className={BUTTON_SMALL_ALT}>
         {queued ? "Cancelar" : "Vender"}
       </button>
     );
@@ -31,8 +32,8 @@ export function CloseTrade({ tradeId, queued, quantity, ticker, now, result }: {
       </p>
       {state.status === "error" && <p role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}
       <div className="flex gap-2">
-        <button type="button" onClick={() => setConfirming(false)} className="rounded-lg border border-border px-3 py-1.5 hover:border-text">No</button>
-        <button type="submit" disabled={pending} className="rounded-lg bg-text px-3 py-1.5 font-medium text-bg hover:opacity-85 disabled:opacity-50">
+        <button type="button" onClick={() => setConfirming(false)} className={BUTTON_SMALL_ALT}>No</button>
+        <button type="submit" disabled={pending} className={BUTTON_SMALL}>
           {pending ? "..." : queued ? "Sí, cancelar" : "Sí, vender"}
         </button>
       </div>

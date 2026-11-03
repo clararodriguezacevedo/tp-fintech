@@ -73,17 +73,26 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
     <div className="space-y-10">
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-semibold tracking-tight">{ticker}</h1>
-          <p className="mt-1 text-lg text-text-2">{name}</p>
+          <h1 className="text-3xl font-semibold tracking-tight">{ticker}</h1>
+          <p className="mt-1 text-text-2">{name}</p>
           {plan.ok && plan.data.risk_level != null && (
             <p className="mt-2"><RiskBadge level={plan.data.risk_level} volatility={plan.data.volatility} outOfProfile={plan.data.out_of_profile} /></p>
           )}
           <p className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <span className="num text-2xl font-semibold">{money(priceNow)}</span>
-            {dayChange != null && <span className="text-text-2"><Delta value={dayChange}>{pct(dayChange)} hoy</Delta></span>}
+            <span className="num text-xl font-semibold">{money(priceNow)}</span>
+            {dayChange != null && (
+              <span className="text-text-2">
+                {cedears.has(ticker) ? (
+                  <TickerSplit dollar={dollar} dayChange={dayChange} closes={allCloses}>
+                    <Delta value={dayChange}>{pct(dayChange)} hoy</Delta>
+                  </TickerSplit>
+                ) : (
+                  <Delta value={dayChange}>{pct(dayChange)} hoy</Delta>
+                )}
+              </span>
+            )}
             {threeMonths(rec?.signal_breakdown) && <span className="text-sm text-text-3">{threeMonths(rec?.signal_breakdown)}</span>}
           </p>
-          {cedears.has(ticker) && <TickerSplit dollar={dollar} dayChange={dayChange} closes={allCloses} />}
         </div>
         {rec && (
           <div className="text-right">
@@ -102,7 +111,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
         <aside className="space-y-4">
           {position && (
             <Card>
-              <p className="mb-3 font-semibold">Tu posición</p>
+              <p className="mb-3 text-lg font-semibold">Tu posición</p>
               <dl className="space-y-1">
                 <div className="flex justify-between gap-4"><dt className="text-text-2">Cantidad</dt><dd className="num">{integer(position.quantity)}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-text-2">Valor</dt><dd className="num font-semibold">{money(position.value)}</dd></div>

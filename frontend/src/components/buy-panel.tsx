@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 
 import { buyAction, type BuyState } from "@/app/(site)/actions";
+import { BUTTON, BUTTON_ALT, Info } from "@/components/ui";
 import type { TradePlan } from "@/lib/api/client";
 import { fromEntry, money, pct } from "@/lib/format";
 
@@ -34,13 +35,12 @@ function sizeReason(plan: TradePlan, ticker: string) {
 const input = "num w-32 rounded-lg border border-border bg-bg px-3 py-2 text-right focus:border-text";
 
 function Field({ id, label, hint, value, onChange, step }: {
-  id: string; label: string; hint?: string; value: number; onChange: (v: number) => void; step: string;
+  id: string; label: string; hint?: React.ReactNode; value: number; onChange: (v: number) => void; step: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <label htmlFor={id}>
-        <span className="block">{label}</span>
-        {hint && <span className="block text-sm text-text-3">{hint}</span>}
+        {label}{hint && <Info>{hint}</Info>}
       </label>
       <input id={id} type="number" step={step} min={0} value={value} onChange={(e) => onChange(+e.target.value)} className={input} />
     </div>
@@ -113,13 +113,15 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
       {!review ? (
         <>
           <div className="mt-5 space-y-4">
-            <Field id="qty" label="Cantidad" step="1" value={quantity} onChange={(v) => setQuantity(Math.max(0, Math.floor(v)))} />
-            {quantity === plan.quantity && sizeReason(plan, ticker) && (
-              <p className="-mt-2 text-sm text-text-3">
-                {sizeReason(plan, ticker)}
-                {plan.portfolio_share != null && plan.portfolio_share > 0 && ` Es el ${pct(plan.portfolio_share).replace("+", "")} de tu cartera.`}
-              </p>
-            )}
+            <Field
+              id="qty" label="Cantidad" step="1" value={quantity} onChange={(v) => setQuantity(Math.max(0, Math.floor(v)))}
+              hint={quantity === plan.quantity && sizeReason(plan, ticker) ? (
+                <>
+                  {sizeReason(plan, ticker)}
+                  {plan.portfolio_share != null && plan.portfolio_share > 0 && ` Es el ${pct(plan.portfolio_share).replace("+", "")} de tu cartera.`}
+                </>
+              ) : undefined}
+            />
             <Field id="sl" label="Stop loss (%)" hint="Vende sola si baja este porcentaje" step="0.1" value={slPct} onChange={setSlPct} />
             <Field id="tp" label="Take profit (%)" hint="Vende sola si sube este porcentaje" step="0.1" value={tpPct} onChange={setTpPct} />
           </div>
@@ -136,7 +138,7 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
             type="button"
             disabled={!!problem}
             onClick={() => setReview(true)}
-            className="mt-5 w-full rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`mt-5 w-full ${BUTTON}`}
           >
             Continuar
           </button>
@@ -157,8 +159,8 @@ export function BuyPanel({ ticker, plan, mode, recommendationId }: {
           )}
           {state.status === "error" && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <button type="button" onClick={() => setReview(false)} className="rounded-lg border border-border px-4 py-2.5 hover:border-text">Volver</button>
-            <button type="submit" disabled={pending} className="rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:opacity-50">
+            <button type="button" onClick={() => setReview(false)} className={BUTTON_ALT}>Volver</button>
+            <button type="submit" disabled={pending} className={BUTTON}>
               {pending ? "Comprando..." : "Confirmar"}
             </button>
           </div>

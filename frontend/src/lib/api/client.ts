@@ -35,7 +35,7 @@ export type Transfer = z.infer<typeof schemas.Transfer>;
 export type Quote = z.infer<typeof schemas.Quote>;
 export type TickerTrade = z.infer<typeof schemas.TickerTrade>;
 export type Asset = z.infer<typeof schemas.AssetOut>;
-export type AccountCheck = z.infer<typeof schemas.AccountCheck>;
+export type Operation = z.infer<typeof schemas.Operation>;
 export type InvestorProfile = z.infer<typeof schemas.InvestorProfile>;
 export type ProfileName = InvestorProfile["profile"];
 export type PortfolioPlan = z.infer<typeof schemas.PortfolioPlan>;
@@ -98,7 +98,6 @@ export const api = {
   profile: () => request(schemas.InvestorProfile, "/profile"),
   setProfile: (profile: ProfileName) =>
     request(schemas.InvestorProfile, "/profile", { method: "PUT", body: JSON.stringify({ profile }) }),
-  accountCheck: () => request(schemas.AccountCheck.nullable(), "/account/check"),
   cedearDollar: () => request(schemas.DollarMove.nullable(), "/cedears/dollar"),
   transfers: (days = 90) => request(z.array(schemas.Transfer), "/account/transfers", { query: { days } }),
   // The list changes once a day, and many pages use it for names: kept for an hour.
@@ -112,6 +111,7 @@ export const api = {
   trades: (status?: Trade["status"]) => request(z.array(schemas.TradeRow), "/trades", { query: { status } }),
   buy: (req: BuyRequest) =>
     request(schemas.TradeRow, "/trades", { method: "POST", body: JSON.stringify(schemas.BuyRequest.parse(req)) }),
+  operations: () => request(schemas.OperationsOut, "/operations"),
   sellPlan: (ticker: string) => request(schemas.SellPlan, `/tickers/${ticker}/sell-plan`),
   sell: (req: SellRequest) =>
     request(schemas.TradeRow, "/trades/sell", { method: "POST", body: JSON.stringify(schemas.SellRequest.parse(req)) }),

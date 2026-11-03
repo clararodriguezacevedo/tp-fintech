@@ -1451,6 +1451,53 @@
         }
       }
     },
+    "/operations": {
+      "get": {
+        "summary": "Real Operations",
+        "description": "The user's real buys and sells in IOL, newest first, with each sell's result.",
+        "operationId": "real_operations",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tickers/{ticker}/sell-plan": {
       "get": {
         "summary": "Sell Plan",
@@ -3259,6 +3306,127 @@
         ],
         "title": "NewsOut"
       },
+      "Operation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "pending"
+            ],
+            "title": "Status"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "ARS",
+              "USD"
+            ],
+            "title": "Currency"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "side",
+          "ticker",
+          "status",
+          "quantity",
+          "price",
+          "currency",
+          "amount"
+        ],
+        "title": "Operation",
+        "description": "A real buy or sell in IOL, done or still waiting to execute."
+      },
+      "OperationsOut": {
+        "properties": {
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/Operation"
+            },
+            "type": "array",
+            "title": "Operations"
+          },
+          "realized": {
+            "type": "number",
+            "title": "Realized"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operations",
+          "realized"
+        ],
+        "title": "OperationsOut"
+      },
       "PlanStep": {
         "properties": {
           "action": {
@@ -3339,6 +3507,11 @@
           "cash_ars": {
             "type": "number",
             "title": "Cash Ars"
+          },
+          "reserved_ars": {
+            "type": "number",
+            "title": "Reserved Ars",
+            "default": 0.0
           },
           "cash_usd": {
             "type": "number",

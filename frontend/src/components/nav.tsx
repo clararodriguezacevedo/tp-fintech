@@ -8,7 +8,6 @@ const LINKS = [
   { href: "/cartera", label: "Mi cartera" },
   { href: "/operaciones", label: "Operaciones" },
   { href: "/historial", label: "Resultados" },
-  { href: "/noticias", label: "Noticias" },
   { href: "/como-decide", label: "Cómo decide" },
   { href: "/perfil", label: "Perfil" },
 ];
@@ -25,7 +24,7 @@ export function NavLinks() {
               <Link
                 href={l.href}
                 aria-current={active ? "page" : undefined}
-                className={`inline-block rounded-md px-3 py-1.5 transition-colors ${
+                className={`inline-block rounded-lg px-3 py-1.5 transition-colors ${
                   active ? "bg-surface font-medium text-text" : "text-text-2 hover:text-text"
                 }`}
               >

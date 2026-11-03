@@ -194,6 +194,55 @@ def test_unsettled_buys_are_not_counted_twice(monkeypatch):
     assert account.value_of(snap).total == pytest.approx(6035895.63, abs=0.05)  # IOL's close of 31/10
 
 
+def test_a_pending_order_stays_in_the_total_but_cant_be_spent(monkeypatch):
+    """Real balances of 2026-11-02: an order for 280.000 pending, 169,40 of fees on top."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from app import account, portfolio
+    from app.models.iol import Balances, Executed, Trade
+
+    balances = Balances.model_validate({
+        "ars": {
+            "currency": "ARS", "totals": {"t0": 11047.57, "t1": 449567.85},
+            "available": {"t0": 11047.57, "t1": 169398.45}, "committed": {"t0": 0, "t1": 280169.4},
+        },
+        "usd": {"currency": "USD", "totals": {"t0": 0}, "available": {"t0": 0}, "committed": {"t0": 0}},
+    })
+    when = datetime(2026, 11, 2, 19, 40)
+    pending = Trade(
+        order_id=1, order_date=when, type="Compra", status="pending", symbol="ALUA", currency="ARS",
+        order=Executed(qty=0, price=814, amount=280000),
+    )
+    done = Trade(
+        order_id=2, order_date=when, type="Compra", status="completed", symbol="GGAL", currency="ARS",
+        order=Executed(qty=1, price=1, amount=999),
+    )
+    fake = SimpleNamespace(balances=lambda: balances, operations=lambda start, end: [pending, done])
+    monkeypatch.setattr(portfolio, "get_iol", lambda: fake)
+
+    cash, _ = portfolio._fetch_cash()
+    assert cash == pytest.approx(11047.57 + 169398.45 + 280000)
+    snap = portfolio.Snapshot(captured_at=datetime.now(timezone.utc), holdings=[], cash_ars=cash, cash_usd=0)
+    value = account.value_of(snap)
+    assert value.total == pytest.approx(cash)
+    assert value.reserved_ars == 280000
+
+
+def test_the_check_against_iol_waits_for_todays_close(monkeypatch):
+    from datetime import datetime
+
+    from app import reconcile
+    from app.analysis import market_hours
+
+    morning = datetime(2026, 11, 3, 7, 10, tzinfo=market_hours.ART)
+    monkeypatch.setattr(market_hours, "now_art", lambda: morning)
+    # Before the close it asks IOL for nothing: this would fail if it did.
+    monkeypatch.setattr(reconcile, "get_iol", lambda: 1 / 0)
+    monkeypatch.setattr(reconcile, "latest", lambda: 1 / 0)
+    assert reconcile.run() is None
+
+
 # Trades on the price chart
 
 def _op(symbol, kind="Compra", status="completed", currency="ARS", qty=10.0, price=100.0):

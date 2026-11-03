@@ -111,6 +111,7 @@ const PortfolioOut = z
     captured_at: z.string().datetime({ offset: true }),
     holdings: z.array(HoldingOut),
     cash_ars: z.number(),
+    reserved_ars: z.number().optional().default(0),
     cash_usd: z.number(),
     mep: z.union([z.number(), z.null()]),
     cash_usd_ars: z.number(),
@@ -285,6 +286,25 @@ const TickerTrade = z
     simulated: z.boolean().optional().default(false),
     split_adjusted: z.boolean().optional().default(false),
   })
+  .passthrough();
+const Operation = z
+  .object({
+    id: z.string(),
+    at: z.string().datetime({ offset: true }),
+    side: z.enum(["buy", "sell"]),
+    ticker: z.string(),
+    status: z.enum(["completed", "pending"]),
+    quantity: z.number(),
+    price: z.number(),
+    currency: z.enum(["ARS", "USD"]),
+    amount: z.number(),
+    result: z.union([z.number(), z.null()]).optional(),
+    cost: z.union([z.number(), z.null()]).optional(),
+    rate: z.union([z.number(), z.null()]).optional(),
+  })
+  .passthrough();
+const OperationsOut = z
+  .object({ operations: z.array(Operation), realized: z.number() })
   .passthrough();
 const SellPlan = z
   .object({
@@ -551,6 +571,8 @@ export const schemas = {
   status,
   AssetOut,
   TickerTrade,
+  Operation,
+  OperationsOut,
   SellPlan,
   SellRequest,
   action,

@@ -82,12 +82,11 @@ para alguien sin experiencia: primero qué hacer, después por qué y al final e
 
 | Página | Qué muestra |
 | --- | --- |
-| `/` Hoy | qué comprar (con la razón principal) y qué hacer con cada posición de la cartera |
-| `/cartera` | valor, qué vender, posiciones con su peso en la cartera y valor en el tiempo |
+| `/` Hoy | qué comprar (con la razón principal), el plan del día, las últimas noticias y lo que esperan los mercados de predicción |
+| `/cartera` | valor, qué vender, posiciones con su PPC y el detalle de sus operaciones, y valor en el tiempo |
 | `/ticker/[símbolo]` | recomendación, por qué, compra en un click con stop loss y take profit, y precio de 3 meses |
-| `/operaciones` | mis compras (simuladas): estado, resultado, cancelar o vender |
+| `/operaciones` | las operaciones reales de IOL con su resultado, y las simuladas desde el sitio |
 | `/historial` | cuántas recomendaciones acertaron y el detalle día por día |
-| `/noticias` | últimas noticias y lo que esperan los mercados de predicción |
 
 Arriba de todo hay una cinta con las recomendaciones del día.
 
@@ -252,7 +251,7 @@ y las letras no se incluyen.
 ### Control contra IOL
 
 `backend/app/reconcile.py` compara cada día hábil el valor del sitio al cierre con el que publica
-IOL. Si difieren más de 0,3%, manda un mail y muestra un aviso en Mi cartera.
+IOL. Si difieren más de 0,3%, manda un mail.
 
 ### Plan del día y rotación
 

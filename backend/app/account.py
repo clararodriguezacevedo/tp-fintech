@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from app.analysis import market_hours
 from app.brokers.iol import get_iol
-from app.portfolio import Snapshot, current_holdings, latest_snapshot
+from app.portfolio import Snapshot, current_holdings, latest_snapshot, pending_buys
 from app.schemas import Transfer
 
 log = logging.getLogger(__name__)
@@ -30,7 +30,8 @@ _mep: tuple[float, float] | None = None  # (rate, fetched at)
 class AccountValue(BaseModel):
     captured_at: datetime
     positions: float  # positions valued in pesos
-    cash_ars: float
+    cash_ars: float  # includes what pending buy orders hold back
+    reserved_ars: float  # that part: it counts in the total, but can't be spent
     cash_usd: float
     mep: float | None  # pesos per dollar, from IOL's latest daily history
     cash_usd_ars: float  # cash_usd at the MEP rate (0 if the rate is unknown)
@@ -56,7 +57,7 @@ def mep_rate() -> float | None:
 
 def _balances() -> tuple[float, float]:
     b = get_iol().balances()
-    return b.ars.available.total, b.usd.available.total
+    return b.ars.available.total + min(pending_buys(), b.ars.committed.total), b.usd.available.total
 
 
 def value_of(snap: Snapshot) -> AccountValue:
@@ -72,7 +73,8 @@ def value_of(snap: Snapshot) -> AccountValue:
     mep = mep_rate() if cash_usd else None
     usd_ars = cash_usd * mep if mep else 0.0
     return AccountValue(
-        captured_at=snap.captured_at, positions=positions, cash_ars=cash_ars, cash_usd=cash_usd,
+        captured_at=snap.captured_at, positions=positions, cash_ars=cash_ars,
+        reserved_ars=min(pending_buys(), cash_ars), cash_usd=cash_usd,
         mep=mep if mep is not None else mep_rate(), cash_usd_ars=usd_ars,
         total=positions + cash_ars + usd_ars,
     )

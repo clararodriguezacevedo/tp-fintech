@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 
+import { BUTTON } from "@/components/ui";
+
 import { login, type LoginState } from "./actions";
 
 export function LoginForm({ next }: { next: string }) {
@@ -25,7 +27,7 @@ export function LoginForm({ next }: { next: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:opacity-50"
+        className={`w-full ${BUTTON}`}
       >
         {pending ? "Entrando..." : "Entrar"}
       </button>

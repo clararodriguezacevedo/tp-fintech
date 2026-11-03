@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { ActionBadge } from "@/components/signals";
-import { ApiFailure, attempt, Card, PageTitle, SectionTitle } from "@/components/ui";
+import { ApiFailure, attempt, Card, Info, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type ModelInfo, type Recommendation } from "@/lib/api/client";
 import { roundToTotal, score } from "@/lib/format";
 import { assetNames, nameOf } from "@/lib/names";
@@ -12,12 +12,13 @@ export const metadata = { title: "Cómo decide | El Parqué" };
 const pctOf = (x: number) => `${Math.round(x * 100)}%`;
 const num = (x: number) => x.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
-function Block({ title, children }: { title: string; children: ReactNode }) {
+/** A topic: its title, and the explanation in the "i" next to it. */
+function Block({ title, children, up = false }: { title: string; children: ReactNode; up?: boolean }) {
   return (
-    <section>
-      <SectionTitle>{title}</SectionTitle>
-      <div className="max-w-3xl space-y-3 leading-relaxed text-text">{children}</div>
-    </section>
+    <li className="py-3 font-semibold">
+      {title}
+      <Info place={up ? "left-0 bottom-full mb-1" : undefined}><span className="block space-y-2 [&_li]:block [&_p]:block [&_ul]:block">{children}</span></Info>
+    </li>
   );
 }
 
@@ -40,7 +41,7 @@ function Example({ r, m, name }: { r: Recommendation; m: ModelInfo; name: string
     <Card>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href={`/ticker/${r.ticker}`} className="text-xl font-semibold hover:underline">{r.ticker}</Link>
+          <Link href={`/ticker/${r.ticker}`} className="text-lg font-semibold hover:underline">{r.ticker}</Link>
           <p className="text-sm text-text-2">{name}{r.held ? ", la tenés en cartera" : ""}</p>
         </div>
         <ActionBadge action={r.action} />
@@ -81,13 +82,14 @@ function Example({ r, m, name }: { r: Recommendation; m: ModelInfo; name: string
           </tfoot>
         </table>
       </div>
-      <p className="mt-4 text-text-2">
+      <p className="mt-4 text-sm font-semibold">
+        Por eso dice {r.action === "buy" ? "comprar" : r.action === "sell" ? "vender" : "mantener"}
+        <Info>
         {r.held
           ? `Como la tenés, solo puede salir vender o mantener. Vender pide un puntaje de ${score(threshold)} o menos, y este dio ${score(r.score)}: ${r.action === "sell" ? "por eso dice vender" : "por eso dice mantener"}.`
           : `Como no la tenés, solo puede salir comprar o mantener. Comprar pide ${score(threshold)} o más, y este dio ${score(r.score)}: ${r.action === "buy" ? "por eso dice comprar" : "por eso dice mantener"}.`}
-      </p>
-      <p className="mt-2 text-sm text-text-3">
-        Las noticias y los mercados se suman primero y después se achican con una curva (tanh) para que diez noticias no valgan diez veces una. Los números están redondeados.
+        {" "}Las noticias y los mercados se suman primero y después se achican con una curva (tanh) para que diez noticias no valgan diez veces una. Los números están redondeados.
+        </Info>
       </p>
     </Card>
   );
@@ -107,10 +109,7 @@ export default async function HowItDecides() {
   return (
     <div className="space-y-10">
       <section>
-        <PageTitle>Cómo decide</PageTitle>
-        <p className="max-w-3xl text-lg leading-relaxed text-text-2">
-          Cada 10 minutos, para las acciones, bonos y CEDEARs de tu cartera y los que tienen noticias o mercados de predicción, se juntan varias señales en un solo puntaje entre −1 y +1. Positivo quiere decir que se espera que suba al día siguiente; negativo, que baje. Según el puntaje sale comprar, vender o mantener.
-        </p>
+        <PageTitle info="Cada 10 minutos, para las acciones, bonos y CEDEARs de tu cartera y los que tienen noticias o mercados de predicción, se juntan varias señales en un solo puntaje entre −1 y +1. Positivo quiere decir que se espera que suba al día siguiente; negativo, que baje. Según el puntaje sale comprar, vender o mantener.">Cómo decide</PageTitle>
       </section>
 
       {example && (
@@ -130,17 +129,19 @@ export default async function HowItDecides() {
             { name: "Brecha del CEDEAR", weight: w.gap, text: "Si el CEDEAR está más caro o más barato de lo habitual comparado con la acción en Estados Unidos, una vez descontado el dólar. Esa diferencia suele corregirse." },
             { name: "Riesgo país y dólar", weight: w.macro, text: "Para bonos y bancos, cuánto se movió el riesgo país en la última semana (la mitad para las demás acciones locales). Para los CEDEARs, cuánto se movió el dólar CCL, porque cotizan en pesos." },
           ].map((x) => (
-            <li key={x.name} className="grid gap-1 py-4 sm:grid-cols-[1fr_auto] sm:gap-6">
+            <li key={x.name} className="flex items-center justify-between gap-6 py-3">
               <div>
-                <p className="font-semibold">{x.name}</p>
-                <p className="mt-1 text-text-2">{x.text}</p>
+                <p className="font-semibold">{x.name}<Info>{x.text}</Info></p>
               </div>
-              <p className="num text-2xl font-semibold sm:text-right">{pctOf(x.weight)}</p>
+              <p className="num font-semibold">{pctOf(x.weight)}</p>
             </li>
           ))}
         </ul>
       </section>
 
+      <section>
+      <SectionTitle>Los detalles</SectionTitle>
+      <ul className="divide-y divide-border border-y border-border">
       <Block title="Ya está en el precio">
         <p>
           Una noticia que salió ayer puede haber movido el precio ya. Por eso cada noticia se descuenta según cuánto se movió el precio en su dirección desde que apareció, medido en días típicos de esa acción (lo que suele moverse en un día). Después de {num(m.priced_in_full)} días típicos deja de contar.
@@ -174,11 +175,11 @@ export default async function HowItDecides() {
           Cada activo tiene un riesgo bajo, medio o alto según qué tipo de activo es y cuánto se mueve su precio. Tu perfil ({m.profile})
           define hasta qué riesgo te recomendamos: conservador hasta bajo, moderado hasta medio, arriesgado todo. Lo que está por encima
           nunca sale como &quot;comprar&quot;, aunque tenga buen puntaje, por las reglas de la CNV. Tu perfil también define cuánto arriesga
-          cada compra y el máximo por activo. Lo ves y lo cambiás en <Link href="/perfil" className="underline">Perfil</Link>.
+          cada compra y el máximo por activo. Lo ves y lo cambiás en Perfil.
         </p>
       </Block>
 
-      <Block title="Con qué plata">
+      <Block title="Con qué plata" up>
         <p>
           Las recomendaciones se convierten en un plan para toda tu cartera. Primero se vende lo que dice vender. Después cada compra,
           de la mejor a la peor, se paga con tu plata disponible. Si no alcanza, el plan propone rotar: vender parte de algo que tenés
@@ -187,7 +188,7 @@ export default async function HowItDecides() {
         </p>
       </Block>
 
-      <Block title="Cuánto comprar">
+      <Block title="Cuánto comprar" up>
         <p>La cantidad sugerida es la menor de estas:</p>
         <ul className="list-disc space-y-1 pl-5">
           <li>la que, si toca el stop loss, te hace perder {pctOf(m.risk_per_trade)} de la cartera (cuanto más se mueve el precio, menos se compra);</li>
@@ -199,14 +200,16 @@ export default async function HowItDecides() {
         <p>El stop loss se pone a dos días típicos debajo del precio y el take profit al doble de esa distancia arriba.</p>
       </Block>
 
-      <Block title="Cómo se mide si acertó">
+      <Block title="Cómo se mide si acertó" up>
         <p>
           Una recomendación hecha a la noche recién se puede seguir a la apertura del día siguiente, así que se mide desde esa apertura hasta el cierre. Comprar acierta si sube, vender si baja, y mantener algo que tenés acierta si no cae más de 1,5%.
         </p>
         <p>
-          Con {m.calibration_min_cases} casos o más de puntajes parecidos, cada recomendación muestra cuántas veces acertó en el pasado en lugar de &quot;señal fuerte&quot; o &quot;débil&quot;. Los resultados completos, comparados contra no hacer nada y contra el Merval, están en <Link href="/historial" className="underline">Resultados</Link>.
+          Con {m.calibration_min_cases} casos o más de puntajes parecidos, cada recomendación muestra cuántas veces acertó en el pasado en lugar de &quot;señal fuerte&quot; o &quot;débil&quot;. Los resultados completos, comparados contra no hacer nada y contra el Merval, están en Resultados.
         </p>
       </Block>
+      </ul>
+      </section>
     </div>
   );
 }

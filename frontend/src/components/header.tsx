@@ -61,7 +61,7 @@ export async function Header() {
           <TickerSearch assets={assets.ok ? assets.data : []} />
           {authEnabled() && (
             <form action={logout}>
-              <button className="rounded-md px-3 py-1.5 text-sm text-text-3 hover:text-text">Salir</button>
+              <button className="rounded-lg px-3 py-1.5 text-sm text-text-3 hover:text-text">Salir</button>
             </form>
           )}
         </div>

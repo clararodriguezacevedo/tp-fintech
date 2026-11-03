@@ -169,6 +169,7 @@ class Trade(IOLModel):
     status: str  # "completed", "cancelled", ...
     symbol: str
     currency: str
+    order: Executed | None = None  # what was asked: by amount (qty 0) or by quantity (amount 0)
     executed: Executed | None = None
 
     # IOL sends "" for orders that never executed (cancelled ones).

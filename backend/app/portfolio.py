@@ -30,6 +30,7 @@ MAX_AGE = timedelta(hours=2)
 TYPES = {"TIT. PUBLICOS": "TitulosPublicos", "OBLIGACIONES NEGOCIABLES": "ObligacionesNegociables"}
 EQUITY_TYPES = {"ACCIONES", "Acciones"}
 BOND_TYPES = {"TitulosPublicos", "ObligacionesNegociables"}
+PENDING_ORDER_DAYS = 10  # how far back to look for orders that haven't executed
 
 
 class Holding(BaseModel):
@@ -77,12 +78,31 @@ def _fetch_from_iol() -> list[Holding]:
     ]
 
 
+def pending_buys() -> float:
+    """Pesos held back for buy orders that haven't executed yet; 0 if IOL can't answer. That money
+    is still the user's, and it isn't in the positions yet."""
+    today = market_hours.now_art().date()
+    try:
+        ops = get_iol().operations(today - timedelta(days=PENDING_ORDER_DAYS), today)
+    except Exception:
+        log.warning("no operations from IOL; counting no pending orders")
+        return 0.0
+    return sum(
+        o.order.amount or o.order.qty * o.order.price
+        for o in ops if o.type == "Compra" and o.status == "pending" and o.currency == "ARS" and o.order
+    )
+
+
 def _fetch_cash() -> tuple[float | None, float | None]:
-    """(pesos, dollars) available; (None, None) if IOL can't answer. Not `totals`: it still
-    includes the money of unsettled buys, which are already in the positions."""
+    """(pesos, dollars); (None, None) if IOL can't answer. It's what's available, not `totals`:
+    that still includes the money of unsettled buys, which are already in the positions. But
+    `available` leaves out what pending orders hold back, so that goes back in, as IOL's own daily
+    value does (2026-11-02: positions + that cash + dollars matched it to the cent). `committed`
+    can't be used for that, since it also has the unsettled buys."""
     try:
         b = get_iol().balances()
-        return b.ars.available.total, b.usd.available.total
+        held_back = min(pending_buys(), b.ars.committed.total)
+        return b.ars.available.total + held_back, b.usd.available.total
     except Exception:
         log.warning("no balances from IOL; snapshot without cash")
         return None, None

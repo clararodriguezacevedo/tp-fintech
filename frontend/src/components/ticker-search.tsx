@@ -39,7 +39,7 @@ export function TickerSearch({ assets = [] }: { assets?: Asset[] }) {
         placeholder="Buscar activo"
         list="asset-suggestions"
         autoComplete="off"
-        className="w-32 rounded-md border border-border bg-bg px-3 py-1.5 text-sm placeholder:text-text-3 focus:border-text focus:outline-none"
+        className="w-32 rounded-lg border border-border bg-bg px-3 py-1.5 text-sm placeholder:text-text-3 focus:border-text focus:outline-none"
       />
       <datalist id="asset-suggestions">
         {suggestions.map((a) => <option key={a.ticker} value={a.ticker} label={a.name} />)}

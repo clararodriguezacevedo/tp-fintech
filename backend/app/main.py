@@ -28,7 +28,7 @@ from app.portfolio import current_holdings, get_holdings, value_history
 from app.models.iol import DailyBar
 from app.schemas import (
     AccountSummary, AssetOut, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
-    ModelInfo, NewsOut, PlanStep, PortfolioOut, PortfolioPlan, UnfundedBuy, PortfolioValuePoint, ProbabilityPoint, SignalStats,
+    ModelInfo, NewsOut, OperationsOut, PlanStep, PortfolioOut, PortfolioPlan, UnfundedBuy, PortfolioValuePoint, ProbabilityPoint, SignalStats,
     ProfileRequest, Quote, SellPlan, SellRequest, TickerTrade, TrackRecordSummary, TradePlan, Transfer,
 )
 from app.sources import polymarket
@@ -219,7 +219,7 @@ def portfolio() -> PortfolioOut:
     return PortfolioOut(
         captured_at=snap.captured_at,
         holdings=[HoldingOut.model_validate(h.model_dump()) for h in snap.holdings],
-        cash_ars=v.cash_ars, cash_usd=v.cash_usd, mep=v.mep, cash_usd_ars=v.cash_usd_ars,
+        cash_ars=v.cash_ars, reserved_ars=v.reserved_ars, cash_usd=v.cash_usd, mep=v.mep, cash_usd_ars=v.cash_usd_ars,
         total_ars=v.total,
     )
 
@@ -410,6 +410,12 @@ def ticker_trades(ticker: str) -> list[TickerTrade]:
     return history.ticker_trades(ticker.upper())
 
 
+@app.get("/operations", response_model=OperationsOut)
+def real_operations() -> OperationsOut:
+    """The user's real buys and sells in IOL, newest first, with each sell's result."""
+    return history.operations()
+
+
 @app.get("/tickers/{ticker}/sell-plan", response_model=SellPlan)
 def sell_plan(ticker: str) -> SellPlan:
     """What selling a held position would bring, for the sell panel."""
@@ -497,7 +503,9 @@ def portfolio_plan() -> PortfolioPlan:
             continue
         buys.append(rotation.Candidate(r.ticker, r.score, price, sized.quantity * price))
     real_rate = trade_cost_rate()
-    plan = rotation.build(value.cash_ars, value.total, held, buys, real_rate if real_rate is not None else 0.006)
+    # What pending orders hold back can't pay for anything else.
+    spendable = value.cash_ars - value.reserved_ars
+    plan = rotation.build(spendable, value.total, held, buys, real_rate if real_rate is not None else 0.006)
     idle = None
     try:
         idle = caucion.suggest(plan.cash_left)

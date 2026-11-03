@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 import { ActionBadge } from "@/components/signals";
-import { ApiFailure, attempt, Card, Delta, Notice, PageTitle, SectionTitle } from "@/components/ui";
+import { ApiFailure, attempt, Card, Delta, Info, Notice, PageTitle, SectionTitle } from "@/components/ui";
+import { Amount, ByMode, UnitToggle } from "@/components/units";
 import { api, type Recommendation } from "@/lib/api/client";
 import { dayLong, money, pct } from "@/lib/format";
 import { assetNames, nameOf } from "@/lib/names";
@@ -24,15 +25,25 @@ const SIGNAL: Record<string, string> = {
 
 const change = (value: number | null | undefined, start: number) => (value != null && start ? value / start - 1 : null);
 
+/** A day's move: the value it ended at minus what it started from, or the same as a percentage. */
+function DayMove({ value, move, inUsd }: { value: number; move: number; inUsd: (x: number) => number | null }) {
+  const amount = Math.abs(value - value / (1 + move));
+  return <Delta value={move}><ByMode abs={<Amount ars={amount} usd={inUsd(amount)} />} pct={pct(move, 2)} /></Delta>;
+}
+
 export default async function HistoryPage() {
-  const [sim, history, signals, names] = await Promise.all([
+  const [sim, history, signals, names, portfolio] = await Promise.all([
     attempt(api.simulation),
     attempt(() => api.trackRecordHistory(1000)),
     attempt(api.signals),
     assetNames(),
+    attempt(api.portfolio),
   ]);
   if (!sim.ok) return <ApiFailure error={sim.error} />;
   const s = sim.data;
+  // Dollars at today's MEP rate, the same as Mi cartera.
+  const mep = portfolio.ok ? portfolio.data.mep : null;
+  const inUsd = (x: number | null | undefined) => (x != null && mep ? x / mep : null);
   const recs = history.ok ? history.data.filter((r) => relevant(r) && r.hit != null) : [];
   const hits = recs.filter((r) => r.hit).length;
   const diff = s.follow_value - s.base_value;
@@ -73,8 +84,13 @@ export default async function HistoryPage() {
           </Card>
         </div>
 
-        <div className="mt-8">
-          <SectionTitle>Contra qué comparar</SectionTitle>
+        <div className="mt-10">
+          <SectionTitle
+            aside={<UnitToggle />}
+            info={`Todo arranca de tu cartera del primer día. El plan se opera a la apertura del día siguiente, con los costos reales de IOL (${(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%). Las líderes del Merval reemplazan al índice, que IOL no publica.`}
+          >
+            Contra qué comparar
+          </SectionTitle>
         </div>
         <ul className="divide-y divide-border border-y border-border">
           {[
@@ -94,43 +110,45 @@ export default async function HistoryPage() {
               <li key={x.label} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <span>
                   {x.label}
-                  {x.note && <span className="block text-sm text-text-3">{x.note}</span>}
+                  {x.note && <Info>{x.note}</Info>}
                 </span>
-                <span className="flex items-center gap-4">
-                  <span className="num text-text-2">{money(x.value)}</span>
-                  <span className="num w-16 text-right font-semibold">{c == null ? "-" : <Delta value={c}>{pct(c, 2)}</Delta>}</span>
+                <span className="num font-semibold">
+                  <ByMode abs={<Amount ars={x.value} usd={inUsd(x.value)} />} pct={c == null ? "-" : <Delta value={c}>{pct(c, 2)}</Delta>} />
                 </span>
               </li>
             );
           })}
         </ul>
-        <p className="mt-3 text-sm text-text-3">
-          Todo arranca de tu cartera del primer día. El plan se opera a la apertura del día siguiente, con los costos reales de IOL ({(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%). Las líderes del Merval reemplazan al índice, que IOL no publica.
-        </p>
       </section>
 
       {signals.ok && signals.data.some((x) => x.n_vs_day > 0) && (
         <section>
-          <SectionTitle>Qué señal funciona</SectionTitle>
+          <SectionTitle
+            aside={<UnitToggle currency={false} />}
+            info="Cuántas veces el activo le ganó o perdió contra el resto ese día, como decía la señal. 50% es tirar una moneda, y con tan pocos días todavía no es concluyente."
+          >
+            Qué señal funciona
+          </SectionTitle>
           <ul className="divide-y divide-border border-y border-border">
             {signals.data.filter((x) => x.n_vs_day > 0).map((x) => (
               <li key={x.signal} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <span>{SIGNAL[x.signal]}</span>
-                <span className="flex items-center gap-4">
-                  <span className="num text-sm text-text-2">{x.hits_vs_day} de {x.n_vs_day}, {x.days} {x.days === 1 ? "día" : "días"}</span>
-                  <span className="num w-14 text-right font-semibold">{Math.round((x.rate_vs_day ?? 0) * 100)}%</span>
+                <span>{SIGNAL[x.signal]}<Info>{x.days} {x.days === 1 ? "día" : "días"} de datos.</Info></span>
+                <span className="num font-semibold">
+                  <ByMode abs={`${x.hits_vs_day} de ${x.n_vs_day}`} pct={`${Math.round((x.rate_vs_day ?? 0) * 100)}%`} />
                 </span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-sm text-text-3">
-            Cuántas veces el activo le ganó o perdió contra el resto ese día, como decía la señal. 50% es tirar una moneda, y con tan pocos días todavía no es concluyente.
-          </p>
         </section>
       )}
 
       <section>
-        <SectionTitle>Día por día</SectionTitle>
+        <SectionTitle
+          aside={<UnitToggle />}
+          info="Se mide de apertura a cierre. Mantener algo que tenés acierta si no cae más de 1,5%. Lo de cada activo siempre va en porcentaje: el monto dependería de cuánto hubieras puesto."
+        >
+          Día por día
+        </SectionTitle>
         <ul className="space-y-4">
           {[...byDay.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([day, items]) => {
             const d = simByDay.get(day);
@@ -141,7 +159,7 @@ export default async function HistoryPage() {
                     <p className="font-semibold first-letter:uppercase">{dayLong(asDay(day))}</p>
                     {d && (
                       <p className="text-sm text-text-2">
-                        Con el plan <Delta value={d.follow_return}>{pct(d.follow_return, 2)}</Delta>, sin el plan <Delta value={d.base_return}>{pct(d.base_return, 2)}</Delta>
+                        Con el plan <DayMove value={d.follow_value} move={d.follow_return} inUsd={inUsd} />, sin el plan <DayMove value={d.base_value} move={d.base_return} inUsd={inUsd} />
                       </p>
                     )}
                   </div>
@@ -174,9 +192,6 @@ export default async function HistoryPage() {
             );
           })}
         </ul>
-        <p className="mt-3 text-sm text-text-3">
-          Se mide de apertura a cierre. Mantener algo que tenés acierta si no cae más de 1,5%.
-        </p>
       </section>
     </div>
   );

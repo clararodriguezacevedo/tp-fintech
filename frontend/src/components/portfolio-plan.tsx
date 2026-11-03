@@ -2,6 +2,7 @@
 // buy that with the money), within the money there is.
 import Link from "next/link";
 
+import { Info } from "@/components/ui";
 import type { PortfolioPlan } from "@/lib/api/client";
 import { dateTime, dayShort, integer, money } from "@/lib/format";
 
@@ -19,8 +20,7 @@ function Line({ marker, children, note }: { marker: "sell" | "buy" | "swap"; chi
     <li className="flex gap-3 py-3">
       <span aria-hidden className="mt-2 h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
       <div className="min-w-0">
-        <p>{children}</p>
-        {note && <p className="text-sm text-text-3">{note}</p>}
+        <p>{children}{note && <Info>{note}</Info>}</p>
       </div>
     </li>
   );
@@ -66,7 +66,7 @@ export function PlanView({ plan }: { plan: PortfolioPlan }) {
           }
           if (sell) {
             return (
-              <Line key={sell.group} marker="sell" note="La recomendación de hoy es vender.">
+              <Line key={sell.group} marker="sell">
                 Vendé {integer(sell.quantity)} <Ticker t={sell.ticker} /> ({money(sell.amount)}).
               </Line>
             );

@@ -1,17 +1,59 @@
 // Layout pieces shared by every page.
 import type { ReactNode } from "react";
 
-export function PageTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
+// One look for each kind of button.
+export const BUTTON = "rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40";
+export const BUTTON_ALT = "rounded-lg border border-border px-4 py-2.5 hover:border-text";
+export const BUTTON_SMALL = "whitespace-nowrap rounded-lg bg-text px-3 py-1.5 text-sm font-medium text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40";
+export const BUTTON_SMALL_ALT = "whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm hover:border-text";
+
+const POPUP = "pointer-events-none absolute z-20 hidden rounded-lg border border-border bg-bg px-2.5 py-1.5 text-left text-sm font-normal leading-snug tracking-normal text-text-2 shadow-lg";
+
+/** A small popup over `children`, on hover or focus, that doesn't show while `content` is empty.
+ * `place`: where it opens. Inside a table that scrolls sideways, open it to a side: anything above
+ * or below the table would be cut. */
+export function Tooltip({ children, content, place = "left-0 top-full mt-1" }: { children: ReactNode; content: ReactNode; place?: string }) {
+  return (
+    <span tabIndex={0} className="group relative inline-block cursor-help">
+      {children}
+      <span role="tooltip" className={`${POPUP} w-max max-w-[min(26rem,80vw)] group-hover:[&:not(:empty)]:block group-focus:[&:not(:empty)]:block ${place}`}>{content}</span>
+    </span>
+  );
+}
+
+/** An "i" that explains something on hover or focus, instead of a gray line of text. */
+export function Info({ children, place, warning = false }: { children: ReactNode; place?: string; warning?: boolean }) {
+  return (
+    <span className="ml-1.5 inline-flex align-text-top">
+      <Tooltip content={children} place={place}>
+        <span
+          aria-label="Más información"
+          style={warning ? { borderColor: "var(--sell)", color: "var(--sell)" } : undefined}
+          className="flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] font-normal not-italic leading-none text-text-3 hover:border-text-2 hover:text-text"
+        >
+          i
+        </span>
+      </Tooltip>
+    </span>
+  );
+}
+
+export function PageTitle({ children, aside, info, as: Heading = "h1" }: { children: ReactNode; aside?: ReactNode; info?: ReactNode; as?: "h1" | "h2" }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <h1 className="text-3xl font-semibold tracking-tight">{children}</h1>
+      <Heading className="text-3xl font-semibold tracking-tight">{children}{info && <Info>{info}</Info>}</Heading>
       {aside}
     </div>
   );
 }
 
-export function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 className="mb-4 text-lg font-semibold">{children}</h2>;
+export function SectionTitle({ children, aside, info }: { children: ReactNode; aside?: ReactNode; info?: ReactNode }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h2 className="text-lg font-semibold">{children}{info && <Info>{info}</Info>}</h2>
+      {aside}
+    </div>
+  );
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {

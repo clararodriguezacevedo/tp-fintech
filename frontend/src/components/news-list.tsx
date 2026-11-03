@@ -30,7 +30,7 @@ export function NewsList({ news }: { news: NewsItem[] }) {
         <ul className="divide-y divide-border">
           {shown.map((n) => (
             <li key={n.id} className="py-4 first:pt-0">
-              <a href={n.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{n.title}</a>
+              <a href={n.url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{n.title}</a>
               {n.ai_summary && <p className="mt-1 text-text-2">{n.ai_summary}</p>}
               <ImpactList impacts={n.impacts} />
               <p className="mt-2 text-sm text-text-3">{n.source}{n.published_at && `, ${timeAgo(n.published_at)}`}</p>

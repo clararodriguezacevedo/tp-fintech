@@ -205,7 +205,7 @@ export function LineChart({
       </svg>
       {h && hover != null && (
         <div
-          className="pointer-events-none absolute top-0 rounded-md border border-border bg-bg px-2 py-1 text-xs shadow-sm"
+          className="pointer-events-none absolute top-0 rounded-lg border border-border bg-bg px-2.5 py-1.5 text-sm shadow-lg"
           style={{ left: Math.max(0, Math.min(x(hover) - 70, width - (hTrades.length ? 250 : hMark ? 200 : 150))) }}
         >
           <p><span className="num font-medium">{fmtExact(h.v)}</span> <span className="text-text-3">{fmtTime(h.t)}</span></p>

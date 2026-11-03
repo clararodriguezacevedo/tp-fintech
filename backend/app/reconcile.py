@@ -5,7 +5,7 @@ close (the last snapshot of the day after the market closed) has to match it. Re
 cash is stored differ by at most 0.10%, from price timing; a counting error is far larger (unsettled
 buys counted twice were 22%). Weekends are skipped: on 2026-11-01 IOL's value left the cash out.
 
-A mismatch sends an e-mail and shows a notice in Mi cartera.
+A mismatch sends an e-mail.
 """
 
 import logging
@@ -68,8 +68,13 @@ def _site_value_at_close(day: date, mep: float) -> tuple[datetime, float] | None
 
 
 def run() -> AccountCheck | None:
-    """Check the last trading day, once. Waits if IOL's value or the snapshot aren't there yet."""
-    day = last_trading_day(market_hours.now_art().date())
+    """Check the last trading day, once. Waits if IOL's value or the snapshot aren't there yet, and
+    until today's close: early on, IOL's value for yesterday can be just the positions (at 07:10
+    on 2026-11-03 it said 5.436.392 for the 2nd, later 5.917.131)."""
+    now = market_hours.now_art()
+    if now.time() < market_hours.CLOSE:
+        return None
+    day = last_trading_day(now.date())
     done = latest()
     if done and done.day >= day:
         return done

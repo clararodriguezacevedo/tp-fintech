@@ -1,8 +1,9 @@
 import Link from "next/link";
 
+import { NewsSection } from "@/components/news-section";
 import { fundingOf, PlanView } from "@/components/portfolio-plan";
 import { ActionBadge, evidenceText, threeMonths, track } from "@/components/signals";
-import { ApiFailure, attempt, Card, Notice, PageTitle, SectionTitle } from "@/components/ui";
+import { ApiFailure, attempt, BUTTON_SMALL, Card, Notice, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type CalibrationBucket, type PortfolioPlan, type Recommendation } from "@/lib/api/client";
 import { money, timeAgo } from "@/lib/format";
 import { assetNames, nameOf } from "@/lib/names";
@@ -13,7 +14,7 @@ function BuyCard({ r, calibration, plan, names }: { r: Recommendation; calibrati
     <Card className="flex flex-col">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xl font-semibold">{r.ticker}</p>
+          <p className="text-lg font-semibold">{r.ticker}</p>
           <p className="text-sm text-text-2">{nameOf(r.ticker, names[r.ticker])}</p>
         </div>
         <ActionBadge action="buy" />
@@ -26,24 +27,11 @@ function BuyCard({ r, calibration, plan, names }: { r: Recommendation; calibrati
           <p className="text-sm text-text-2">{track(r, calibration)}</p>
           {funding && <p className="text-sm text-text-3">{funding}</p>}
         </div>
-        <Link href={`/ticker/${r.ticker}`} className="whitespace-nowrap rounded-lg bg-text px-3 py-1.5 text-sm font-medium text-bg hover:opacity-85">
+        <Link href={`/ticker/${r.ticker}`} className={BUTTON_SMALL}>
           Ver y comprar
         </Link>
       </div>
     </Card>
-  );
-}
-
-function HoldingRow({ r, names }: { r: Recommendation; names: Record<string, string> }) {
-  return (
-    <li>
-      <Link href={`/ticker/${r.ticker}`} className="flex items-center justify-between gap-4 py-3 hover:bg-surface">
-        <span>
-          <span className="font-semibold">{r.ticker}</span> <span className="text-text-2">{nameOf(r.ticker, names[r.ticker])}</span>
-        </span>
-        <ActionBadge action={r.action} />
-      </Link>
-    </li>
   );
 }
 
@@ -55,12 +43,10 @@ export default async function Home() {
   const calibration = cal.ok ? cal.data : [];
 
   const buys = recs.data.filter((r) => r.action === "buy").sort((a, b) => b.score - a.score);
-  const held = recs.data.filter((r) => r.held).sort((a, b) => a.score - b.score);
-  const sells = held.filter((r) => r.action === "sell");
   const updated = recs.data.reduce<string | null>((m, r) => (!m || r.updated_at > m ? r.updated_at : m), null);
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-10">
       <section>
         <PageTitle aside={updated && <span className="text-sm text-text-3">Actualizado {timeAgo(updated)}</span>}>
           Para comprar
@@ -81,18 +67,7 @@ export default async function Home() {
         </section>
       )}
 
-      <section>
-        <SectionTitle>Tu cartera</SectionTitle>
-        <p className="mb-2 text-text-2">
-          {sells.length === 0
-            ? "No hace falta vender nada hoy."
-            : `Conviene vender ${sells.length === 1 ? "1 posición" : `${sells.length} posiciones`}.`}
-        </p>
-        <ul className="divide-y divide-border border-y border-border">
-          {held.map((r) => <HoldingRow key={r.ticker} r={r} names={names} />)}
-        </ul>
-        <Link href="/cartera" className="mt-3 inline-block text-sm text-text-2 hover:text-text hover:underline">Ver mi cartera</Link>
-      </section>
+      <NewsSection />
     </div>
   );
 }
