@@ -12,9 +12,8 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app import account as acct, alerts, caucion, cedears, jobs, prices, reconcile, universe
-from app.analysis import market_hours, risk, rotation, scoring, simulation, suitability, track_record
+from app.analysis import market_hours, risk, rotation, scoring, simulation, suitability, tagger, track_record
 from app.assets import asset_types
-from app.profile import InvestorProfile, declare, get_profile
 from app.reconcile import AccountCheck
 from app.analysis.simulation import Simulation
 from app.brokers.iol import IOLUnavailable, get_iol, trade_cost_rate
@@ -29,7 +28,7 @@ from app.models.iol import DailyBar
 from app.schemas import (
     AccountSummary, AssetOut, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
     ModelInfo, NewsOut, OperationsOut, PlanStep, PortfolioOut, PortfolioPlan, UnfundedBuy, PortfolioValuePoint, ProbabilityPoint, SignalStats,
-    ProfileRequest, Quote, SellPlan, SellRequest, TickerTrade, TrackRecordSummary, TradePlan, Transfer,
+    Quote, SellPlan, SellRequest, TickerTrade, TrackRecordSummary, TradePlan, Transfer,
 )
 from app.sources import polymarket
 from app.trading import history, paper
@@ -326,7 +325,7 @@ def trade_plan(
     ticker = ticker.upper()
     settings = get_settings()
     holdings = {h.ticker: h for h in get_holdings()}
-    investor = get_profile().profile
+    investor = suitability.INVESTOR_PROFILE
     if portfolio_value is None or cash is None:
         try:
             summary = account()
@@ -369,23 +368,11 @@ def _risk_of(ticker: str) -> suitability.RiskLevel:
     return suitability.risk_level(ticker, kind, bars)
 
 
-@app.get("/profile", response_model=InvestorProfile)
-def investor_profile(refresh: bool = False) -> InvestorProfile:
-    """The user's investor profile: IOL's test result when there is one, else the declared one."""
-    return get_profile(refresh=refresh)
-
-
-@app.put("/profile", response_model=InvestorProfile)
-def set_investor_profile(req: ProfileRequest) -> InvestorProfile:
-    """Declare the profile in the app; used while IOL has none."""
-    return declare(req.profile)
-
-
 @app.post("/trades", response_model=TradeRow)
 def buy(req: BuyRequest) -> TradeRow:
     """One-click buy. Paper by default; fills now if BYMA is open, otherwise queues. A buy above
     the investor profile needs accept_out_of_profile (CNV suitability)."""
-    investor = get_profile().profile
+    investor = suitability.INVESTOR_PROFILE
     level = _risk_of(req.ticker.upper())
     if not suitability.allowed(level.level, investor) and not req.accept_out_of_profile:
         raise HTTPException(400, (
@@ -481,7 +468,7 @@ def portfolio_plan() -> PortfolioPlan:
     recs = {r.ticker: r for r in list_recommendations(kind="live")}
     snap = current_holdings()
     value = acct.value_of(snap)
-    investor = get_profile().profile
+    investor = suitability.INVESTOR_PROFILE
     holdings = {h.ticker: h for h in snap.holdings}
     held = [
         rotation.Held(
@@ -545,7 +532,7 @@ def track_record_calibration() -> list[CalibrationBucket]:
 @app.get("/model", response_model=ModelInfo)
 def model_info() -> ModelInfo:
     """The scoring model's weights and thresholds."""
-    investor = get_profile().profile
+    investor = suitability.INVESTOR_PROFILE
     return ModelInfo(
         weights={
             "evidence": scoring.W_EVIDENCE, "trend": scoring.W_TREND, "context": scoring.W_CONTEXT,
@@ -555,14 +542,15 @@ def model_info() -> ModelInfo:
         broad_weight=scoring.BROAD_WEIGHT, sector_weight=scoring.SECTOR_WEIGHT, sector_cap=scoring.SECTOR_CAP,
         sectors=scoring.SECTORS,
         news_half_life_hours=scoring.NEWS_HALF_LIFE_HOURS, news_max_age_hours=scoring.NEWS_MAX_AGE_HOURS,
-        priced_in_full=scoring.PRICED_IN_FULL, concentration_limit=scoring.CONCENTRATION_LIMIT,
+        concentration_limit=scoring.CONCENTRATION_LIMIT,
         concentration_penalty=scoring.CONCENTRATION_PENALTY, concentration_max=scoring.CONCENTRATION_MAX,
         risk_per_trade=suitability.RISK_PER_TRADE[investor], max_position=suitability.MAX_POSITION[investor],
-        profile=investor, profile_max_level={str(k): v for k, v in suitability.MAX_LEVEL.items()},
-        profile_risk_per_trade={str(k): v for k, v in suitability.RISK_PER_TRADE.items()},
-        profile_max_position={str(k): v for k, v in suitability.MAX_POSITION.items()},
-        bond_low_vol=suitability.BOND_LOW_VOL, equity_mid_vol=suitability.EQUITY_MID_VOL,
+        profile=investor, bond_low_vol=suitability.BOND_LOW_VOL, equity_mid_vol=suitability.EQUITY_MID_VOL,
         max_volume_share=risk.MAX_VOLUME_SHARE, calibration_min_cases=track_record.CALIBRATION_MIN_CASES,
+        tagger_model=get_settings().tagger_model, tagger_prompt=tagger.prompt_for_display(), tag_batch=jobs.TAG_BATCH_SIZE,
+        strength=scoring.STRENGTH, market_move_unit=scoring.MARKET_MOVE_UNIT, market_move_cap=scoring.MARKET_MOVE_CAP,
+        markets_cap=scoring.MARKETS_CAP, min_market_days=scoring.MIN_MARKET_DAYS, far_market_days=scoring.FAR_MARKET_DAYS,
+        far_market_min_weight=scoring.FAR_MARKET_MIN_WEIGHT, gap_unit=scoring.GAP_UNIT, market_cases=scoring.market_cases(),
     )
 
 

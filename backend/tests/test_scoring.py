@@ -2,8 +2,8 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from app.analysis import market_hours, scoring
-from app.analysis.scoring import TickerSignals, _close_before, _combine, _Inputs
+from app.analysis import scoring
+from app.analysis.scoring import TickerSignals, _combine, _Inputs
 from app.models.db import Evidence
 from app.models.iol import DailyBar
 from app.sources.macro import MacroSignal
@@ -55,45 +55,12 @@ def test_news_is_not_a_recap(title):
     assert not scoring.is_market_recap(title)
 
 
-# Reference price for "already in the price"
-
-def at(day: date, hour: int) -> datetime:
-    return datetime(day.year, day.month, day.day, hour, tzinfo=market_hours.ART)
-
-
-def test_news_during_the_session_compares_with_the_previous_close():
-    b = bars(5, end=date(2026, 10, 23))  # Friday's candle is there (written after the close)
-    b[-1] = b[-1].model_copy(update={"close": 110.0})
-    assert _close_before(b, at(date(2026, 10, 23), 15)) == 100.0
-    assert _close_before(b, at(date(2026, 10, 23), 21)) == 100.0
-
-
-def test_weekend_news_compares_with_fridays_close():
-    b = bars(5, end=date(2026, 10, 23))
-    b[-1] = b[-1].model_copy(update={"close": 110.0})
-    assert _close_before(b, at(date(2026, 10, 24), 12)) == 110.0
-
-
-def test_fully_priced_in_news_stops_counting():
-    b = bars(30)  # ATR = 2 on a price of 100, so a typical day is 2%
-    since = at(date(2026, 10, 22), 21)  # after Thursday's close: the reference is Wednesday's
-    moved = scoring.discount_priced_in([ev("a", 1.0, since=since)], b, price=100 * (1 + 1.5 * 0.02))
-    assert moved[0].contribution == 0
-    assert moved[0].priced_in == 1
-
-
-def test_news_against_the_move_keeps_its_weight():
-    b = bars(30)
-    moved = scoring.discount_priced_in([ev("a", -1.0, since=at(date(2026, 10, 22), 21))], b, price=103.0)
-    assert moved[0].contribution == -1.0
-
-
 # Counting once, sectors, concentration and thresholds
 
-def test_news_tagged_for_ticker_and_merval_counts_once():
+def test_news_tagged_for_ticker_and_merval_counts_for_both():
     rec = _combine(inputs(own=[ev("a", 1.0)], broad=[ev("a", 1.0), ev("b", 1.0)]), gap=0.0)
-    assert sorted((e.item_id, e.broad) for e in rec.evidence) == [("a", False), ("b", True)]
-    assert rec.breakdown.news == pytest.approx(1.0 + scoring.BROAD_WEIGHT)
+    assert sorted((e.item_id, e.broad) for e in rec.evidence) == [("a", False), ("a", True), ("b", True)]
+    assert rec.breakdown.news == pytest.approx(1.0 + 2 * scoring.BROAD_WEIGHT)
 
 
 def test_sector_news_spreads_at_reduced_weight():
@@ -120,15 +87,24 @@ def test_many_small_sector_items_are_capped():
 
 @pytest.mark.parametrize("title", [
     "Big Tech's earnings are on deck. There's more for investors to watch than AI spending",
-    "Stocks to watch this week: Microsoft, Alphabet and Amazon report",
     "Qué mirar esta semana en el mercado",
 ])
-def test_previews_are_detected(title):
-    assert scoring.is_preview(title)
+def test_a_tagged_preview_counts(title):
+    from datetime import timezone
+
+    from app.models.db import NewsRow, TickerImpactRow
+
+    now = datetime(2026, 11, 3, 12, tzinfo=timezone.utc)
+    imp = TickerImpactRow(id="i", item_kind="news", item_id="n", ticker="MSFT", direction="up", strength="medium", created_at=now)
+    item = NewsRow.model_construct(id="n", title=title, url=None, published_at=now, created_at=now)
+    e = scoring._news_evidence(imp, item, now)
+    assert e is not None and e.contribution == pytest.approx(scoring.STRENGTH["medium"])
 
 
-def test_results_are_not_previews():
-    assert not scoring.is_preview("Microsoft beat earnings estimates and raised its cloud forecast")
+def test_the_prompt_asks_for_the_expectation_of_a_preview():
+    from app.analysis import tagger
+
+    assert "sentiment and the expectation" in tagger.prompt_for_display()
 
 
 def test_unrelated_sectors_dont_spread():

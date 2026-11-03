@@ -168,10 +168,6 @@ class AssetOut(BaseModel):
     category: Literal["acciones", "cedears", "bonos"]
 
 
-class ProfileRequest(BaseModel):
-    profile: Literal["conservador", "moderado", "arriesgado"]
-
-
 class SellRequest(BaseModel):
     ticker: str = Field(min_length=1, max_length=12)
     quantity: int = Field(gt=0)
@@ -263,6 +259,15 @@ class CalibrationBucket(BaseModel):
     hit_rate: float
 
 
+class MarketCase(BaseModel):
+    """What the scoring gives a market's move, for a high-strength tag."""
+
+    yes_is_good: bool  # whether its YES coming true is good for the ticker
+    change: float  # probability move in 24 hours
+    deadline: bool  # a "by a date" market with 5 days left and a 20% chance
+    contribution: float
+
+
 class ModelInfo(BaseModel):
     """The scoring model's constants, so the "Cómo decide" page always matches the code."""
 
@@ -275,17 +280,25 @@ class ModelInfo(BaseModel):
     sectors: dict[str, list[str]]
     news_half_life_hours: float
     news_max_age_hours: float
-    priced_in_full: float
     concentration_limit: float
     concentration_penalty: float
     concentration_max: float
     risk_per_trade: float  # for the user's profile
     max_position: float  # for the user's profile
     profile: Literal["conservador", "moderado", "arriesgado"]
-    profile_max_level: dict[str, int]
-    profile_risk_per_trade: dict[str, float]
-    profile_max_position: dict[str, float]
     bond_low_vol: float
     equity_mid_vol: float
     max_volume_share: float
     calibration_min_cases: int
+    tagger_model: str
+    tagger_prompt: str
+    tag_batch: int
+    strength: dict[str, float]
+    market_move_unit: float
+    market_move_cap: float
+    markets_cap: float
+    min_market_days: int
+    far_market_days: int
+    far_market_min_weight: float
+    gap_unit: float
+    market_cases: list[MarketCase]

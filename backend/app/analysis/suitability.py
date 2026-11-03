@@ -23,6 +23,8 @@ from app.models.iol import DailyBar
 Profile = Literal["conservador", "moderado", "arriesgado"]
 Kind = Literal["bond", "etf", "cedear", "stock", "unknown"]
 
+INVESTOR_PROFILE: Profile = "moderado"  # the user's, the app has one user: change it here
+
 PROFILES: tuple[Profile, ...] = ("conservador", "moderado", "arriesgado")
 MAX_LEVEL: dict[Profile, int] = {"conservador": 1, "moderado": 2, "arriesgado": 3}
 LEVEL_NAME = {1: "bajo", 2: "medio", 3: "alto"}

@@ -114,14 +114,8 @@ class _Prices:
         self.days = (date.today() - start).days + 40
         self.bars: dict[str, list[DailyBar]] = {}
         # Buys are sized for the user's investor profile, like the buy panel.
-        try:
-            from app.profile import get_profile  # avoid an import cycle
-
-            profile = get_profile().profile
-        except Exception:
-            profile = "conservador"
-        self.risk_per_trade = suitability.RISK_PER_TRADE[profile]
-        self.max_position = suitability.MAX_POSITION[profile]
+        self.risk_per_trade = suitability.RISK_PER_TRADE[suitability.INVESTOR_PROFILE]
+        self.max_position = suitability.MAX_POSITION[suitability.INVESTOR_PROFILE]
 
     def get(self, ticker: str) -> list[DailyBar]:
         if ticker not in self.bars:

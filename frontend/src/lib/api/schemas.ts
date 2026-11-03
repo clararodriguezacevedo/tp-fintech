@@ -196,19 +196,6 @@ const TradePlan = z
     out_of_profile: z.boolean().optional().default(false),
   })
   .passthrough();
-const InvestorProfile = z
-  .object({
-    profile: z.enum(["conservador", "moderado", "arriesgado"]),
-    source: z.enum(["iol", "declared", "default"]),
-    iol_test_pending: z.union([z.boolean(), z.null()]).optional(),
-    declared: z
-      .union([z.enum(["conservador", "moderado", "arriesgado"]), z.null()])
-      .optional(),
-  })
-  .passthrough();
-const ProfileRequest = z
-  .object({ profile: z.enum(["conservador", "moderado", "arriesgado"]) })
-  .passthrough();
 const BuyRequest = z
   .object({
     ticker: z.string().min(1).max(12),
@@ -484,6 +471,14 @@ const CalibrationBucket = z
     hit_rate: z.number(),
   })
   .passthrough();
+const MarketCase = z
+  .object({
+    yes_is_good: z.boolean(),
+    change: z.number(),
+    deadline: z.boolean(),
+    contribution: z.number(),
+  })
+  .passthrough();
 const ModelInfo = z
   .object({
     weights: z.record(z.number()),
@@ -495,20 +490,28 @@ const ModelInfo = z
     sectors: z.record(z.array(z.string())),
     news_half_life_hours: z.number(),
     news_max_age_hours: z.number(),
-    priced_in_full: z.number(),
     concentration_limit: z.number(),
     concentration_penalty: z.number(),
     concentration_max: z.number(),
     risk_per_trade: z.number(),
     max_position: z.number(),
     profile: z.enum(["conservador", "moderado", "arriesgado"]),
-    profile_max_level: z.record(z.number().int()),
-    profile_risk_per_trade: z.record(z.number()),
-    profile_max_position: z.record(z.number()),
     bond_low_vol: z.number(),
     equity_mid_vol: z.number(),
     max_volume_share: z.number(),
     calibration_min_cases: z.number().int(),
+    tagger_model: z.string(),
+    tagger_prompt: z.string(),
+    tag_batch: z.number().int(),
+    strength: z.record(z.number()),
+    market_move_unit: z.number(),
+    market_move_cap: z.number(),
+    markets_cap: z.number(),
+    min_market_days: z.number().int(),
+    far_market_days: z.number().int(),
+    far_market_min_weight: z.number(),
+    gap_unit: z.number(),
+    market_cases: z.array(MarketCase),
   })
   .passthrough();
 const SimDay = z
@@ -564,8 +567,6 @@ export const schemas = {
   DailyBar,
   portfolio_value,
   TradePlan,
-  InvestorProfile,
-  ProfileRequest,
   BuyRequest,
   TradeRow,
   status,
@@ -588,6 +589,7 @@ export const schemas = {
   TrackRecordSummary,
   SignalStats,
   CalibrationBucket,
+  MarketCase,
   ModelInfo,
   SimDay,
   Simulation,

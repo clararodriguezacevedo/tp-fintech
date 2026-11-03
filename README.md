@@ -186,21 +186,15 @@ umbrales vigentes.
 | Brecha del CEDEAR | si el CEDEAR está caro o barato frente a la acción en EE.UU., descontando el dólar | 10% |
 | Riesgo país y dólar | cambio de 5 días del riesgo país (bonos y bancos; mitad para las demás acciones locales) o del dólar CCL (CEDEARs), comparado con lo normal del último año. Datos de argentinadatos.com | 10% |
 
-**Ya está en el precio**: cada noticia o mercado se descuenta según cuánto se movió el precio en
-su dirección desde que apareció, medido en "días típicos" de esa acción; después de 1,5 días
-típicos deja de contar. Una noticia publicada durante la rueda se compara contra el cierre del
-día anterior, así no queda "sin descontar" un movimiento que ya pasó ese mismo día.
-
 **Lo que no cuenta, o cuenta menos**: las notas de cierre ("así cerró el mercado", "las acciones
 subieron hasta 6%") se ignoran porque solo cuentan lo que ya pasó. Una noticia etiquetada para un
-ticker, para todo el Merval o para otra empresa del sector cuenta una sola vez, con el peso de la
-etiqueta más directa. Las noticias generales del Merval o de los bonos cuentan 50%; las de otra
+ticker y para todo el Merval cuenta por las dos. Las noticias generales del Merval o de los bonos cuentan 50%; las de otra
 empresa del mismo sector (bancos, petróleo y gas, electricidad, materiales, tecnología) cuentan
 30%, y todas juntas suman como máximo 0,25. Los mercados que resuelven en menos de 3 días no
 cuentan, y en los que tienen fecha límite ("llega a $ 115 en noviembre") se descuenta lo que cae su
 probabilidad solo porque pasa el tiempo y todos los de un ticker suman como máximo 1, porque
-muchos son apuestas sobre lo mismo. Los adelantos de algo cuyo resultado no se conoce
-("se vienen los balances", "qué mirar esta semana") tampoco cuentan. Los mercados de predicción que resuelven en más de 6 meses pesan menos.
+muchos son apuestas sobre lo mismo. De los adelantos ("se vienen los balances", "qué mirar esta
+semana") Gemini extrae la expectativa que transmiten, si se inclinan para un lado. Los mercados de predicción que resuelven en más de 6 meses pesan menos.
 
 **Concentración**: si ya tenés más de 60% de la cartera en el mismo riesgo (riesgo argentino:
 acciones locales, bonos y VIST; o activos del exterior), las compras de ese grupo pierden 2 puntos
@@ -273,9 +267,8 @@ sale como "comprar" (queda en mantener, con la razón) y comprarlo igual pide un
 explícita, también en la API (`accept_out_of_profile`). El perfil también fija el riesgo por compra
 (0,5%, 1% o 1,5% de la cartera) y el máximo por activo (5%, 10% o 15%).
 
-El perfil sale del test del inversor de IOL (la API nueva no lo expone, se lee de la anterior,
-`/api/v2/datos-perfil`, una vez por día); mientras IOL no lo tenga se usa el que el usuario elige
-en `/perfil`, y sin ninguno, conservador.
+El perfil se define en el código (`INVESTOR_PROFILE` en `suitability.py`): hoy, moderado. IOL no lo
+expone en su API y la app tiene un solo usuario.
 
 ### Alertas por mail
 
@@ -291,8 +284,7 @@ Resend solo entrega al mail con el que se creó la cuenta.
 cd backend && uv run pytest
 ```
 
-Prueban las partes puras del cálculo: el filtro de notas de cierre, "ya está en el precio",
-contar una vez, el contagio por sector, la concentración, los umbrales, la señal de riesgo país y
+Prueban las partes puras del cálculo: el filtro de notas de cierre, contar una vez, el contagio por sector, la concentración, los umbrales, la señal de riesgo país y
 dólar, el tamaño de la compra y la calificación con dividendos y cupones.
 
 ### Validación

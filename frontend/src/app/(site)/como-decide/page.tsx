@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { DecisionFlow } from "@/components/decision-flow";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Card, Info, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type ModelInfo, type Recommendation } from "@/lib/api/client";
@@ -12,12 +13,18 @@ export const metadata = { title: "Cómo decide | El Parqué" };
 const pctOf = (x: number) => `${Math.round(x * 100)}%`;
 const num = (x: number) => x.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
-/** A topic: its title, and the explanation in the "i" next to it. */
-function Block({ title, children, up = false }: { title: string; children: ReactNode; up?: boolean }) {
+/** A topic: its title, which opens the explanation below it. */
+function Block({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <li className="py-3 font-semibold">
-      {title}
-      <Info place={up ? "left-0 bottom-full mb-1" : undefined}><span className="block space-y-2 [&_li]:block [&_p]:block [&_ul]:block">{children}</span></Info>
+    <li>
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center gap-2 py-3 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden className="text-xs text-text-3 transition-transform group-open:rotate-90">▶</span>
+          <span className="flex-1">{title}</span>
+          {aside}
+        </summary>
+        <div className="max-w-3xl space-y-2 pb-3 pl-5 text-text-2">{children}</div>
+      </details>
     </li>
   );
 }
@@ -41,56 +48,55 @@ function Example({ r, m, name }: { r: Recommendation; m: ModelInfo; name: string
     <Card>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href={`/ticker/${r.ticker}`} className="text-lg font-semibold hover:underline">{r.ticker}</Link>
+          <p className="text-lg font-semibold">
+            <Link href={`/ticker/${r.ticker}`} className="hover:underline">{r.ticker}</Link>
+            <Info>
+              {r.held
+                ? `Como la tenés, solo puede salir vender o mantener. Vender pide un puntaje de ${score(threshold)} o menos, y este dio ${score(r.score)}.`
+                : `Como no la tenés, solo puede salir comprar o mantener. Comprar pide ${score(threshold)} o más, y este dio ${score(r.score)}.`}
+              {" "}Las noticias y los mercados se suman primero y después se achican con una curva (tanh) para que diez noticias no valgan diez veces una. Los números están redondeados.
+            </Info>
+          </p>
           <p className="text-sm text-text-2">{name}{r.held ? ", la tenés en cartera" : ""}</p>
         </div>
         <ActionBadge action={r.action} />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[420px] text-left">
-          <thead className="text-sm text-text-3">
-            <tr>
+          <thead className="text-sm text-text-2">
+            <tr className="border-b border-border">
               <th className="py-2 font-normal">Señal</th>
               <th className="py-2 text-right font-normal">Valor</th>
               <th className="py-2 text-right font-normal">Peso</th>
               <th className="py-2 text-right font-normal">Aporte</th>
             </tr>
           </thead>
-          <tbody className="num divide-y divide-border border-y border-border">
+          <tbody className="divide-y divide-border">
             {rows.map((x, i) => (
               <tr key={x.label}>
-                <td className="py-2 font-sans">{x.label}</td>
-                <td className="py-2 text-right">{score(x.value)}</td>
-                <td className="py-2 text-right">{pctOf(x.weight)}</td>
-                <td className="py-2 text-right">{score(parts[i])}</td>
+                <td className="py-2">{x.label}</td>
+                <td className="num py-2 text-right">{score(x.value)}</td>
+                <td className="num py-2 text-right">{pctOf(x.weight)}</td>
+                <td className="num py-2 text-right">{score(parts[i])}</td>
               </tr>
             ))}
             {concentration !== 0 && (
               <tr>
-                <td className="py-2 font-sans">Concentración de tu cartera</td>
-                <td className="py-2 text-right" />
-                <td className="py-2 text-right" />
-                <td className="py-2 text-right">{score(parts[rows.length])}</td>
+                <td className="py-2">Concentración de tu cartera</td>
+                <td className="py-2" />
+                <td className="py-2" />
+                <td className="num py-2 text-right">{score(parts[rows.length])}</td>
               </tr>
             )}
           </tbody>
           <tfoot>
-            <tr className="font-semibold">
+            <tr className="border-t border-border font-semibold">
               <td className="py-2">Puntaje</td>
               <td colSpan={3} className="num py-2 text-right">{score(r.score)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
-      <p className="mt-4 text-sm font-semibold">
-        Por eso dice {r.action === "buy" ? "comprar" : r.action === "sell" ? "vender" : "mantener"}
-        <Info>
-        {r.held
-          ? `Como la tenés, solo puede salir vender o mantener. Vender pide un puntaje de ${score(threshold)} o menos, y este dio ${score(r.score)}: ${r.action === "sell" ? "por eso dice vender" : "por eso dice mantener"}.`
-          : `Como no la tenés, solo puede salir comprar o mantener. Comprar pide ${score(threshold)} o más, y este dio ${score(r.score)}: ${r.action === "buy" ? "por eso dice comprar" : "por eso dice mantener"}.`}
-        {" "}Las noticias y los mercados se suman primero y después se achican con una curva (tanh) para que diez noticias no valgan diez veces una. Los números están redondeados.
-        </Info>
-      </p>
     </Card>
   );
 }
@@ -129,12 +135,9 @@ export default async function HowItDecides() {
             { name: "Brecha del CEDEAR", weight: w.gap, text: "Si el CEDEAR está más caro o más barato de lo habitual comparado con la acción en Estados Unidos, una vez descontado el dólar. Esa diferencia suele corregirse." },
             { name: "Riesgo país y dólar", weight: w.macro, text: "Para bonos y bancos, cuánto se movió el riesgo país en la última semana (la mitad para las demás acciones locales). Para los CEDEARs, cuánto se movió el dólar CCL, porque cotizan en pesos." },
           ].map((x) => (
-            <li key={x.name} className="flex items-center justify-between gap-6 py-3">
-              <div>
-                <p className="font-semibold">{x.name}<Info>{x.text}</Info></p>
-              </div>
-              <p className="num font-semibold">{pctOf(x.weight)}</p>
-            </li>
+            <Block key={x.name} title={x.name} aside={<span className="num">{pctOf(x.weight)}</span>}>
+              <p>{x.text}</p>
+            </Block>
           ))}
         </ul>
       </section>
@@ -142,21 +145,11 @@ export default async function HowItDecides() {
       <section>
       <SectionTitle>Los detalles</SectionTitle>
       <ul className="divide-y divide-border border-y border-border">
-      <Block title="Ya está en el precio">
-        <p>
-          Una noticia que salió ayer puede haber movido el precio ya. Por eso cada noticia se descuenta según cuánto se movió el precio en su dirección desde que apareció, medido en días típicos de esa acción (lo que suele moverse en un día). Después de {num(m.priced_in_full)} días típicos deja de contar.
-        </p>
-        <p>
-          Una noticia publicada durante la rueda se compara contra el cierre del día anterior, porque puede estar contando justo lo que pasó ese día.
-        </p>
-      </Block>
-
       <Block title="Lo que no cuenta, o cuenta menos">
-        <p>Las notas de cierre (&quot;así cerró el mercado&quot;, &quot;las acciones subieron hasta 6%&quot;) no cuentan: solo describen lo que ya pasó. Los adelantos (&quot;se vienen los balances de las tecnológicas&quot;, &quot;qué mirar esta semana&quot;) tampoco: anuncian algo que todavía no se sabe para qué lado sale.</p>
-        <p>La misma historia publicada por varios medios cuenta una vez. Una noticia etiquetada para una acción y también para todo el Merval cuenta una vez.</p>
-        <p>
-          Una noticia general del Merval o de los bonos cuenta {pctOf(m.broad_weight)} para cada acción o bono. Una noticia sobre otra empresa del mismo sector (por ejemplo, Galicia para los demás bancos) cuenta {pctOf(m.sector_weight)}, y todas las del sector juntas suman como máximo {num(m.sector_cap)}, para que muchas noticias chicas de otras empresas no alcancen para recomendar comprar.
-        </p>
+        <p>Las notas de cierre (&quot;así cerró el mercado&quot;, &quot;las acciones subieron hasta 6%&quot;) no cuentan: solo describen lo que ya pasó.</p>
+        <p>Los adelantos (&quot;se vienen los balances de las tecnológicas&quot;, &quot;qué mirar esta semana&quot;) sí cuentan: se extrae la expectativa que transmiten, con menos fuerza porque todavía no se sabe el resultado.</p>
+        <p>La misma historia publicada por varios medios cuenta una vez.</p>
+        <p>Las noticias generales del mercado y las de otras empresas del sector cuentan menos que las de la propia empresa.</p>
         <p>Los mercados de predicción que se resuelven en más de 6 meses pesan menos: dicen poco sobre mañana.</p>
         <p>Los dividendos y los cupones no cuentan como señal: el día que se pagan el precio baja, pero no es una pérdida. Se avisan en cada recomendación y se descuentan al medir los resultados.</p>
       </Block>
@@ -172,14 +165,15 @@ export default async function HowItDecides() {
 
       <Block title="Tu perfil de inversor">
         <p>
-          Cada activo tiene un riesgo bajo, medio o alto según qué tipo de activo es y cuánto se mueve su precio. Tu perfil ({m.profile})
-          define hasta qué riesgo te recomendamos: conservador hasta bajo, moderado hasta medio, arriesgado todo. Lo que está por encima
-          nunca sale como &quot;comprar&quot;, aunque tenga buen puntaje, por las reglas de la CNV. Tu perfil también define cuánto arriesga
-          cada compra y el máximo por activo. Lo ves y lo cambiás en Perfil.
+          Tu perfil es {m.profile}: te recomendamos hasta riesgo medio. Lo que está por encima nunca sale como &quot;comprar&quot;, aunque tenga
+          buen puntaje, por las reglas de la CNV. También define cuánto arriesga cada compra ({pctOf(m.risk_per_trade)} de la cartera si toca el stop loss) y el máximo por activo ({pctOf(m.max_position)}).
+        </p>
+        <p>
+          Riesgo bajo: bonos y obligaciones negociables que se mueven hasta {pctOf(m.bond_low_vol)} al año. Medio: el resto de los bonos, y acciones, CEDEARs y ETFs que se mueven hasta {pctOf(m.equity_mid_vol)} al año. Alto: los que se mueven más, y cualquier activo sin historial suficiente.
         </p>
       </Block>
 
-      <Block title="Con qué plata" up>
+      <Block title="Con qué plata">
         <p>
           Las recomendaciones se convierten en un plan para toda tu cartera. Primero se vende lo que dice vender. Después cada compra,
           de la mejor a la peor, se paga con tu plata disponible. Si no alcanza, el plan propone rotar: vender parte de algo que tenés
@@ -188,7 +182,7 @@ export default async function HowItDecides() {
         </p>
       </Block>
 
-      <Block title="Cuánto comprar" up>
+      <Block title="Cuánto comprar">
         <p>La cantidad sugerida es la menor de estas:</p>
         <ul className="list-disc space-y-1 pl-5">
           <li>la que, si toca el stop loss, te hace perder {pctOf(m.risk_per_trade)} de la cartera (cuanto más se mueve el precio, menos se compra);</li>
@@ -200,7 +194,7 @@ export default async function HowItDecides() {
         <p>El stop loss se pone a dos días típicos debajo del precio y el take profit al doble de esa distancia arriba.</p>
       </Block>
 
-      <Block title="Cómo se mide si acertó" up>
+      <Block title="Cómo se mide si acertó">
         <p>
           Una recomendación hecha a la noche recién se puede seguir a la apertura del día siguiente, así que se mide desde esa apertura hasta el cierre. Comprar acierta si sube, vender si baja, y mantener algo que tenés acierta si no cae más de 1,5%.
         </p>
@@ -209,6 +203,11 @@ export default async function HowItDecides() {
         </p>
       </Block>
       </ul>
+      </section>
+
+      <section>
+        <SectionTitle>El flujo completo</SectionTitle>
+        <DecisionFlow m={m} />
       </section>
     </div>
   );

@@ -185,19 +185,15 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
         </li>
       ))}
       {items.slice(0, limit).map((e) => {
-        // Fully priced-in items end up at 0; fall back to the tagged direction for the arrow.
         const up = e.contribution !== 0 ? e.contribution > 0 : e.direction === "up";
-        const priced = e.priced_in >= 0.3 && e.move_since != null;
         return (
           <li key={`${e.item_id}-${e.broad}`} className="flex gap-3">
-            <Marker up={up} faded={e.priced_in >= 0.95} />
+            <Marker up={up} />
             <div className="min-w-0">
               <p className="text-text">
                 {evidenceText(e)}
-                {(priced || e.via) && (
+                {e.via && (
                   <Info>
-                    {priced && `${e.priced_in >= 0.95 ? "Ya está reflejado en el precio" : "En parte ya está reflejado en el precio"}: ${(e.move_since ?? 0) >= 0 ? "subió" : "bajó"} ${pctText(e.move_since ?? 0)} desde ${e.kind === "news" ? "la noticia" : "ayer"}.`}
-                    {priced && e.via && " "}
                     {e.via && `Sobre ${e.via}, del mismo sector.`}
                   </Info>
                 )}

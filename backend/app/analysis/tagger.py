@@ -38,9 +38,11 @@ celebrity and weather items fall here.
 Also return an empty ticker list for market wrap-ups that only report how prices already moved
 ("así cerró el mercado", "las acciones subieron hasta 6%", "stocks fell on Friday"): they carry
 no new information, the move is already in the price.
-The same for previews of an event whose outcome is unknown ("Big Tech's earnings are on deck",
-"what to watch this week", "se esperan los balances"): an upcoming report is not good or bad
-news until its numbers are out. Tag the result once it is reported, not the wait for it.
+For previews of an upcoming event ("Big Tech's earnings are on deck", "what to watch this week",
+"se esperan los balances"), extract the sentiment and the expectation they convey: if the text
+leans one way (results expected to beat or miss, analysts optimistic or worried), tag that
+direction, with low or medium strength since the outcome isn't known yet. If it only announces
+the event without leaning either way, return an empty ticker list.
 
 Write the summary in Spanish, one or two plain sentences an average investor understands."""
 
@@ -58,6 +60,11 @@ def _system(holdings: dict[str, str], universe: dict[str, str] | None = None) ->
     else:
         listed = ", ".join(sorted(set(ALL_TICKERS) | set(holdings)))
     return SYSTEM.format(tickers=listed, holdings=extra)
+
+
+def prompt_for_display() -> str:
+    """The instructions Gemini gets, to show them on the site as they are."""
+    return SYSTEM.format(tickers="[the assets IOL offers, each with its name]", holdings="")
 
 
 class TagInput(BaseModel):

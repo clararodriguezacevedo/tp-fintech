@@ -1097,118 +1097,6 @@
         }
       }
     },
-    "/profile": {
-      "get": {
-        "summary": "Investor Profile",
-        "description": "The user's investor profile: IOL's test result when there is one, else the declared one.",
-        "operationId": "investor_profile",
-        "parameters": [
-          {
-            "name": "refresh",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Refresh"
-            }
-          },
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvestorProfile"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "summary": "Set Investor Profile",
-        "description": "Declare the profile in the app; used while IOL has none.",
-        "operationId": "set_investor_profile",
-        "parameters": [
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvestorProfile"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/trades": {
       "post": {
         "summary": "Buy",
@@ -2818,61 +2706,6 @@
         ],
         "title": "Impact"
       },
-      "InvestorProfile": {
-        "properties": {
-          "profile": {
-            "type": "string",
-            "enum": [
-              "conservador",
-              "moderado",
-              "arriesgado"
-            ],
-            "title": "Profile"
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "iol",
-              "declared",
-              "default"
-            ],
-            "title": "Source"
-          },
-          "iol_test_pending": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iol Test Pending"
-          },
-          "declared": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "conservador",
-                  "moderado",
-                  "arriesgado"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Declared"
-          }
-        },
-        "type": "object",
-        "required": [
-          "profile",
-          "source"
-        ],
-        "title": "InvestorProfile"
-      },
       "JobResult": {
         "properties": {
           "failed": {
@@ -2893,6 +2726,35 @@
           "failed"
         ],
         "title": "JobResult"
+      },
+      "MarketCase": {
+        "properties": {
+          "yes_is_good": {
+            "type": "boolean",
+            "title": "Yes Is Good"
+          },
+          "change": {
+            "type": "number",
+            "title": "Change"
+          },
+          "deadline": {
+            "type": "boolean",
+            "title": "Deadline"
+          },
+          "contribution": {
+            "type": "number",
+            "title": "Contribution"
+          }
+        },
+        "type": "object",
+        "required": [
+          "yes_is_good",
+          "change",
+          "deadline",
+          "contribution"
+        ],
+        "title": "MarketCase",
+        "description": "What the scoring gives a market's move, for a high-strength tag."
       },
       "MarketOut": {
         "properties": {
@@ -3113,10 +2975,6 @@
             "type": "number",
             "title": "News Max Age Hours"
           },
-          "priced_in_full": {
-            "type": "number",
-            "title": "Priced In Full"
-          },
           "concentration_limit": {
             "type": "number",
             "title": "Concentration Limit"
@@ -3146,27 +3004,6 @@
             ],
             "title": "Profile"
           },
-          "profile_max_level": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "Profile Max Level"
-          },
-          "profile_risk_per_trade": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Profile Risk Per Trade"
-          },
-          "profile_max_position": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Profile Max Position"
-          },
           "bond_low_vol": {
             "type": "number",
             "title": "Bond Low Vol"
@@ -3182,6 +3019,60 @@
           "calibration_min_cases": {
             "type": "integer",
             "title": "Calibration Min Cases"
+          },
+          "tagger_model": {
+            "type": "string",
+            "title": "Tagger Model"
+          },
+          "tagger_prompt": {
+            "type": "string",
+            "title": "Tagger Prompt"
+          },
+          "tag_batch": {
+            "type": "integer",
+            "title": "Tag Batch"
+          },
+          "strength": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Strength"
+          },
+          "market_move_unit": {
+            "type": "number",
+            "title": "Market Move Unit"
+          },
+          "market_move_cap": {
+            "type": "number",
+            "title": "Market Move Cap"
+          },
+          "markets_cap": {
+            "type": "number",
+            "title": "Markets Cap"
+          },
+          "min_market_days": {
+            "type": "integer",
+            "title": "Min Market Days"
+          },
+          "far_market_days": {
+            "type": "integer",
+            "title": "Far Market Days"
+          },
+          "far_market_min_weight": {
+            "type": "number",
+            "title": "Far Market Min Weight"
+          },
+          "gap_unit": {
+            "type": "number",
+            "title": "Gap Unit"
+          },
+          "market_cases": {
+            "items": {
+              "$ref": "#/components/schemas/MarketCase"
+            },
+            "type": "array",
+            "title": "Market Cases"
           }
         },
         "type": "object",
@@ -3195,20 +3086,28 @@
           "sectors",
           "news_half_life_hours",
           "news_max_age_hours",
-          "priced_in_full",
           "concentration_limit",
           "concentration_penalty",
           "concentration_max",
           "risk_per_trade",
           "max_position",
           "profile",
-          "profile_max_level",
-          "profile_risk_per_trade",
-          "profile_max_position",
           "bond_low_vol",
           "equity_mid_vol",
           "max_volume_share",
-          "calibration_min_cases"
+          "calibration_min_cases",
+          "tagger_model",
+          "tagger_prompt",
+          "tag_batch",
+          "strength",
+          "market_move_unit",
+          "market_move_cap",
+          "markets_cap",
+          "min_market_days",
+          "far_market_days",
+          "far_market_min_weight",
+          "gap_unit",
+          "market_cases"
         ],
         "title": "ModelInfo",
         "description": "The scoring model's constants, so the \"Cómo decide\" page always matches the code."
@@ -3655,24 +3554,6 @@
           "p"
         ],
         "title": "ProbabilityPoint"
-      },
-      "ProfileRequest": {
-        "properties": {
-          "profile": {
-            "type": "string",
-            "enum": [
-              "conservador",
-              "moderado",
-              "arriesgado"
-            ],
-            "title": "Profile"
-          }
-        },
-        "type": "object",
-        "required": [
-          "profile"
-        ],
-        "title": "ProfileRequest"
       },
       "Quote": {
         "properties": {

@@ -6,9 +6,6 @@ Per ticker:
   markets  sum of direction * strength * (24h probability move / 10 points), for every tagged
            market; a market that didn't move contributes nothing, however likely it is.
            Markets of the same event ("ceasefire through Oct 22 / 24 / 31") count once.
-  priced in  each news item or market is discounted by how far the price already moved its
-           way since it appeared, measured in the ticker's typical daily moves: after
-           PRICED_IN_FULL typical days in the expected direction it no longer counts.
   trend    tanh of how many typical daily moves (ATR) the price sits from its 20-day average
   context  the trend of the whole market: Merval leaders for stocks, sovereign bonds for
            bonds, the S&P 500 (SPY in New York) for CEDEARs
@@ -33,10 +30,10 @@ what counts is the 24h move minus what the day passing alone explains (time_deca
 bets on the same thing (oil at $105, $115, $130).
 
 Market wrap-ups ("así cerró el mercado", "las acciones subieron hasta 6%") are ignored: they only
-report moves that already happened. Previews of what is coming ("Big Tech's earnings are on
-deck", "qué mirar esta semana") are ignored too: they announce an event, not which way it goes.
+report moves that already happened. Previews of what is coming do count: Gemini tags the
+expectation they convey, when they lean one way.
 News spread from sector peers adds up to at most SECTOR_CAP, however many items there are. A news item tagged both for a ticker and for MERVAL/BONOS
-counts once. Prediction markets resolving more than 6 months out weigh less.
+counts for both. Prediction markets resolving more than 6 months out weigh less.
 
 Investor profile (CNV): an asset whose risk level is above the user's profile (see
 app.analysis.suitability) is never recommended to buy; its score is kept, its action is keep.
@@ -55,19 +52,20 @@ import statistics
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from pydantic import BaseModel
 
 from app import account, prices, universe
 from app.analysis import market_hours, risk, suitability
 from app.assets import asset_types
-from app.profile import get_profile
 from app.sources import corporate_events, macro
 from app.brokers.iol import get_iol
 from app.db import get_db, rows_as
 from app.models.db import Action, Evidence, MarketRow, NewsRow, SignalBreakdown, TickerImpactRow
 from app.models.iol import DailyBar
 from app.portfolio import BOND_TYPES, EQUITY_TYPES, Holding, get_holdings
+from app.schemas import MarketCase
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +91,6 @@ SECTORS = {
 SECTOR_OF = {t: name for name, members in SECTORS.items() for t in members}
 BANKS = set(SECTORS["bancos"])
 BUY_THRESHOLD = 0.3
-PRICED_IN_FULL = 1.5  # typical daily moves in the expected direction = fully priced in
 SAME_STORY = 0.4  # title word overlap (Jaccard) above which two news items are one story
 GAP_UNIT = 0.01  # a 1% premium versus usual counts as a strong gap signal
 MIN_MARKET_DAYS = 3  # markets resolving sooner move by the clock, not by news
@@ -154,21 +151,8 @@ def is_market_recap(title: str) -> bool:
     return bool(_RECAP.search(title))
 
 
-# Previews announce an event (earnings, a data release) without saying which way it will go.
-_PREVIEW = re.compile(
-    r"earnings (are |is )?on (the )?deck|(what|things|stocks) to watch|earnings preview|ahead of (its |their |the )?earnings"
-    r"|week ahead|(qu[eé]|lo que hay que) mirar|antes de (sus |los )?(balances|resultados)|semana de balances"
-    r"|agenda (de la semana|financiera|del mercado)",
-    re.IGNORECASE,
-)
-
-
-def is_preview(title: str) -> bool:
-    return bool(_PREVIEW.search(title))
-
-
 def _news_evidence(imp: TickerImpactRow, item: NewsRow, now: datetime) -> Evidence | None:
-    if is_market_recap(item.title) or is_preview(item.title):
+    if is_market_recap(item.title):
         return None
     published = item.published_at or item.created_at
     age_h = (now - published).total_seconds() / 3600
@@ -241,6 +225,28 @@ def _market_evidence(imp: TickerImpactRow, item: MarketRow, now: datetime) -> Ev
     )
 
 
+def market_cases() -> list[MarketCase]:
+    """What the scoring does with typical moves of a market, by running it, to explain it on the
+    site: YES can be good or bad for the ticker, and its probability can rise or fall."""
+    now = datetime.now(timezone.utc)
+    deadline = now + timedelta(days=5)
+    rows = [
+        ("up", 0.10, 0.50, None), ("up", -0.10, 0.50, None), ("down", 0.10, 0.50, None), ("down", -0.10, 0.50, None),
+        ("down", -0.06, 0.20, deadline), ("down", -0.03, 0.20, deadline),
+    ]
+    out = []
+    for direction, change, probability, end_date in rows:
+        title = "Oil hits $115 by November 30?" if end_date else "Will it happen?"
+        item = SimpleNamespace(id="x", title=title, url=None, source="polymarket", change_24h=change, probability=probability, end_date=end_date)
+        tag = SimpleNamespace(direction=direction, strength="high", reason="")
+        ev = _market_evidence(tag, item, now)  # type: ignore[arg-type]
+        out.append(MarketCase(
+            yes_is_good=direction == "up", change=change, deadline=end_date is not None,
+            contribution=ev.contribution if ev else 0.0,
+        ))
+    return out
+
+
 # Same story from several outlets
 
 _STOP = set(
@@ -308,13 +314,6 @@ def collect_signals(now: datetime | None = None) -> dict[str, TickerSignals]:
 
 # Prices
 
-def _atr_pct(bars: list[DailyBar], price: float) -> float | None:
-    if len(bars) < 15 or price <= 0:
-        return None
-    atr = risk.atr([b.high for b in bars], [b.low for b in bars], [b.close for b in bars])
-    return atr / price if atr > 0 else None
-
-
 def trend_score(bars: list[DailyBar], last: float) -> float:
     """tanh(z / 2) where z is how many ATRs `last` sits from the 20-day average close."""
     bars = [b for b in bars if b.close > 0]
@@ -325,41 +324,6 @@ def trend_score(bars: list[DailyBar], last: float) -> float:
     if atr <= 0:
         return 0.0
     return math.tanh((last - sum(closes[-20:]) / 20) / atr / 2)
-
-
-def _close_before(bars: list[DailyBar], when: datetime) -> float | None:
-    """Reference price for "already in the price": the close before the session `when` falls in.
-
-    A note published during or after a trading day (often an after-close wrap-up) may describe
-    that day's whole move, so the reference is the previous day's close, not that day's. Before
-    the open, or on a day without trading, it is simply the last close.
-    """
-    local = when.astimezone(market_hours.ART)
-    traded_today = local.weekday() < 5 and local.time() >= market_hours.OPEN
-    done = [b for b in bars if b.day < local.date() or (b.day == local.date() and not traded_today)]
-    return done[-1].close if done else None
-
-
-def discount_priced_in(evidence: list[Evidence], bars: list[DailyBar], price: float) -> list[Evidence]:
-    """Shrink each item by how far the price already moved its way since it appeared."""
-    atr_pct = _atr_pct(bars, price)
-    if atr_pct is None:
-        return evidence
-    out = []
-    for e in evidence:
-        ref = _close_before(bars, e.since) if e.since else None
-        if not ref:
-            out.append(e)
-            continue
-        move = price / ref - 1
-        same_way = (move / atr_pct) * (1 if e.contribution >= 0 else -1)
-        priced = max(0.0, min(1.0, same_way / PRICED_IN_FULL))
-        out.append(e.model_copy(update={
-            "contribution": round(e.contribution * (1 - priced), 4),
-            "move_since": round(move, 4),
-            "priced_in": round(priced, 2),
-        }))
-    return out
 
 
 def market_context() -> dict[str, float]:
@@ -514,14 +478,13 @@ def cap_markets(evidence: list[Evidence]) -> list[Evidence]:
 
 
 def _combine(i: _Inputs, gap: float) -> Recommendation:
-    # A news item tagged for this ticker, for the whole market or for a peer counts once,
-    # at the weight of the most direct tag.
-    seen = {e.item_id for e in i.own}
+    # A news item tagged for this ticker and for the whole market counts for both. One about a
+    # peer counts only if it wasn't tagged here already.
     broad = [
         e.model_copy(update={"contribution": round(e.contribution * BROAD_WEIGHT, 4), "broad": True})
-        for e in i.broad if e.item_id not in seen
+        for e in i.broad
     ]
-    seen |= {e.item_id for e in broad}
+    seen = {e.item_id for e in i.own} | {e.item_id for e in broad}
     sector = [e for e in i.sector if e.item_id not in seen]
     # Each peer item at SECTOR_WEIGHT, and all of them together at most SECTOR_CAP either way.
     total = abs(sum(e.contribution for e in sector)) * SECTOR_WEIGHT
@@ -637,11 +600,7 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
         g = risk_group(h.ticker, stocks, bonds)
         group_shares[g] = group_shares.get(g, 0.0) + h.value / total_value
 
-    try:
-        profile = get_profile().profile
-    except Exception:
-        log.exception("no investor profile; scoring as conservador")
-        profile = "conservador"
+    profile = suitability.INVESTOR_PROFILE
     try:
         kinds = asset_types(tickers)
     except Exception:
@@ -692,10 +651,6 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
         own = signals[ticker].evidence if ticker in signals else []
         broad_ev = broad.evidence if broad else []
         peers = sector_evidence(ticker, signals)
-        if price:
-            own = discount_priced_in(own, bars, price)
-            broad_ev = discount_priced_in(broad_ev, bars, price)
-            peers = discount_priced_in(peers, bars, price)
         macro_value, macro_source = macro_for(ticker, group, macro_signals)
         ms = macro_signals.get(macro_source) if macro_source else None
         change_3m, from_high = three_month_context(bars, price) if price else (None, None)
