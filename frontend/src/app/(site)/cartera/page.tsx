@@ -5,7 +5,7 @@ import { LineChart } from "@/components/charts";
 import { ExpandableRow } from "@/components/expandable-row";
 import { PositionDetail, loadOperations } from "@/components/position-detail";
 import { ActionBadge } from "@/components/signals";
-import { ApiFailure, attempt, Delta, Info, Notice, PageTitle, SectionTitle } from "@/components/ui";
+import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term, WarningMark } from "@/components/ui";
 import { Amount, ByMode, UnitToggle } from "@/components/units";
 import { api, type Holding, type Recommendation } from "@/lib/api/client";
 import { integer, money, pctPoints, roundToTotal } from "@/lib/format";
@@ -81,22 +81,25 @@ export default async function PortfolioPage() {
   const pair = (h: Holding, x: number) => (h.currency === "USD" ? { ars: p.mep ? x * p.mep : null, usd: x } : { ars: x, usd: inUsd(x) });
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-14">
       <section>
         <PageTitle
-          info={<>
-            En pesos, con precios de IOL de las {time(portfolio.data.captured_at)}.
-            {dollars.length > 0 && ` Además tenés ${dollars.length} posición${dollars.length > 1 ? "es" : ""} en dólares, que no se suman al total.`}
-          </>}
+          aside={
+            <span className="text-text-2">
+              En pesos, con precios de IOL de las {time(portfolio.data.captured_at)}.
+              {dollars.length > 0 && ` Además tenés ${dollars.length} posición${dollars.length > 1 ? "es" : ""} en dólares, que no se suman al total.`}
+            </span>
+          }
         >
           Mi cartera
         </PageTitle>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <p className="num text-4xl font-semibold">{money(total)}</p>
+          <p className="num text-3xl font-semibold">{money(total)}</p>
           {usdMep != null && <p className="num text-text-2">≈ {usd(usdMep)} al dólar MEP</p>}
         </div>
-        <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
-          {[
+        <Stats
+          className="mt-6"
+          items={[
             { label: "Hoy", value: <Delta value={today}>{money(Math.abs(today))}</Delta> },
             {
               label: "Ganancia de lo invertido",
@@ -105,50 +108,43 @@ export default async function PortfolioPage() {
             },
             { label: "Invertido", value: money(invested) },
             { label: "Disponible", value: money(total - invested - reserved) },
-          ].map((s) => (
-            <div key={s.label} className="bg-bg px-4 py-3">
-              <dt className="text-sm text-text-2">{s.label}</dt>
-              <dd className="num mt-1 font-semibold">
-                {s.value}
-                {s.note && <span className="ml-2 text-sm font-normal text-text-2">{s.note}</span>}
-              </dd>
-            </div>
-          ))}
-        </dl>
+          ]}
+        />
+        <div className="mt-6">
+          {sells.length > 0 ? (
+            <Notice>
+              Conviene vender{" "}
+              {sells.map((h, i) => (
+                <span key={h.ticker}>
+                  {i > 0 && (i === sells.length - 1 ? " y " : ", ")}
+                  <Link href={`/ticker/${h.ticker}#vender`} className="text-text underline">{h.ticker}</Link>
+                </span>
+              ))}
+              .
+            </Notice>
+          ) : (
+            <p className="text-text-2">No hace falta vender nada hoy.</p>
+          )}
+        </div>
       </section>
-
-      {sells.length > 0 ? (
-        <Notice>
-          Conviene vender{" "}
-          {sells.map((h, i) => (
-            <span key={h.ticker}>
-              {i > 0 && (i === sells.length - 1 ? " y " : ", ")}
-              <Link href={`/ticker/${h.ticker}#vender`} className="font-semibold text-text underline">{h.ticker}</Link>
-            </span>
-          ))}
-          .
-        </Notice>
-      ) : (
-        <Notice>No hace falta vender nada hoy.</Notice>
-      )}
 
       <section>
         <SectionTitle aside={<UnitToggle />}>Posiciones</SectionTitle>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px]">
+          <table className="w-full min-w-[820px] [&_td.num]:whitespace-nowrap">
             <thead>
-              <tr className="border-b border-border text-left text-sm text-text-2">
-                <th className="pb-2 font-normal">Activo</th>
-                <th className="pb-2 text-right font-normal">Precio</th>
-                <th className="pb-2 text-right font-normal">PPC</th>
-                <th className="pb-2 text-right font-normal">Hoy</th>
-                <th className="pb-2 text-right font-normal"><ByMode abs="Valor" pct="% de la cartera" /></th>
-                <th className="pb-2 text-right font-normal">Ganancia</th>
-                <th className="pb-2 text-right font-normal">Recomendación</th>
-                <th className="w-6 pb-2" aria-label="Avisos" />
+              <tr className="border-b border-border text-left text-text-2">
+                <th className="pb-3">Activo</th>
+                <th className="pb-3 text-right">Precio</th>
+                <th className="pb-3 text-right">PPC</th>
+                <th className="pb-3 text-right">Hoy</th>
+                <th className="pb-3 text-right"><ByMode abs="Valor" pct="% de la cartera" /></th>
+                <th className="pb-3 text-right">Ganancia</th>
+                <th className="pb-3 text-right">Recomendación</th>
+                <th className="w-6 pb-3" aria-label="Avisos" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-grid">
               {all.map((h) => {
                 const r = adviceBy.get(h.ticker);
                 const dayAmount = h.value - h.value / (1 + h.day_change_pct / 100);
@@ -161,30 +157,30 @@ export default async function PortfolioPage() {
                     first={
                       <>
                         <Link href={`/ticker/${h.ticker}`} className="font-semibold hover:underline">{h.ticker}</Link>
-                        <p className="text-sm text-text-2">{nameOf(h.ticker, h.description)}, {integer(h.quantity)} u.</p>
+                        <p className="text-text-2">{nameOf(h.ticker, h.description)}, {integer(h.quantity)} u.</p>
                       </>
                     }
                     rest={
                       <>
-                        <td className="num py-3 text-right"><Amount {...pair(h, h.last_price)} /></td>
-                        <td className="num py-3 text-right"><Amount {...pair(h, h.avg_price)} /></td>
-                        <td className="py-3 text-right">
+                        <td className="num py-4 text-right text-text-2"><Amount {...pair(h, h.last_price)} /></td>
+                        <td className="num py-4 text-right text-text-2"><Amount {...pair(h, h.avg_price)} /></td>
+                        <td className="py-4 text-right text-text-2">
                           {h.currency === "ARS" && h.day_change_pct !== 0 && cedears.has(h.ticker) ? (
                             <HoldingSplit dollar={dollar} total={h.day_change_pct / 100}>{hoy}</HoldingSplit>
                           ) : hoy}
                         </td>
-                        <td className="num py-3 text-right">
+                        <td className="num py-4 text-right">
                           <ByMode abs={<Amount {...pair(h, h.value)} />} pct={h.currency === "ARS" && total ? `${shareOf.get(h.ticker)}%` : "-"} />
                         </td>
-                        <td className="py-3 text-right">
+                        <td className="py-4 text-right">
                           <Delta value={h.gain_amount}><ByMode abs={<Amount {...pair(h, Math.abs(h.gain_amount))} />} pct={pctPoints(h.gain_pct)} /></Delta>
                         </td>
-                        <td className="py-3 text-right">
-                          {r ? <ActionBadge action={r.action} /> : <span className="text-text-3">-</span>}
+                        <td className="py-4 text-right">
+                          {r ? <ActionBadge action={r.action} /> : <span className="text-text-2">-</span>}
                         </td>
                         {/* Its own column, so the badges stay lined up with or without it. */}
-                        <td className="py-3 text-right">
-                          {r?.signal_breakdown.out_of_profile && <Info warning place="right-0 top-full mt-1">Fuera de tu perfil</Info>}
+                        <td className="py-4 text-right">
+                          {r?.signal_breakdown.out_of_profile && <WarningMark place="right-0 top-full mt-1">Fuera de tu perfil</WarningMark>}
                         </td>
                       </>
                     }
@@ -193,36 +189,36 @@ export default async function PortfolioPage() {
               })}
               {cashRows.map((c) => (
                 <tr key={c.key}>
-                  <td className="py-3 pl-7">
-                    <p className="font-semibold">{c.name}{c.note && <Info place="left-full top-1/2 ml-2 -translate-y-1/2">{c.note}</Info>}</p>
+                  <td className="py-4 pl-7">
+                    <p className="text-text-2"><Term info={c.note} place="left-full top-1/2 ml-2 -translate-y-1/2">{c.name}</Term></p>
                   </td>
-                  <td className="py-3" />
-                  <td className="py-3" />
-                  <td className="py-3" />
-                  <td className="num py-3 text-right"><ByMode abs={<Amount ars={c.value} usd={inUsd(c.value)} />} pct={`${shareOf.get(`$${c.key}`)}%`} /></td>
-                  <td className="py-3" />
-                  <td className="py-3" />
-                  <td className="py-3" />
+                  <td className="py-4" />
+                  <td className="py-4" />
+                  <td className="py-4" />
+                  <td className="num py-4 text-right text-text-2"><ByMode abs={<Amount ars={c.value} usd={inUsd(c.value)} />} pct={`${shareOf.get(`$${c.key}`)}%`} /></td>
+                  <td className="py-4" />
+                  <td className="py-4" />
+                  <td className="py-4" />
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="border-t border-border font-semibold">
-                <td className="py-3 pl-7">Total</td>
-                <td className="py-3" />
-                <td className="py-3" />
-                <td className="py-3" />
-                <td className="num py-3 text-right"><ByMode abs={<Amount ars={total} usd={inUsd(total)} />} pct="100%" /></td>
-                <td className="py-3 text-right">
+                <td className="py-4 pl-7">Total</td>
+                <td className="py-4" />
+                <td className="py-4" />
+                <td className="py-4" />
+                <td className="num py-4 text-right"><ByMode abs={<Amount ars={total} usd={inUsd(total)} />} pct="100%" /></td>
+                <td className="py-4 text-right">
                   <Delta value={gain}><ByMode abs={<Amount ars={Math.abs(gain)} usd={inUsd(Math.abs(gain))} />} pct={pctPoints(cost ? (gain / cost) * 100 : 0)} /></Delta>
                 </td>
-                <td className="py-3" />
-                <td className="py-3" />
+                <td className="py-4" />
+                <td className="py-4" />
               </tr>
             </tfoot>
           </table>
         </div>
-        {warning && <p className="mt-3 text-sm text-text-2">{warning}</p>}
+        {warning && <p className="mt-3 text-text-2">{warning}</p>}
       </section>
 
       {points.length >= 2 && (

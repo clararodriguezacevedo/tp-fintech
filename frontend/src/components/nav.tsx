@@ -15,7 +15,7 @@ export function NavLinks() {
   const path = usePathname();
   return (
     <nav aria-label="Secciones" className="-mx-4 overflow-x-auto px-4">
-      <ul className="flex gap-1 whitespace-nowrap text-sm">
+      <ul className="flex gap-1 whitespace-nowrap">
         {LINKS.map((l) => {
           const active = l.href === "/" ? path === "/" : path.startsWith(l.href);
           return (
@@ -24,7 +24,7 @@ export function NavLinks() {
                 href={l.href}
                 aria-current={active ? "page" : undefined}
                 className={`inline-block rounded-lg px-3 py-1.5 transition-colors ${
-                  active ? "bg-surface font-medium text-text" : "text-text-2 hover:text-text"
+                  active ? "bg-surface text-text" : "text-text-2 hover:text-text"
                 }`}
               >
                 {l.label}

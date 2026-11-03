@@ -519,7 +519,7 @@ def track_record_summary() -> TrackRecordSummary:
 
 @app.get("/track-record/signals", response_model=list[SignalStats])
 def track_record_signals() -> list[SignalStats]:
-    """How often each signal (news, markets, trend, context, CEDEAR gap) called the direction."""
+    """How often each signal of the score (news and markets, trend, context, CEDEAR gap, macro) called the direction."""
     return track_record.signal_stats()
 
 

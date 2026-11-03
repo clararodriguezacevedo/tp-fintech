@@ -97,8 +97,8 @@ proyecto `tp-fintech-web` de Vercel; cambiarla cierra todas las sesiones. En `np
 login está apagado.
 
 La API se llama solo desde el servidor de Next.js (server components y server actions), así
-que `API_KEY` nunca llega al navegador. Comprar, vender y mantener usan azul, naranja y gris
-(validados para daltonismo) y siempre van con la palabra y un símbolo.
+que `API_KEY` nunca llega al navegador. Comprar, vender y mantener usan verde, rojo y gris, y
+siempre van con la palabra y un símbolo, así que el color nunca es la única señal.
 
 ## IOL Inversiones
 

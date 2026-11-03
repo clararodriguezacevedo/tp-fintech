@@ -3,12 +3,17 @@ import type { ReactNode } from "react";
 
 import { DecisionFlow } from "@/components/decision-flow";
 import { ActionBadge } from "@/components/signals";
-import { ApiFailure, attempt, Card, Info, PageTitle, SectionTitle } from "@/components/ui";
+import { ApiFailure, attempt, PageTitle, SectionTitle, Term } from "@/components/ui";
+import { ByMode, UnitToggle } from "@/components/units";
 import { api, type ModelInfo, type Recommendation } from "@/lib/api/client";
 import { roundToTotal, score } from "@/lib/format";
 import { assetNames, nameOf } from "@/lib/names";
 
 export const metadata = { title: "Cómo decide | El Parqué" };
+
+// The signals' columns, so the titles line up with their rows.
+const HIT_COLUMN = "w-24 text-right";
+const WEIGHT_COLUMN = "w-12 text-right";
 
 const pctOf = (x: number) => `${Math.round(x * 100)}%`;
 const num = (x: number) => x.toLocaleString("es-AR", { maximumFractionDigits: 2 });
@@ -18,8 +23,8 @@ function Block({ title, aside, children }: { title: string; aside?: ReactNode; c
   return (
     <li>
       <details className="group">
-        <summary className="flex cursor-pointer list-none items-center gap-2 py-3 [&::-webkit-details-marker]:hidden">
-          <span aria-hidden className="text-xs text-text-3 transition-transform group-open:rotate-90">▶</span>
+        <summary className="flex cursor-pointer list-none items-center gap-2 py-4 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden className="text-text-2 transition-transform group-open:rotate-90">▶</span>
           <span className="flex-1">{title}</span>
           {aside}
         </summary>
@@ -45,64 +50,67 @@ function Example({ r, m, name }: { r: Recommendation; m: ModelInfo; name: string
   // Each part rounded so that the rounded parts add up to the rounded score shown below.
   const parts = roundToTotal([...rows.map((x) => x.value * x.weight), concentration], 2, r.score);
   return (
-    <Card>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-lg font-semibold">
-            <Link href={`/ticker/${r.ticker}`} className="hover:underline">{r.ticker}</Link>
-            <Info>
-              {r.held
-                ? `Como la tenés, solo puede salir vender o mantener. Vender pide un puntaje de ${score(threshold)} o menos, y este dio ${score(r.score)}.`
-                : `Como no la tenés, solo puede salir comprar o mantener. Comprar pide ${score(threshold)} o más, y este dio ${score(r.score)}.`}
-              {" "}Las noticias y los mercados se suman primero y después se achican con una curva (tanh) para que diez noticias no valgan diez veces una. Los números están redondeados.
-            </Info>
+          <p className="font-semibold">
+            <Term
+              info={<>
+                {r.held
+                  ? `Como la tenés, solo puede salir vender o mantener. Vender pide un puntaje de ${score(threshold)} o menos, y este dio ${score(r.score)}.`
+                  : `Como no la tenés, solo puede salir comprar o mantener. Comprar pide ${score(threshold)} o más, y este dio ${score(r.score)}.`}
+                {" "}Las noticias y los mercados se suman primero y después se achican con una curva (tanh) para que diez noticias no valgan diez veces una. Los números están redondeados.
+              </>}
+            >
+              <Link href={`/ticker/${r.ticker}`} className="hover:underline">{r.ticker}</Link>
+            </Term>
           </p>
-          <p className="text-sm text-text-2">{name}{r.held ? ", la tenés en cartera" : ""}</p>
+          <p className="text-text-2">{name}{r.held ? ", la tenés en cartera" : ""}</p>
         </div>
         <ActionBadge action={r.action} />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[420px] text-left">
-          <thead className="text-sm text-text-2">
+          <thead className="text-text-2">
             <tr className="border-b border-border">
-              <th className="py-2 font-normal">Señal</th>
-              <th className="py-2 text-right font-normal">Valor</th>
-              <th className="py-2 text-right font-normal">Peso</th>
-              <th className="py-2 text-right font-normal">Aporte</th>
+              <th className="py-3">Señal</th>
+              <th className="py-3 text-right">Valor</th>
+              <th className="py-3 text-right">Peso</th>
+              <th className="py-3 text-right">Aporte</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-grid">
             {rows.map((x, i) => (
               <tr key={x.label}>
-                <td className="py-2">{x.label}</td>
-                <td className="num py-2 text-right">{score(x.value)}</td>
-                <td className="num py-2 text-right">{pctOf(x.weight)}</td>
-                <td className="num py-2 text-right">{score(parts[i])}</td>
+                <td className="py-3">{x.label}</td>
+                <td className="num py-3 text-right">{score(x.value)}</td>
+                <td className="num py-3 text-right">{pctOf(x.weight)}</td>
+                <td className="num py-3 text-right">{score(parts[i])}</td>
               </tr>
             ))}
             {concentration !== 0 && (
               <tr>
-                <td className="py-2">Concentración de tu cartera</td>
-                <td className="py-2" />
-                <td className="py-2" />
-                <td className="num py-2 text-right">{score(parts[rows.length])}</td>
+                <td className="py-3">Concentración de tu cartera</td>
+                <td className="py-3" />
+                <td className="py-3" />
+                <td className="num py-3 text-right">{score(parts[rows.length])}</td>
               </tr>
             )}
           </tbody>
           <tfoot>
             <tr className="border-t border-border font-semibold">
-              <td className="py-2">Puntaje</td>
-              <td colSpan={3} className="num py-2 text-right">{score(r.score)}</td>
+              <td className="py-3">Puntaje</td>
+              <td colSpan={3} className="num py-3 text-right">{score(r.score)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
-    </Card>
+    </div>
   );
 }
 
 export default async function HowItDecides() {
-  const [model, recs, names] = await Promise.all([attempt(api.model), attempt(() => api.recommendations()), assetNames()]);
+  const [model, recs, names, signals] = await Promise.all([attempt(api.model), attempt(() => api.recommendations()), assetNames(), attempt(api.signals)]);
   if (!model.ok) return <ApiFailure error={model.error} />;
   const m = model.data;
   const w = m.weights;
@@ -113,9 +121,10 @@ export default async function HowItDecides() {
   )[0];
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-14">
       <section>
-        <PageTitle info="Cada 10 minutos, para las acciones, bonos y CEDEARs de tu cartera y los que tienen noticias o mercados de predicción, se juntan varias señales en un solo puntaje entre −1 y +1. Positivo quiere decir que se espera que suba al día siguiente; negativo, que baje. Según el puntaje sale comprar, vender o mantener.">Cómo decide</PageTitle>
+        <PageTitle>Cómo decide</PageTitle>
+        <p className="max-w-3xl text-text-2">Cada 10 minutos, para las acciones, bonos y CEDEARs de tu cartera y los que tienen noticias o mercados de predicción, se juntan varias señales en un solo puntaje entre −1 y +1. Positivo quiere decir que se espera que suba al día siguiente; negativo, que baje. Según el puntaje sale comprar, vender o mantener.</p>
       </section>
 
       {example && (
@@ -126,25 +135,49 @@ export default async function HowItDecides() {
       )}
 
       <section>
-        <SectionTitle>Las señales</SectionTitle>
-        <ul className="divide-y divide-border border-y border-border">
+        <SectionTitle
+          aside={<UnitToggle currency={false} />}
+          info="El acierto es cuántas veces el activo le ganó o perdió contra el resto ese día, como decía la señal. 50% es tirar una moneda, y con tan pocos días todavía no es concluyente."
+        >
+          Las señales
+        </SectionTitle>
+        <div className="flex justify-end gap-6 border-b border-border pb-2 text-text-2">
+          <span className={HIT_COLUMN}>Acierto</span>
+          <span className={WEIGHT_COLUMN}>Peso</span>
+        </div>
+        <ul className="divide-y divide-grid">
           {[
-            { name: "Noticias y mercados de predicción", weight: w.evidence, text: `Gemini lee cada noticia y cada mercado de Polymarket y Kalshi, y anota a qué tickers afecta, si para arriba o para abajo y con qué fuerza. Una noticia pierde la mitad del peso cada ${num(m.news_half_life_hours)} horas y deja de contar a las ${num(m.news_max_age_hours)}. Un mercado de predicción cuenta según cuánto se movió su probabilidad en las últimas 24 horas.` },
-            { name: "Tendencia del precio", weight: w.trend, text: "Qué tan lejos está el precio de su promedio de 20 días. Pesa poco porque, medida sobre casi 4.000 días de historia, no anticipó el día siguiente mejor que una moneda." },
-            { name: "Contexto del mercado", weight: w.context, text: "Hacia dónde viene todo el mercado: las líderes del Merval para las acciones, los bonos soberanos para los bonos y el S&P 500 para los CEDEARs." },
-            { name: "Brecha del CEDEAR", weight: w.gap, text: "Si el CEDEAR está más caro o más barato de lo habitual comparado con la acción en Estados Unidos, una vez descontado el dólar. Esa diferencia suele corregirse." },
-            { name: "Riesgo país y dólar", weight: w.macro, text: "Para bonos y bancos, cuánto se movió el riesgo país en la última semana (la mitad para las demás acciones locales). Para los CEDEARs, cuánto se movió el dólar CCL, porque cotizan en pesos." },
-          ].map((x) => (
-            <Block key={x.name} title={x.name} aside={<span className="num">{pctOf(x.weight)}</span>}>
-              <p>{x.text}</p>
-            </Block>
-          ))}
+            { key: "evidence", name: "Noticias y mercados de predicción", weight: w.evidence, text: `Gemini lee cada noticia y cada mercado de Polymarket y Kalshi, y anota a qué tickers afecta, si para arriba o para abajo y con qué fuerza. Una noticia pierde la mitad del peso cada ${num(m.news_half_life_hours)} horas y deja de contar a las ${num(m.news_max_age_hours)}. Un mercado de predicción cuenta según cuánto se movió su probabilidad en las últimas 24 horas.` },
+            { key: "trend", name: "Tendencia del precio", weight: w.trend, text: "Qué tan lejos está el precio de su promedio de 20 días. Pesa poco porque, medida sobre casi 4.000 días de historia, no anticipó el día siguiente mejor que una moneda." },
+            { key: "context", name: "Contexto del mercado", weight: w.context, text: "Hacia dónde viene todo el mercado: las líderes del Merval para las acciones, los bonos soberanos para los bonos y el S&P 500 para los CEDEARs." },
+            { key: "gap", name: "Brecha del CEDEAR", weight: w.gap, text: "Si el CEDEAR está más caro o más barato de lo habitual comparado con la acción en Estados Unidos, una vez descontado el dólar. Esa diferencia suele corregirse." },
+            { key: "macro", name: "Riesgo país y dólar", weight: w.macro, text: "Para bonos y bancos, cuánto se movió el riesgo país en la última semana (la mitad para las demás acciones locales). Para los CEDEARs, cuánto se movió el dólar CCL, porque cotizan en pesos." },
+          ].map((x) => {
+            const stat = signals.ok ? signals.data.find((s) => s.signal === x.key && s.n_vs_day > 0) : undefined;
+            return (
+              <Block
+                key={x.key}
+                title={x.name}
+                aside={
+                  <span className="num flex gap-6">
+                    <span className={HIT_COLUMN}>
+                      {stat ? <ByMode abs={`${stat.hits_vs_day} de ${stat.n_vs_day}`} pct={`${Math.round((stat.rate_vs_day ?? 0) * 100)}%`} /> : "-"}
+                    </span>
+                    <span className={WEIGHT_COLUMN}>{pctOf(x.weight)}</span>
+                  </span>
+                }
+              >
+                <p>{x.text}</p>
+                {stat && <p>El acierto está medido sobre {stat.days} {stat.days === 1 ? "día" : "días"} de datos.</p>}
+              </Block>
+            );
+          })}
         </ul>
       </section>
 
       <section>
       <SectionTitle>Los detalles</SectionTitle>
-      <ul className="divide-y divide-border border-y border-border">
+      <ul className="divide-y divide-grid">
       <Block title="Lo que no cuenta, o cuenta menos">
         <p>Las notas de cierre (&quot;así cerró el mercado&quot;, &quot;las acciones subieron hasta 6%&quot;) no cuentan: solo describen lo que ya pasó.</p>
         <p>Los adelantos (&quot;se vienen los balances de las tecnológicas&quot;, &quot;qué mirar esta semana&quot;) sí cuentan: se extrae la expectativa que transmiten, con menos fuerza porque todavía no se sabe el resultado.</p>

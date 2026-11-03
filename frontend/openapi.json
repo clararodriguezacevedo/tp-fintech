@@ -1819,7 +1819,7 @@
     "/track-record/signals": {
       "get": {
         "summary": "Track Record Signals",
-        "description": "How often each signal (news, markets, trend, context, CEDEAR gap) called the direction.",
+        "description": "How often each signal of the score (news and markets, trend, context, CEDEAR gap, macro) called the direction.",
         "operationId": "track_record_signals",
         "parameters": [
           {
@@ -4072,8 +4072,7 @@
           "signal": {
             "type": "string",
             "enum": [
-              "news",
-              "markets",
+              "evidence",
               "trend",
               "context",
               "gap",

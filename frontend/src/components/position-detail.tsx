@@ -33,13 +33,13 @@ async function Rows({ operations, ticker, span }: { operations: Operations; tick
   const ops = await operations;
   const rows = ops.ok ? currentPosition(ops.data.operations, ticker) : [];
   if (rows.length === 0) {
-    return <tr><td colSpan={span} className="py-2 pl-7 text-sm text-text-2">No encontramos sus operaciones en IOL.</td></tr>;
+    return <tr><td colSpan={span} className="py-2 pl-7 text-text-2">No encontramos sus operaciones en IOL.</td></tr>;
   }
   return rows.map((o) => {
     const result = o.result ?? null;
     const amount = result != null ? <Amount ars={Math.abs(result)} usd={o.rate ? Math.abs(result) / o.rate : null} /> : null;
     return (
-      <tr key={o.id} className="text-sm text-text-2">
+      <tr key={o.id} className="text-text-2">
         <td className="py-2 pl-7">{dayShort(o.at)}, {o.side === "buy" ? "compra" : "venta"} de {integer(o.quantity)}</td>
         <td className="num py-2 text-right"><Amount {...inBoth(o, o.price)} /></td>
         <td className="py-2" />

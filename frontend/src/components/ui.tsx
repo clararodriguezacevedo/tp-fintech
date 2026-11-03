@@ -2,12 +2,12 @@
 import type { ReactNode } from "react";
 
 // One look for each kind of button.
-export const BUTTON = "rounded-lg bg-text px-4 py-2.5 font-medium text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40";
-export const BUTTON_ALT = "rounded-lg border border-border px-4 py-2.5 hover:border-text";
-export const BUTTON_SMALL = "whitespace-nowrap rounded-lg bg-text px-3 py-1.5 text-sm font-medium text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40";
-export const BUTTON_SMALL_ALT = "whitespace-nowrap rounded-lg border border-border px-3 py-1.5 text-sm hover:border-text";
+export const BUTTON = "rounded-lg bg-text px-4 py-2.5 text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40";
+export const BUTTON_ALT = "rounded-lg border border-border px-4 py-2.5 hover:border-text disabled:cursor-not-allowed disabled:opacity-40";
+export const BUTTON_SMALL = "whitespace-nowrap rounded-lg bg-text px-3 py-1.5 text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40";
+export const BUTTON_SMALL_ALT = "whitespace-nowrap rounded-lg border border-border px-3 py-1.5 hover:border-text";
 
-const POPUP = "pointer-events-none absolute z-20 hidden rounded-lg border border-border bg-bg px-2.5 py-1.5 text-left text-sm font-normal leading-snug tracking-normal text-text-2 shadow-lg";
+const POPUP = "pointer-events-none absolute z-20 hidden rounded-lg border border-border bg-bg px-2.5 py-1.5 text-left leading-snug tracking-normal text-text-2 shadow-lg";
 
 /** A small popup over `children`, on hover or focus, that doesn't show while `content` is empty.
  * `place`: where it opens. Inside a table that scrolls sideways, open it to a side: anything above
@@ -21,27 +21,33 @@ export function Tooltip({ children, content, place = "left-0 top-full mt-1" }: {
   );
 }
 
-/** An "i" that explains something on hover or focus, instead of a gray line of text. */
-export function Info({ children, place, warning = false }: { children: ReactNode; place?: string; warning?: boolean }) {
+/** A term that explains itself on hover or focus, with no mark at rest. Without `info`, just the term. */
+export function Term({ children, info, place }: { children: ReactNode; info?: ReactNode; place?: string }) {
+  if (!info) return <>{children}</>;
+  return <Tooltip content={info} place={place}>{children}</Tooltip>;
+}
+
+/** A "!" that stays visible, for what the user shouldn't miss, with the reason on hover or focus. */
+export function WarningMark({ children, place }: { children: ReactNode; place?: string }) {
   return (
-    <span className="ml-1.5 inline-flex align-text-top">
-      <Tooltip content={children} place={place}>
-        <span
-          aria-label="Más información"
-          style={warning ? { borderColor: "var(--sell)", color: "var(--sell)" } : undefined}
-          className="flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] font-normal not-italic leading-none text-text-3 hover:border-text-2 hover:text-text"
-        >
-          i
-        </span>
-      </Tooltip>
-    </span>
+    <Tooltip content={children} place={place}>
+      <span
+        aria-label="Aviso"
+        style={{ color: "var(--sell)" }}
+        className="px-1"
+      >
+        !
+      </span>
+    </Tooltip>
   );
 }
 
-export function PageTitle({ children, aside, info, as: Heading = "h1" }: { children: ReactNode; aside?: ReactNode; info?: ReactNode; as?: "h1" | "h2" }) {
+// Spacing says what goes together: 8px inside a unit, 16px from a title to its content, 24px between
+// related blocks, 32px under a page's title, 56px between groups. A control sits with what it controls.
+export function PageTitle({ children, aside, info }: { children: ReactNode; aside?: ReactNode; info?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <Heading className="text-3xl font-semibold tracking-tight">{children}{info && <Info>{info}</Info>}</Heading>
+    <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
+      <h1 className="text-3xl font-semibold tracking-tight"><Term info={info}>{children}</Term></h1>
       {aside}
     </div>
   );
@@ -50,7 +56,7 @@ export function PageTitle({ children, aside, info, as: Heading = "h1" }: { child
 export function SectionTitle({ children, aside, info }: { children: ReactNode; aside?: ReactNode; info?: ReactNode }) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h2 className="text-lg font-semibold">{children}{info && <Info>{info}</Info>}</h2>
+      <h2 className="text-xl font-semibold tracking-tight"><Term info={info}>{children}</Term></h2>
       {aside}
     </div>
   );
@@ -60,13 +66,26 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`rounded-xl border border-border p-5 ${className}`}>{children}</div>;
 }
 
-export function Stat({ label, value }: { label: string; value: ReactNode }) {
+/** A page's headline figures, side by side: label over value, with only space between them. */
+export function Stats({ items, className = "" }: { items: { label: ReactNode; value: ReactNode; note?: ReactNode }[]; className?: string }) {
   return (
-    <div>
-      <p className="text-sm text-text-2">{label}</p>
-      <p className="num mt-1 text-2xl font-semibold">{value}</p>
-    </div>
+    <dl className={`grid grid-cols-2 gap-y-4 sm:flex sm:gap-x-12 ${className}`}>
+      {items.map((s, i) => (
+        <div key={i}>
+          <dt className="text-text-2">{s.label}</dt>
+          <dd className="num mt-1">
+            {s.value}
+            {s.note && <span className="ml-2 text-text-2">{s.note}</span>}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
+}
+
+/** The colored square next to a word that says what to do. */
+export function ActionMark({ color }: { color: string }) {
+  return <span aria-hidden className="h-2 w-2 shrink-0 rounded-[2px]" style={{ background: color }} />;
 }
 
 export function Notice({ children }: { children: ReactNode }) {

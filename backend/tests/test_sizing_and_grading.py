@@ -351,7 +351,7 @@ def test_signals_are_measured_against_the_days_median(monkeypatch):
 
     monkeypatch.setattr(track_record, "get_db", MagicMock())
     monkeypatch.setattr(track_record, "rows_as", lambda _m, _data: rows)
-    news = next(s for s in track_record.signal_stats() if s.signal == "news")
-    assert (news.n, news.hits) == (3, 2)
-    assert (news.n_vs_day, news.hits_vs_day, news.days) == (3, 3, 2)
-    assert news.rate_vs_day == 1.0
+    evidence = next(s for s in track_record.signal_stats() if s.signal == "evidence")
+    assert (evidence.n, evidence.hits) == (3, 2)
+    assert (evidence.n_vs_day, evidence.hits_vs_day, evidence.days) == (3, 3, 2)
+    assert evidence.rate_vs_day == 1.0

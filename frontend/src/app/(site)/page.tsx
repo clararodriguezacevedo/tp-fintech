@@ -2,36 +2,33 @@ import Link from "next/link";
 
 import { NewsSection } from "@/components/news-section";
 import { fundingOf, PlanView } from "@/components/portfolio-plan";
-import { ActionBadge, evidenceText, threeMonths, track } from "@/components/signals";
-import { ApiFailure, attempt, BUTTON_SMALL, Card, Notice, PageTitle, SectionTitle } from "@/components/ui";
+import { evidenceText, threeMonths, track } from "@/components/signals";
+import { ApiFailure, attempt, BUTTON_SMALL_ALT, PageTitle, SectionTitle } from "@/components/ui";
 import { api, type CalibrationBucket, type PortfolioPlan, type Recommendation } from "@/lib/api/client";
 import { money, timeAgo } from "@/lib/format";
 import { assetNames, nameOf } from "@/lib/names";
 
-function BuyCard({ r, calibration, plan, names }: { r: Recommendation; calibration: CalibrationBucket[]; plan: PortfolioPlan | null; names: Record<string, string> }) {
+function BuyRow({ r, calibration, plan, names }: { r: Recommendation; calibration: CalibrationBucket[]; plan: PortfolioPlan | null; names: Record<string, string> }) {
   const funding = fundingOf(plan, r.ticker);
   return (
-    <Card className="flex flex-col">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-lg font-semibold">{r.ticker}</p>
-          <p className="text-sm text-text-2">{nameOf(r.ticker, names[r.ticker])}</p>
-        </div>
-        <ActionBadge action="buy" />
+    <li className="grid gap-x-8 gap-y-2 py-4 sm:grid-cols-[10rem_minmax(0,1fr)_minmax(0,14rem)_auto] sm:items-start">
+      <div className="min-w-0">
+        <Link href={`/ticker/${r.ticker}`} className="font-semibold hover:underline">{r.ticker}</Link>
+        <p className="text-text-2">{nameOf(r.ticker, names[r.ticker])}</p>
       </div>
-      <p className="mt-4 flex-1 text-text">{r.evidence[0] ? evidenceText(r.evidence[0]) : "Su precio viene subiendo."}</p>
-      {threeMonths(r.signal_breakdown) && <p className="mt-2 text-sm text-text-3">{threeMonths(r.signal_breakdown)}</p>}
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div>
-          {r.price_at_rec != null && <p className="num font-semibold">{money(r.price_at_rec)}</p>}
-          <p className="text-sm text-text-2">{track(r, calibration)}</p>
-          {funding && <p className="text-sm text-text-3">{funding}</p>}
-        </div>
-        <Link href={`/ticker/${r.ticker}`} className={BUTTON_SMALL}>
-          Ver y comprar
-        </Link>
+      <div className="min-w-0">
+        <p>{r.evidence[0] ? evidenceText(r.evidence[0]) : "Su precio viene subiendo."}</p>
+        {threeMonths(r.signal_breakdown) && <p className="mt-0.5 text-text-2">{threeMonths(r.signal_breakdown)}</p>}
       </div>
-    </Card>
+      <div className="min-w-0 sm:text-right">
+        {r.price_at_rec != null && <p className="num">{money(r.price_at_rec)}</p>}
+        <p className="text-text-2">{track(r, calibration)}</p>
+        {funding && <p className="text-text-2">{funding}</p>}
+      </div>
+      <Link href={`/ticker/${r.ticker}`} className={`${BUTTON_SMALL_ALT} justify-self-start`}>
+        Ver y comprar
+      </Link>
+    </li>
   );
 }
 
@@ -46,28 +43,26 @@ export default async function Home() {
   const updated = recs.data.reduce<string | null>((m, r) => (!m || r.updated_at > m ? r.updated_at : m), null);
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-14">
       <section>
-        <PageTitle aside={updated && <span className="text-sm text-text-3">Actualizado {timeAgo(updated)}</span>}>
-          Para comprar
+        <PageTitle aside={updated && <span className="text-text-2">Actualizado {timeAgo(updated)}</span>}>
+          Hoy
         </PageTitle>
-        {buys.length === 0 ? (
-          <Notice>Hoy no hay compras recomendadas para tu perfil.</Notice>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {buys.slice(0, 6).map((r) => <BuyCard key={r.ticker} r={r} calibration={calibration} plan={plan.ok ? plan.data : null} names={names} />)}
-          </div>
-        )}
+        <SectionTitle>Tu plan de hoy</SectionTitle>
+        {plan.ok ? <PlanView plan={plan.data} /> : <ApiFailure error={plan.error} />}
+        {buys.length === 0 && <p className="mt-1 text-text-2">Hoy no hay compras recomendadas para tu perfil.</p>}
       </section>
 
-      {plan.ok && (
+      <NewsSection />
+
+      {buys.length > 0 && (
         <section>
-          <SectionTitle>Tu plan de hoy</SectionTitle>
-          <PlanView plan={plan.data} />
+          <SectionTitle>Para comprar</SectionTitle>
+          <ul className="divide-y divide-grid">
+            {buys.slice(0, 6).map((r) => <BuyRow key={r.ticker} r={r} calibration={calibration} plan={plan.ok ? plan.data : null} names={names} />)}
+          </ul>
         </section>
       )}
-
-      <NewsSection />
     </div>
   );
 }

@@ -4,9 +4,11 @@ export default function Loading() {
   return (
     <div className="space-y-10" aria-busy="true" aria-label="Cargando tu cartera">
       <div>
-        <Skeleton className="h-9 w-40" />
+        <Skeleton className="h-7 w-40" />
         <Skeleton className="mt-4 h-10 w-72" />
-        <Skeleton className="mt-6 h-20" />
+        <div className="mt-5 flex gap-6">
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-11 w-36" />)}
+        </div>
       </div>
       <Skeleton className="h-14" />
       <div className="space-y-3">

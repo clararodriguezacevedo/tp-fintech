@@ -1,27 +1,25 @@
 // How a recommendation is shown: what to do, how sure we are, and why, in plain words.
 import Link from "next/link";
 
-import { Info } from "@/components/ui";
+import { ActionMark, Term } from "@/components/ui";
 import type { CalibrationBucket, Evidence, Impact, Recommendation } from "@/lib/api/client";
 import { dayShort, integer } from "@/lib/format";
 
 type Action = Recommendation["action"];
 
-const ACTION: Record<Action, { label: string; color: string; bg: string }> = {
-  buy: { label: "Comprar", color: "var(--buy)", bg: "var(--buy-soft)" },
-  sell: { label: "Vender", color: "var(--sell)", bg: "var(--sell-soft)" },
-  keep: { label: "Mantener", color: "var(--keep)", bg: "var(--surface)" },
+const ACTION: Record<Action, { label: string; color: string }> = {
+  buy: { label: "Comprar", color: "var(--buy)" },
+  sell: { label: "Vender", color: "var(--sell)" },
+  keep: { label: "Mantener", color: "var(--keep)" },
 };
 
-/** The action as a word with a colored dot, so it never depends on color alone. */
-export function ActionBadge({ action, large = false }: { action: Action; large?: boolean }) {
+/** The action as a word, so it never depends on color alone. Only what asks for something stands
+ * out: buying or selling gets a colored square and full contrast, keeping stays quiet. */
+export function ActionBadge({ action }: { action: Action }) {
   const a = ACTION[action];
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full font-medium text-text ${large ? "px-3 py-1 text-base" : "px-2.5 py-0.5 text-sm"}`}
-      style={{ background: a.bg }}
-    >
-      <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: a.color }} />
+    <span className={`inline-flex items-center gap-1.5 ${action === "keep" ? "text-text-2" : "text-text"}`}>
+      {action !== "keep" && <ActionMark color={a.color} />}
       {a.label}
     </span>
   );
@@ -53,12 +51,12 @@ const pctText = (x: number) => `${Math.abs(x * 100).toLocaleString("es-AR", { ma
 const GROUP: Record<string, string> = { argentina: "riesgo argentino", exterior: "activos del exterior" };
 export const RISK_NAME: Record<number, string> = { 1: "bajo", 2: "medio", 3: "alto" };
 
-/** "Riesgo medio" as a small pill, with its volatility on hover. */
+/** "Riesgo medio" as a small tag, with its volatility on hover. */
 export function RiskBadge({ level, volatility, outOfProfile }: { level: number; volatility?: number | null; outOfProfile?: boolean }) {
   return (
     <span
       title={volatility != null ? `Se mueve alrededor de ${Math.round(volatility * 100)}% al año` : "Sin historial de precios suficiente"}
-      className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-sm text-text-2"
+      className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-0.5 text-text-2"
       style={outOfProfile ? { borderColor: "var(--sell)", color: "var(--sell)" } : undefined}
     >
       Riesgo {RISK_NAME[level]}{outOfProfile ? ", fuera de tu perfil" : ""}
@@ -146,15 +144,12 @@ export function evidenceText(e: Evidence) {
   return `${against ? "Bajó" : "Subió"} la probabilidad de esto: ${e.reason}`;
 }
 
-function Marker({ up, faded = false }: { up: boolean; faded?: boolean }) {
+function Marker({ up }: { up: boolean }) {
   return (
     <span
       aria-label={up ? "A favor" : "En contra"}
-      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs"
-      style={{
-        background: faded ? "var(--surface)" : up ? "var(--buy-soft)" : "var(--sell-soft)",
-        color: faded ? "var(--text-3)" : up ? "var(--buy)" : "var(--sell)",
-      }}
+      className="mt-0.5 w-4 shrink-0 text-center"
+      style={{ color: up ? "var(--buy)" : "var(--sell)" }}
     >
       {up ? "▲" : "▼"}
     </span>
@@ -167,20 +162,20 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
   const event = eventNote(breakdown);
   if (items.length === 0 && market.length === 0) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         {event && <EventItem {...event} />}
         <p className="text-text-2">No hay noticias recientes sobre esta acción. La recomendación se basa en cómo viene su precio.</p>
       </div>
     );
   }
   return (
-    <ul className="space-y-4">
+    <ul className="space-y-6">
       {event && <li><EventItem {...event} /></li>}
       {market.map((m) => (
         <li key={m.text} className="flex gap-3">
           <Marker up={m.up} />
           <div className="min-w-0">
-            <p className="text-text">{m.text}<Info>{m.note}</Info></p>
+            <p className="text-text"><Term info={m.note}>{m.text}</Term></p>
           </div>
         </li>
       ))}
@@ -191,22 +186,17 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
             <Marker up={up} />
             <div className="min-w-0">
               <p className="text-text">
-                {evidenceText(e)}
-                {e.via && (
-                  <Info>
-                    {e.via && `Sobre ${e.via}, del mismo sector.`}
-                  </Info>
-                )}
+                <Term info={e.via && `Sobre ${e.via}, del mismo sector.`}>{evidenceText(e)}</Term>
               </p>
               {e.url ? (
-                <a href={e.url} target="_blank" rel="noreferrer" className="text-sm text-text-3 hover:text-text-2 hover:underline">
+                <a href={e.url} target="_blank" rel="noreferrer" className="text-text-2 hover:text-text hover:underline">
                   {e.title}
                 </a>
               ) : (
-                <p className="text-sm text-text-3">{e.title}</p>
+                <p className="text-text-2">{e.title}</p>
               )}
-              {e.kind === "market" && e.detail && <span className="num text-sm text-text-3"> ({e.detail})</span>}
-              {e.sources > 1 && <span className="text-sm text-text-3"> (lo publicaron {e.sources} medios)</span>}
+              {e.kind === "market" && e.detail && <span className="num text-text-2"> ({e.detail})</span>}
+              {e.sources > 1 && <span className="text-text-2"> (lo publicaron {e.sources} medios)</span>}
             </div>
           </li>
         );
@@ -218,9 +208,9 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
 function EventItem({ text, note }: { text: string; note: string }) {
   return (
     <div className="flex gap-3">
-      <span aria-hidden className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface text-xs text-text-3">!</span>
+      <span aria-hidden className="w-4 shrink-0 text-center text-text-2">!</span>
       <div className="min-w-0">
-        <p className="text-text">{text}<Info>{note}</Info></p>
+        <p className="text-text"><Term info={note}>{text}</Term></p>
       </div>
     </div>
   );
@@ -232,24 +222,23 @@ const BROAD: Record<string, string> = { MERVAL: "Acciones argentinas", BONOS: "B
 export function ImpactList({ impacts }: { impacts: Impact[] }) {
   if (impacts.length === 0) return null;
   return (
-    <ul className="mt-2 flex flex-wrap gap-1.5">
+    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
       {impacts.map((i) => {
         const up = i.direction === "up";
         const label = (
           <>
             <span aria-hidden style={{ color: up ? "var(--buy)" : "var(--sell)" }}>{up ? "▲" : "▼"}</span>
-            <span className="font-medium">{BROAD[i.ticker] ?? i.ticker}</span>
+            <span>{BROAD[i.ticker] ?? i.ticker}</span>
             <span className="sr-only">{up ? "podría subir" : "podría bajar"}</span>
           </>
         );
-        const cls = "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm";
-        const style = { background: up ? "var(--buy-soft)" : "var(--sell-soft)" };
+        const cls = "inline-flex items-center gap-1 text-text-2";
         return (
           <li key={i.ticker}>
             {BROAD[i.ticker] ? (
-              <span className={cls} style={style} title={up ? "Podría subir" : "Podría bajar"}>{label}</span>
+              <span className={cls} title={up ? "Podría subir" : "Podría bajar"}>{label}</span>
             ) : (
-              <Link href={`/ticker/${i.ticker}`} className={`${cls} hover:underline`} style={style} title={up ? "Podría subir" : "Podría bajar"}>
+              <Link href={`/ticker/${i.ticker}`} className={`${cls} hover:underline`} title={up ? "Podría subir" : "Podría bajar"}>
                 {label}
               </Link>
             )}

@@ -24,7 +24,7 @@ from datetime import date, datetime, timedelta, timezone
 from app.analysis import market_hours
 from app import prices
 from app.db import get_db, rows_as
-from app.models.db import Action, RecommendationRow
+from app.models.db import Action, RecommendationRow, SignalBreakdown
 from app.models.iol import DailyBar
 from app.schemas import CalibrationBucket, HitStats, SignalStats, TrackRecordSummary
 from app.sources.corporate_events import CorporateEvent, events_between
@@ -171,8 +171,13 @@ def summary() -> TrackRecordSummary:
     )
 
 
-SIGNALS = ("news", "markets", "trend", "context", "gap", "macro")
+SIGNALS = ("evidence", "trend", "context", "gap", "macro")  # the score's components, each with its weight
 SIGNAL_MIN = 0.05  # a component smaller than this didn't really point anywhere
+
+
+def _signal_value(b: SignalBreakdown, name: str) -> float:
+    """News and markets are one component: the score adds them up before weighing them."""
+    return b.news + b.markets if name == "evidence" else getattr(b, name)
 
 
 def signal_stats() -> list[SignalStats]:
@@ -196,7 +201,7 @@ def signal_stats() -> list[SignalStats]:
         n_vs_day = hits_vs_day = 0
         days: set[date] = set()
         for r in rows:
-            value = getattr(r.signal_breakdown, name)
+            value = _signal_value(r.signal_breakdown, name)
             if abs(value) < SIGNAL_MIN or r.realized_return is None:
                 continue
             (ups if value > 0 else downs).append(r.realized_return)

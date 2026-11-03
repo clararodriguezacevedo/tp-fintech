@@ -70,16 +70,18 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
   const tradeMarks = tradeMarksOf(myTrades, points);
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-14">
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">{ticker}</h1>
-          <p className="mt-1 text-text-2">{name}</p>
-          {plan.ok && plan.data.risk_level != null && (
-            <p className="mt-2"><RiskBadge level={plan.data.risk_level} volatility={plan.data.volatility} outOfProfile={plan.data.out_of_profile} /></p>
-          )}
-          <p className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <span className="num text-xl font-semibold">{money(priceNow)}</span>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <p className="text-text-2">{name}</p>
+            {plan.ok && plan.data.risk_level != null && (
+              <RiskBadge level={plan.data.risk_level} volatility={plan.data.volatility} outOfProfile={plan.data.out_of_profile} />
+            )}
+          </div>
+          <p className="mt-6 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <span className="num text-3xl font-semibold">{money(priceNow)}</span>
             {dayChange != null && (
               <span className="text-text-2">
                 {cedears.has(ticker) ? (
@@ -91,35 +93,35 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
                 )}
               </span>
             )}
-            {threeMonths(rec?.signal_breakdown) && <span className="text-sm text-text-3">{threeMonths(rec?.signal_breakdown)}</span>}
+            {threeMonths(rec?.signal_breakdown) && <span className="text-text-2">{threeMonths(rec?.signal_breakdown)}</span>}
           </p>
         </div>
         {rec && (
           <div className="text-right">
-            <ActionBadge action={rec.action} large />
-            <p className="mt-2 text-sm text-text-2">{track(rec, calibration.ok ? calibration.data : [])}</p>
+            <ActionBadge action={rec.action} />
+            <p className="mt-2 text-text-2">{track(rec, calibration.ok ? calibration.data : [])}</p>
           </div>
         )}
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid gap-x-16 gap-y-14 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section className="min-w-0">
           <SectionTitle>Por qué</SectionTitle>
           {rec ? <Reasons items={rec.evidence} breakdown={rec.signal_breakdown} limit={6} /> : <Notice>Hoy no hay una recomendación para esta acción.</Notice>}
         </section>
 
-        <aside className="space-y-4">
+        <aside className="space-y-6">
           {position && (
             <Card>
-              <p className="mb-3 text-lg font-semibold">Tu posición</p>
-              <dl className="space-y-1">
+              <p className="mb-4 font-semibold">Tu posición</p>
+              <dl className="space-y-2">
                 <div className="flex justify-between gap-4"><dt className="text-text-2">Cantidad</dt><dd className="num">{integer(position.quantity)}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-text-2">Valor</dt><dd className="num font-semibold">{money(position.value)}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-text-2">Valor</dt><dd className="num">{money(position.value)}</dd></div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-text-2">Ganancia</dt>
                   <dd className="num">
                     <Delta value={position.gain_amount}>{money(Math.abs(position.gain_amount))}</Delta>
-                    <span className="ml-2 text-sm text-text-2">{pctPoints(position.gain_pct)}</span>
+                    <span className="ml-2 text-text-2">{pctPoints(position.gain_pct)}</span>
                   </dd>
                 </div>
               </dl>
@@ -129,7 +131,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
             <SellPanel plan={sellPlan.data} mode={mode} recommended={rec?.action === "sell"} recommendationId={rec?.action === "sell" ? rec.id : undefined} />
           )}
           {plan.ok ? (
-            <BuyPanel ticker={ticker} plan={plan.data} mode={mode} recommendationId={rec?.id} />
+            <BuyPanel ticker={ticker} plan={plan.data} mode={mode} recommended={rec?.action === "buy" || !position} recommendationId={rec?.id} />
           ) : (
             <Notice>No hay suficientes datos de precio para armar la compra.</Notice>
           )}

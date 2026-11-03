@@ -60,6 +60,10 @@ const AR = "America/Argentina/Buenos_Aires";
 export const dayLong = (d: Date | string) =>
   new Date(d).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: AR });
 
+/** "22/10/2026" */
+export const dayNumeric = (d: Date | string) =>
+  new Date(d).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: AR });
+
 export const dayShort = (d: Date | string) =>
   new Date(d).toLocaleDateString("es-AR", { day: "numeric", month: "short", timeZone: AR });
 

@@ -14,7 +14,7 @@ export function CloseTrade({ tradeId, queued, quantity, ticker, now, result }: {
   const [confirming, setConfirming] = useState(false);
   const [state, action, pending] = useActionState<BuyState, FormData>(closeTradeAction, { status: "idle" });
 
-  if (state.status === "ok") return <span className="text-sm text-text-2">{queued ? "Cancelada" : "Vendida"}</span>;
+  if (state.status === "ok") return <span className="text-text-2">{queued ? "Cancelada" : "Vendida"}</span>;
   if (!confirming) {
     return (
       <button type="button" onClick={() => setConfirming(true)} className={BUTTON_SMALL_ALT}>
@@ -23,7 +23,7 @@ export function CloseTrade({ tradeId, queued, quantity, ticker, now, result }: {
     );
   }
   return (
-    <form action={action} className="flex flex-col items-end gap-2 text-right text-sm">
+    <form action={action} className="flex flex-col items-end gap-2 text-right">
       <input type="hidden" name="trade_id" value={tradeId} />
       <p className="text-text-2">
         {queued

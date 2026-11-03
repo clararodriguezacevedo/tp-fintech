@@ -9,13 +9,13 @@ export function ExpandableRow({ first, rest, detail, label }: {
   return (
     <>
       <tr className="hover:bg-surface">
-        <td className="py-3">
+        <td className="py-4">
           <div className="flex items-start gap-2">
             <button
-              type="button" aria-expanded={open} aria-label={`${open ? "Ocultar" : "Ver"} las operaciones de ${label}`} onClick={() => setOpen(!open)}
-              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg text-text-3 hover:text-text"
+              type="button" aria-expanded={open} aria-label={`${open ? "Ocultar" : "Ver"} las operaciones de ${label}`} title={`${open ? "Ocultar" : "Ver"} las operaciones de ${label}`} onClick={() => setOpen(!open)}
+              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg text-text-2 hover:text-text"
             >
-              <span aria-hidden className={`text-xs transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
+              <span aria-hidden className={`transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
             </button>
             <div className="min-w-0">{first}</div>
           </div>

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { CloseTrade } from "@/components/close-trade";
 import { inBoth } from "@/components/position-detail";
-import { ApiFailure, attempt, Delta, Info, Notice, PageTitle, SectionTitle } from "@/components/ui";
+import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term } from "@/components/ui";
 import { Amount, ByMode, UnitToggle } from "@/components/units";
 import { api, type Health, type Operation, type Trade } from "@/lib/api/client";
 import { dateTime, fromEntry, integer, money, pct, price } from "@/lib/format";
@@ -35,29 +35,29 @@ function Result({ value, usd, cost }: { value: number; usd: number | null; cost:
 function RealOperations({ operations, names }: { operations: Operation[]; names: Record<string, string> }) {
   return (
     <>
-      <div className={`${REAL_ROW} hidden border-b border-border pb-2 text-sm text-text-2 sm:grid`}>
+      <div className={`${REAL_ROW} hidden border-b border-border pb-3 text-text-2 sm:grid`}>
         <span>Operación</span>
         <span>Precio</span>
         <span>Estado</span>
         <span className="text-right">Resultado</span>
       </div>
-      <ul className="divide-y divide-border border-b border-border">
+      <ul className="divide-y divide-grid">
         {operations.map((o) => (
-          <li key={o.id} className={`${REAL_ROW} py-3`}>
+          <li key={o.id} className={`${REAL_ROW} py-4`}>
             <div className="min-w-0">
               <p>
                 <span className="text-text-2">{o.side === "sell" ? "Venta" : "Compra"}</span>{" "}
                 <Link href={`/ticker/${o.ticker}`} className="font-semibold hover:underline">{o.quantity > 0 && `${integer(o.quantity)} `}{o.ticker}</Link>
               </p>
-              <p className="text-sm text-text-3">{nameOf(o.ticker, names[o.ticker])}, {dateTime(o.at)}</p>
+              <p className="text-text-2">{nameOf(o.ticker, names[o.ticker])}, {dateTime(o.at)}</p>
             </div>
-            <div className="num text-sm text-text-2">
+            <div className="num text-text-2">
               <p>{o.price > 0 ? <>A <Amount {...inBoth(o, o.price)} /></> : "A mercado"}</p>
-              <p className="text-text-3">Total <Amount {...inBoth(o, o.amount)} /></p>
+              <p className="text-text-2">Total <Amount {...inBoth(o, o.amount)} /></p>
             </div>
-            <p className="text-sm">{o.status === "pending" ? "Orden pendiente" : o.side === "sell" ? "Vendida" : "Comprada"}</p>
+            <p className="text-text-2">{o.status === "pending" ? "Orden pendiente" : o.side === "sell" ? "Vendida" : "Comprada"}</p>
             <p className="sm:text-right">
-              {o.result != null ? <Result value={o.result} usd={o.rate ? o.result / o.rate : null} cost={o.cost ?? null} /> : <span className="text-text-3">-</span>}
+              {o.result != null ? <Result value={o.result} usd={o.rate ? o.result / o.rate : null} cost={o.cost ?? null} /> : <span className="text-text-2">-</span>}
             </p>
           </li>
         ))}
@@ -102,7 +102,7 @@ export default async function TradesPage() {
   const openTotal = open.reduce((s, t) => s + (resultOf(t) ?? 0), 0);
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-14">
       <section>
         <PageTitle>Operaciones</PageTitle>
         {!real.ok ? (
@@ -111,23 +111,19 @@ export default async function TradesPage() {
           <Notice>Todavía no hay operaciones en tu cuenta de IOL.</Notice>
         ) : (
           <>
-            <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-              <dl className="grid w-full max-w-md grid-cols-2 gap-px rounded-xl border border-border bg-border">
-                <div className="rounded-l-xl bg-bg px-4 py-3">
-                  <dt className="text-sm text-text-2">
-                    Resultado de lo vendido
-                    <Info>Contra el costo promedio, con los dólares al MEP de cada día. Sin comisiones ni dividendos, igual que la ganancia de Mi cartera.</Info>
-                  </dt>
-                  <dd className="mt-1 font-semibold"><Result value={real.data.realized} usd={soldUsd} cost={soldCost} /></dd>
-                </div>
-                <div className="rounded-r-xl bg-bg px-4 py-3">
-                  <dt className="text-sm text-text-2">Resultado de lo abierto</dt>
-                  <dd className="mt-1 font-semibold">{openGain != null ? <Result value={openGain} usd={mep ? openGain / mep : null} cost={openCost} /> : "-"}</dd>
-                </div>
-              </dl>
-              <UnitToggle />
+            <Stats
+              items={[
+                {
+                  label: <Term info="Contra el costo promedio, con los dólares al MEP de cada día. Sin comisiones ni dividendos, igual que la ganancia de Mi cartera.">Resultado de lo vendido</Term>,
+                  value: <Result value={real.data.realized} usd={soldUsd} cost={soldCost} />,
+                },
+                { label: "Resultado de lo abierto", value: openGain != null ? <Result value={openGain} usd={mep ? openGain / mep : null} cost={openCost} /> : "-" },
+              ]}
+            />
+            <div className="mt-14">
+              <SectionTitle aside={<UnitToggle />}>En tu cuenta de IOL</SectionTitle>
+              <RealOperations operations={real.data.operations} names={names} />
             </div>
-            <RealOperations operations={real.data.operations} names={names} />
           </>
         )}
       </section>
@@ -136,38 +132,35 @@ export default async function TradesPage() {
       <section>
         <SectionTitle info={mode === "paper" ? "Con precios reales de IOL. No cambian tu cuenta." : undefined}>Simuladas</SectionTitle>
         <>
-          <dl className="mb-6 grid max-w-md grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border">
-            <div className="bg-bg px-4 py-3">
-              <dt className="text-sm text-text-2">Resultado de lo vendido</dt>
-              <dd className="mt-1 font-semibold"><Delta value={closedTotal}>{money(Math.abs(closedTotal))}</Delta></dd>
-            </div>
-            <div className="bg-bg px-4 py-3">
-              <dt className="text-sm text-text-2">Resultado de lo abierto</dt>
-              <dd className="mt-1 font-semibold"><Delta value={openTotal}>{money(Math.abs(openTotal))}</Delta></dd>
-            </div>
-          </dl>
+          <Stats
+            className="mb-8"
+            items={[
+              { label: "Resultado de lo vendido", value: <Delta value={closedTotal}>{money(Math.abs(closedTotal))}</Delta> },
+              { label: "Resultado de lo abierto", value: <Delta value={openTotal}>{money(Math.abs(openTotal))}</Delta> },
+            ]}
+          />
 
-          <div className={`${ROW} hidden border-b border-border pb-2 text-sm text-text-2 sm:grid`}>
+          <div className={`${ROW} hidden border-b border-border pb-3 text-text-2 sm:grid`}>
             <span>Operación</span>
             <span>Precios</span>
             <span>Estado</span>
             <span className="text-right">Resultado</span>
             <span />
           </div>
-          <ul className="divide-y divide-border border-b border-border">
+          <ul className="divide-y divide-grid">
             {trades.map((t) => {
               const result = resultOf(t);
               const isOpen = t.side === "buy" && (t.status === "queued" || t.status === "filled");
               return (
-                <li key={t.id} className={`${ROW} py-3`}>
+                <li key={t.id} className={`${ROW} py-4`}>
                   <div className="min-w-0">
                     <p>
                       <span className="text-text-2">{t.side === "sell" ? "Venta" : "Compra"}</span>{" "}
                       <Link href={`/ticker/${t.ticker}`} className="font-semibold hover:underline">{integer(t.quantity)} {t.ticker}</Link>
                     </p>
-                    <p className="text-sm text-text-3">{nameOf(t.ticker, names[t.ticker])}, {dateTime(t.created_at)}</p>
+                    <p className="text-text-2">{nameOf(t.ticker, names[t.ticker])}, {dateTime(t.created_at)}</p>
                   </div>
-                  <div className="num text-sm text-text-2">
+                  <div className="num text-text-2">
                     {t.side === "sell" ? (
                       <p>Vendiste a {price(t.exit_price ?? t.entry_price)}</p>
                     ) : (
@@ -176,17 +169,17 @@ export default async function TradesPage() {
                           Compraste a {price(t.fill_price ?? t.entry_price)}
                           {t.exit_price != null ? `, vendiste a ${price(t.exit_price)}` : now(t) != null && t.status === "filled" ? `, ahora ${price(now(t))}` : ""}
                         </p>
-                        {t.closed_at && t.status !== "cancelled" && <p className="text-text-3">Vendida el {dateTime(t.closed_at)}</p>}
+                        {t.closed_at && t.status !== "cancelled" && <p className="text-text-2">Vendida el {dateTime(t.closed_at)}</p>}
                         {t.stop_loss != null && t.take_profit != null && (
-                          <p className="text-text-3">
+                          <p className="text-text-2">
                             Stop loss {fromEntry(t.stop_loss, t.fill_price ?? t.entry_price)}, take profit {fromEntry(t.take_profit, t.fill_price ?? t.entry_price)}
                           </p>
                         )}
                       </>
                     )}
                   </div>
-                  <p className="text-sm">{t.side === "sell" ? "Vendida" : STATUS[t.status]}</p>
-                  <p className="sm:text-right">{result != null ? <Delta value={result}>{money(Math.abs(result))}</Delta> : <span className="text-text-3">-</span>}</p>
+                  <p className="text-text-2">{t.side === "sell" ? "Vendida" : STATUS[t.status]}</p>
+                  <p className="sm:text-right">{result != null ? <Delta value={result}>{money(Math.abs(result))}</Delta> : <span className="text-text-2">-</span>}</p>
                   <div className="sm:text-right">
                     {isOpen && (
                       <CloseTrade

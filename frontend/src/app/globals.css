@@ -1,54 +1,47 @@
 @import "tailwindcss";
 
-/* Plain and modern: one sans-serif family, neutral surfaces, color only where it means something.
-   Buy/sell colors are the validated colour-blind-safe pair (blue/orange); keep is neutral gray. */
+/* Dark, dense and monochrome, after Linear: gray surfaces, no accent. The only colors are green and
+   red, for buy/sell and gain/loss, and arrows or words always say the same, so color is never alone. */
 
 :root {
-  --bg: #ffffff;
-  --surface: #f6f7f9;
-  --border: #e4e7ec;
-  --text: #111827;
-  --text-2: #4b5563;
-  --text-3: #8a93a2;
-  --grid: #eceff3;
-  --buy: #1d5fa8;
-  --sell: #c4501a;
-  --keep: #8a93a2;
-  --buy-soft: #e8f0fa;
-  --sell-soft: #fbeee7;
+  color-scheme: dark;
+  --bg: #0e0e0f;
+  --surface: #18181a;
+  --border: #2a2a2d;
+  --text: #f2f2f3;
+  --text-2: #9a9aa0;
+  --grid: #1f1f22;
+  --buy: #3fb27f;
+  --sell: #ef5a5a;
+  --keep: #9a9aa0;
+  --buy-soft: #11261c;
+  --sell-soft: #2e1516;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1115;
-    --surface: #181b21;
-    --border: #2a2f38;
-    --text: #f3f4f6;
-    --text-2: #b4bac5;
-    --text-3: #7d8593;
-    --grid: #232831;
-    --buy: #4f8fe0;
-    --sell: #d9692f;
-    --keep: #7d8593;
-    --buy-soft: #16243a;
-    --sell-soft: #33200f;
-  }
+/* The whole type system. Three sizes: 14px for everything, xl for a section's title, 3xl for a page's
+   title or key figure. Two text colors: text and text-2. Two weights: regular, and semibold only for
+   titles and key figures. Don't add a step: use space and order instead. */
+@theme {
+  --text-xl: 20px;
+  --text-xl--line-height: 1.3;
+  --text-3xl: 28px;
+  --text-3xl--line-height: 1.2;
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-border: var(--border);
+  --color-grid: var(--grid);
   --color-text: var(--text);
   --color-text-2: var(--text-2);
-  --color-text-3: var(--text-3);
   --color-buy: var(--buy);
   --color-sell: var(--sell);
   --color-keep: var(--keep);
   --color-buy-soft: var(--buy-soft);
   --color-sell-soft: var(--sell-soft);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
 }
 
 html {
@@ -57,8 +50,19 @@ html {
 }
 
 body {
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+
+/* The browser's own bold would be a third weight. */
+th {
+  font-weight: 400;
+}
+b,
+strong {
+  font-weight: 600;
 }
 
 /* Numbers line up in columns. */
@@ -67,7 +71,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--buy);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 
@@ -78,9 +82,6 @@ body {
   width: max-content;
   will-change: transform;
   backface-visibility: hidden;
-}
-.tape-mask {
-  mask-image: linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .tape-track { transform: none; }

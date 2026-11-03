@@ -448,7 +448,7 @@ const TrackRecordSummary = z
   .passthrough();
 const SignalStats = z
   .object({
-    signal: z.enum(["news", "markets", "trend", "context", "gap", "macro"]),
+    signal: z.enum(["evidence", "trend", "context", "gap", "macro"]),
     n: z.number().int(),
     hits: z.number().int(),
     hit_rate: z.union([z.number(), z.null()]),

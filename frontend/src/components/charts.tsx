@@ -79,7 +79,7 @@ export function LineChart({
     lo -= margin;
     hi += margin;
     const ticks = niceTicks(lo, hi);
-    const left = Math.ceil(Math.max(...ticks.map((t) => VALUE_FORMATS[valueFormat](t).length)) * 6.6) + 12;
+    const left = Math.ceil(Math.max(...ticks.map((t) => VALUE_FORMATS[valueFormat](t).length)) * 8.4) + 12;
     return { y: (v: number) => 12 + innerH - ((v - lo) / (hi - lo)) * innerH, ticks, left };
   }, [points, refLines, marks, innerH, valueFormat]);
 
@@ -106,7 +106,7 @@ export function LineChart({
     const ends: number[] = [];
     xTicks = dated.map((i) => {
       const text = dayShort(points[i].t);
-      const half = text.length * 3.3;
+      const half = text.length * 4.2;
       const cx = Math.min(Math.max(x(i), left + half), width - right - half);
       let row = ends.findIndex((end) => cx - half > end + 6);
       if (row < 0) row = ends.length;
@@ -119,7 +119,7 @@ export function LineChart({
     xTicks = [...new Set([0, points.length - 1])].map((i) => ({ i, text: fmtTime(points[i].t), anchor: i === 0 ? ("start" as const) : ("end" as const), row: 0, mark: false }));
   }
   const rows = Math.max(1, ...xTicks.map((t) => t.row + 1));
-  const svgH = height + (rows - 1) * 14;
+  const svgH = height + (rows - 1) * 18;
 
   return (
     <div ref={box} className="relative w-full min-w-0 overflow-hidden">
@@ -142,23 +142,23 @@ export function LineChart({
         {ticks.map((t) => (
           <g key={t}>
             <line x1={left} x2={width - right} y1={y(t)} y2={y(t)} stroke="var(--grid)" />
-            <text x={left - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize="11" fill="var(--text-3)" className="num">{fmt(t)}</text>
+            <text x={left - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize="14" fill="var(--text-2)" className="num">{fmt(t)}</text>
           </g>
         ))}
         {xTicks.map((t) => {
-          const half = t.text.length * 3.3;
+          const half = t.text.length * 4.2;
           const tx = t.anchor === "middle" ? Math.min(Math.max(x(t.i), left + half), width - right - half) : x(t.i);
           return (
             <g key={t.i}>
-              {t.mark && <line x1={x(t.i)} x2={x(t.i)} y1={floor} y2={floor + 4 + t.row * 14} stroke="var(--text-3)" />}
-              <text x={tx} y={height - 6 + t.row * 14} textAnchor={t.anchor} fontSize="11" fill={t.mark ? "var(--text-2)" : "var(--text-3)"} className="num">{t.text}</text>
+              {t.mark && <line x1={x(t.i)} x2={x(t.i)} y1={floor} y2={floor + 4 + t.row * 18} stroke="var(--text-2)" />}
+              <text x={tx} y={height - 6 + t.row * 18} textAnchor={t.anchor} fontSize="14" fill={t.mark ? "var(--text-2)" : "var(--text-2)"} className="num">{t.text}</text>
             </g>
           );
         })}
         {refLines.map((r) => (
           <g key={r.label}>
             <line x1={left} x2={width - right} y1={y(r.value)} y2={y(r.value)} stroke={`var(--${r.tone})`} strokeWidth="1.5" strokeDasharray="5 4" />
-            <text x={width - right} y={y(r.value) - 6} textAnchor="end" fontSize="11" fill="var(--text-2)">{r.label}</text>
+            <text x={width - right} y={y(r.value) - 6} textAnchor="end" fontSize="14" fill="var(--text-2)">{r.label}</text>
           </g>
         ))}
         <path d={area} fill="var(--text)" fillOpacity="0.05" stroke="none" />
@@ -175,7 +175,7 @@ export function LineChart({
               width="4"
               height={Math.max(3, Math.abs(y2 - y1))}
               rx="2"
-              fill="var(--text-3)"
+              fill="var(--text-2)"
               fillOpacity={hover === m.i ? 1 : 0.7}
             />
           );
@@ -205,16 +205,16 @@ export function LineChart({
       </svg>
       {h && hover != null && (
         <div
-          className="pointer-events-none absolute top-0 rounded-lg border border-border bg-bg px-2.5 py-1.5 text-sm shadow-lg"
+          className="pointer-events-none absolute top-0 rounded-lg border border-border bg-bg px-2.5 py-1.5 shadow-lg"
           style={{ left: Math.max(0, Math.min(x(hover) - 70, width - (hTrades.length ? 250 : hMark ? 200 : 150))) }}
         >
-          <p><span className="num font-medium">{fmtExact(h.v)}</span> <span className="text-text-3">{fmtTime(h.t)}</span></p>
+          <p><span className="num">{fmtExact(h.v)}</span> <span className="text-text-2">{fmtTime(h.t)}</span></p>
           {hMark && <p className="num text-text-2">{hMark.label}</p>}
           {hTrades.flatMap((t) => t.lines).map((line) => <p key={line} className="num whitespace-nowrap text-text-2">{line}</p>)}
         </div>
       )}
       {shownTrades.length > 0 && (
-        <p className="mt-1 flex gap-4 text-sm text-text-2">
+        <p className="mt-1 flex gap-4 text-text-2">
           <span><span aria-hidden style={{ color: "var(--buy)" }}>▲</span> Compraste</span>
           <span><span aria-hidden style={{ color: "var(--sell)" }}>▼</span> Vendiste</span>
         </p>

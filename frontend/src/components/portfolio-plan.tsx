@@ -2,7 +2,7 @@
 // buy that with the money), within the money there is.
 import Link from "next/link";
 
-import { Info } from "@/components/ui";
+import { ActionMark, Term } from "@/components/ui";
 import type { PortfolioPlan } from "@/lib/api/client";
 import { dateTime, dayShort, integer, money } from "@/lib/format";
 
@@ -11,16 +11,17 @@ type Step = PortfolioPlan["steps"][number];
 const signed = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toLocaleString("es-AR", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
 
 function Ticker({ t }: { t: string }) {
-  return <Link href={`/ticker/${t}`} className="font-semibold hover:underline">{t}</Link>;
+  return <Link href={`/ticker/${t}`} className="hover:underline">{t}</Link>;
 }
 
-function Line({ marker, children, note }: { marker: "sell" | "buy" | "swap"; children: React.ReactNode; note?: string }) {
+/** A step of the plan. What the user has to do reads large; a `quiet` suggestion stays behind it. */
+function Line({ marker, children, note, quiet = false }: { marker: "sell" | "buy" | "swap"; children: React.ReactNode; note?: string; quiet?: boolean }) {
   const color = marker === "sell" ? "var(--sell)" : marker === "buy" ? "var(--buy)" : "var(--text-2)";
   return (
     <li className="flex gap-3 py-3">
-      <span aria-hidden className="mt-2 h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+      <span className="mt-1.5 flex"><ActionMark color={color} /></span>
       <div className="min-w-0">
-        <p>{children}{note && <Info>{note}</Info>}</p>
+        <p className={quiet ? "text-text-2" : ""}><Term info={note}>{children}</Term></p>
       </div>
     </li>
   );
@@ -32,7 +33,7 @@ function Caucion({ c }: { c: NonNullable<PortfolioPlan["caucion"]> }) {
   const costs = c.costs != null ? `Ya descontados ${money(c.costs)} de costos.` : "Antes de costos.";
   const when = c.live ? "" : ` Tasa de ${dateTime(c.rate_at)}, con el mercado cerrado no hay una nueva.`;
   return (
-    <Line marker="swap" note={`${costs} Vuelve el ${dayShort(`${c.due_date}T12:00:00`)}. Se hace en IOL.${when}`}>
+    <Line marker="swap" quiet note={`${costs} Vuelve el ${dayShort(`${c.due_date}T12:00:00`)}. Se hace en IOL.${when}`}>
       Lo que queda ({money(c.amount)}) en caución a {c.term_days === 1 ? "1 día" : `${c.term_days} días`}, al {rate}% anual, gana {money(c.gain - (c.costs ?? 0))}.
     </Line>
   );
@@ -46,13 +47,13 @@ export function PlanView({ plan }: { plan: PortfolioPlan }) {
     return (
       <div>
         <p className="text-text-2">Hoy no hace falta mover nada. Tenés {money(plan.cash)} disponibles.</p>
-        {plan.caucion && <ul className="mt-3 border-y border-border"><Caucion c={plan.caucion} /></ul>}
+        {plan.caucion && <ul className="mt-1"><Caucion c={plan.caucion} /></ul>}
       </div>
     );
   }
   return (
     <div>
-      <ul className="divide-y divide-border border-y border-border">
+      <ul className="divide-y divide-grid">
         {[...groups.values()].map((g) => {
           const sell = g.find((s) => s.action === "sell");
           const buy = g.find((s) => s.action === "buy");
@@ -84,7 +85,7 @@ export function PlanView({ plan }: { plan: PortfolioPlan }) {
         ))}
         {plan.caucion && <Caucion c={plan.caucion} />}
       </ul>
-      <p className="mt-3 text-sm text-text-2">
+      <p className="mt-2 text-text-2">
         Tenés {money(plan.cash)} disponibles; después de esto te quedan {money(plan.cash_left)}.
       </p>
     </div>

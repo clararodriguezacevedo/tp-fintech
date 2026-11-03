@@ -27,12 +27,12 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
     const t = state.trade;
     return (
       <div className="rounded-xl border border-border p-5">
-        <p className="text-lg font-semibold">Venta hecha</p>
+        <p className="font-semibold">Venta hecha</p>
         <p className="mt-2 text-text-2">
           Vendiste {integer(t.quantity)} {t.ticker} a {price(t.exit_price ?? t.entry_price)}.
           {mode === "paper" && " Es una venta simulada."}
         </p>
-        <Link href="/operaciones" className="mt-4 inline-block text-sm underline">Ver mis operaciones</Link>
+        <Link href="/operaciones" className="mt-4 inline-block underline">Ver mis operaciones</Link>
       </div>
     );
   }
@@ -43,17 +43,17 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
       <input type="hidden" name="quantity" value={quantity} />
       {recommendationId && <input type="hidden" name="recommendation_id" value={recommendationId} />}
 
-      <p className="text-lg font-semibold">Vender {plan.ticker}</p>
-      <p className="text-sm text-text-3">
+      <p className="font-semibold">Vender {plan.ticker}</p>
+      <p className="text-text-2">
         {mode === "paper" ? "Simulación." : "Orden real en IOL."}
       </p>
 
       {!review ? (
         <>
-          <div className="mt-5 flex items-center justify-between gap-3">
+          <div className="mt-6 flex items-center justify-between gap-3">
             <label htmlFor="sell-qty">
               <span className="block">Cantidad</span>
-              <span className="block text-sm text-text-3">Tenés {integer(plan.held)}</span>
+              <span className="block text-text-2">Tenés {integer(plan.held)}</span>
             </label>
             <input
               id="sell-qty" type="number" step="1" min={1} max={plan.held} value={quantity}
@@ -61,9 +61,9 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
               className="num w-32 rounded-lg border border-border bg-bg px-3 py-2 text-right focus:border-text"
             />
           </div>
-          <dl className="mt-5 space-y-1 border-t border-border pt-4">
+          <dl className="mt-6 space-y-2 border-t border-border pt-6">
             <div className="flex justify-between"><dt className="text-text-2">Precio</dt><dd className="num">{price(plan.price)}</dd></div>
-            <div className="flex justify-between"><dt className="text-text-2">Recibís</dt><dd className="num font-semibold">{money(amount)}</dd></div>
+            <div className="flex justify-between"><dt className="text-text-2">Recibís</dt><dd className="num">{money(amount)}</dd></div>
             {fees != null && <div className="flex justify-between"><dt className="text-text-2">Costos de IOL</dt><dd className="num">{money(fees)}</dd></div>}
             <div className="flex justify-between"><dt className="text-text-2">Te había costado</dt><dd className="num">{money(cost)}</dd></div>
             <div className="flex justify-between">
@@ -71,29 +71,29 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
               <dd className="num" style={{ color: result >= 0 ? "var(--buy)" : "var(--sell)" }}>{result >= 0 ? "+" : "−"}{money(Math.abs(result))}</dd>
             </div>
           </dl>
-          {problem && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{problem}</p>}
+          {problem && <p className="mt-3" role="alert" style={{ color: "var(--sell)" }}>{problem}</p>}
           <button
             type="button" disabled={!!problem} onClick={() => setReview(true)}
-            className={`mt-5 w-full ${BUTTON}`}
+            className={`mt-6 w-full ${recommended ? BUTTON : BUTTON_ALT}`}
           >
             Continuar
           </button>
         </>
       ) : (
         <>
-          <p className="mt-5 leading-relaxed">
+          <p className="mt-6 leading-relaxed">
             Vas a vender <strong>{integer(quantity)} {plan.ticker}</strong> a <span className="num">{price(plan.price)}</span> y
             recibir <strong className="num">{money(amount)}</strong>.
           </p>
           {!plan.market_open && (
-            <p className="mt-3 text-sm text-text-2">
+            <p className="mt-3 text-text-2">
               {mode === "paper"
                 ? "El mercado está cerrado: la simulación vende al último precio de cierre."
                 : "El mercado está cerrado: la venta se hace cuando abra, a las 11:00."}
             </p>
           )}
-          {state.status === "error" && <p className="mt-3 text-sm" role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}
-          <div className="mt-5 grid grid-cols-2 gap-3">
+          {state.status === "error" && <p className="mt-3" role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}
+          <div className="mt-6 grid grid-cols-2 gap-3">
             <button type="button" onClick={() => setReview(false)} className={BUTTON_ALT}>Volver</button>
             <button type="submit" disabled={pending} className={BUTTON}>
               {pending ? "Vendiendo..." : "Confirmar"}

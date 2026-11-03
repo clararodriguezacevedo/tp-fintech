@@ -229,7 +229,7 @@ class HitStats(BaseModel):
 
 
 class SignalStats(BaseModel):
-    signal: Literal["news", "markets", "trend", "context", "gap", "macro"]
+    signal: Literal["evidence", "trend", "context", "gap", "macro"]
     n: int  # graded recommendations where this signal pointed somewhere
     hits: int  # ... and the price moved that way (open -> close)
     hit_rate: float | None

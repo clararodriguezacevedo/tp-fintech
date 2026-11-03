@@ -13,8 +13,8 @@ export default async function SiteLayout({ children }: Readonly<{ children: Reac
   return (
     <UnitsProvider initial={units}>
       <Header />
-      <main className="mx-auto max-w-5xl px-4 pb-16 pt-8">{children}</main>
-      <footer className="mx-auto max-w-5xl px-4 pb-8 text-sm text-text-3">
+      <main className="mx-auto max-w-6xl px-4 pb-24 pt-10">{children}</main>
+      <footer className="mx-auto max-w-6xl px-4 pb-8 text-text-2">
         Recomendaciones automáticas con fines educativos. No es asesoramiento financiero.
       </footer>
     </UnitsProvider>

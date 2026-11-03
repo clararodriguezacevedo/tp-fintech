@@ -13,14 +13,14 @@ function Step({ n, title, summary, ai = false, children }: { n: number; title: s
   return (
     <li className="relative pb-2 pl-10">
       <span aria-hidden className="absolute bottom-0 left-3 top-7 w-px bg-border" />
-      <span aria-hidden className="num absolute left-0 top-2.5 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-bg text-sm text-text-2">{n}</span>
+      <span aria-hidden className="num absolute left-0 top-2.5 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-bg text-text-2">{n}</span>
       <details className="group">
         <summary className="flex cursor-pointer list-none items-start gap-2 py-2.5 [&::-webkit-details-marker]:hidden">
-          <span aria-hidden className="mt-1 text-xs text-text-3 transition-transform group-open:rotate-90">▶</span>
+          <span aria-hidden className="mt-1 text-text-2 transition-transform group-open:rotate-90">▶</span>
           <span className="min-w-0 flex-1">
             {title}
-            {ai && <span className="ml-2 rounded-full border border-border px-2.5 py-0.5 text-sm text-text-2">Usa Gemini</span>}
-            <span className="block text-sm text-text-2">{summary}</span>
+            {ai && <span className="ml-2 rounded-lg border border-border px-2 py-0.5 text-text-2">Usa Gemini</span>}
+            <span className="block text-text-2">{summary}</span>
           </span>
         </summary>
         <div className="max-w-3xl space-y-3 pb-3 pl-5 text-text-2">{children}</div>
@@ -30,31 +30,31 @@ function Step({ n, title, summary, ai = false, children }: { n: number; title: s
 }
 
 function Rule({ children }: { children: ReactNode }) {
-  return <p className="num rounded-lg bg-surface px-3 py-2 text-sm text-text">{children}</p>;
+  return <p className="rounded-lg bg-surface px-3 py-2 font-mono text-text">{children}</p>;
 }
 
-const HEAD = "py-2 pr-4 font-normal";
+const HEAD = "py-2 pr-4";
 const CELL = "py-2 pr-4 align-top";
 
 function MarketCases({ m }: { m: ModelInfo }) {
   const says = (x: number) => (x === 0 ? "No cuenta" : `${score(x)}: ${x > 0 ? "sube" : "baja"} el puntaje`);
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[520px] text-left text-sm">
-        <thead className="text-text-3">
+      <table className="w-full min-w-[520px] text-left">
+        <thead className="text-text-2">
           <tr className="border-b border-border">
             <th className={HEAD}>Si el SÍ pasa, para el activo es</th>
             <th className={HEAD}>La probabilidad</th>
             <th className={HEAD}>Resultado</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border text-text">
+        <tbody className="divide-y divide-grid text-text">
           {m.market_cases.map((c) => (
             <tr key={`${c.yes_is_good}${c.change}${c.deadline}`}>
               <td className={CELL}>{c.yes_is_good ? "Bueno" : "Malo"}</td>
               <td className={`num ${CELL}`}>
                 {points(c.change)}
-                {c.deadline && <span className="block font-sans text-text-3">Con fecha límite, a 5 días y 20% de chance</span>}
+                {c.deadline && <span className="block font-sans text-text-2">Con fecha límite, a 5 días y 20% de chance</span>}
               </td>
               <td className={`num ${CELL}`}>{says(c.contribution)}</td>
             </tr>
@@ -76,8 +76,8 @@ function Effects({ m }: { m: ModelInfo }) {
   ];
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[620px] text-left text-sm">
-        <thead className="text-text-3">
+      <table className="w-full min-w-[620px] text-left">
+        <thead className="text-text-2">
           <tr className="border-b border-border">
             <th className={HEAD}>Señal</th>
             <th className={HEAD}>Peso</th>
@@ -85,7 +85,7 @@ function Effects({ m }: { m: ModelInfo }) {
             <th className={HEAD}>Para qué lado empuja</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border text-text">
+        <tbody className="divide-y divide-grid text-text">
           {rows.map((r) => (
             <tr key={r.name}>
               <td className={CELL}>{r.name}</td>
@@ -113,7 +113,7 @@ export function DecisionFlow({ m }: { m: ModelInfo }) {
           Se usa {m.tagger_model}, en lotes de hasta {m.tag_batch}. Para cada uno recibe el título y hasta 600 caracteres de texto. De tu cartera solo ve qué activos tenés, no cuánta plata. Devuelve un resumen y, por cada activo afectado, dirección (sube o baja), fuerza (baja, media o alta) y el motivo. Las respuestas con un activo que no existe o con texto roto se descartan.
         </p>
         <p>Este es el prompt, tal cual se envía:</p>
-        <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 text-sm text-text">{m.tagger_prompt}</pre>
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 font-mono text-text">{m.tagger_prompt}</pre>
       </Step>
 
       <Step n={3} title="Cada noticia pasa a un número" summary="Según su dirección, su fuerza y qué tan nueva es.">

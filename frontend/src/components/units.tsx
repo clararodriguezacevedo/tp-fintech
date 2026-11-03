@@ -25,7 +25,7 @@ function Segment<T extends string>({ label, value, options, onChange }: {
   label: string; value: T; options: { key: T; text: string }[]; onChange: (v: T) => void;
 }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex overflow-hidden rounded-lg border border-border text-sm">
+    <div role="group" aria-label={label} className="inline-flex overflow-hidden rounded-lg border border-border">
       {options.map((o) => (
         <button
           key={o.key} type="button" aria-pressed={value === o.key} onClick={() => onChange(o.key)}
@@ -41,7 +41,7 @@ function Segment<T extends string>({ label, value, options, onChange }: {
 export function UnitToggle({ currency = true, mode = true }: { currency?: boolean; mode?: boolean }) {
   const u = useContext(UnitsContext);
   return (
-    <div className="flex flex-wrap items-center gap-2 text-base font-normal">
+    <div className="flex flex-wrap items-center gap-2">
       {currency && (
         <Segment label="Moneda" value={u.currency} onChange={(c) => u.set({ currency: c })}
           options={[{ key: "ARS", text: "$" }, { key: "USD", text: "US$" }]} />

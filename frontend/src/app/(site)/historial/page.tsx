@@ -1,10 +1,10 @@
 import Link from "next/link";
 
 import { ActionBadge } from "@/components/signals";
-import { ApiFailure, attempt, Card, Delta, Info, Notice, PageTitle, SectionTitle } from "@/components/ui";
+import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term } from "@/components/ui";
 import { Amount, ByMode, UnitToggle } from "@/components/units";
 import { api, type Recommendation } from "@/lib/api/client";
-import { dayLong, money, pct } from "@/lib/format";
+import { dayNumeric, money, pct } from "@/lib/format";
 import { assetNames, nameOf } from "@/lib/names";
 
 export const metadata = { title: "Resultados | El Parqué" };
@@ -14,28 +14,22 @@ const relevant = (r: Recommendation) => r.held || r.action !== "keep";
 
 const asDay = (d: string) => d + "T12:00:00";
 
-const SIGNAL: Record<string, string> = {
-  news: "Noticias",
-  markets: "Mercados de predicción",
-  trend: "Tendencia del precio",
-  context: "Contexto del mercado",
-  gap: "Brecha del CEDEAR",
-  macro: "Riesgo país y dólar",
-};
-
 const change = (value: number | null | undefined, start: number) => (value != null && start ? value / start - 1 : null);
 
-/** A day's move: the value it ended at minus what it started from, or the same as a percentage. */
-function DayMove({ value, move, inUsd }: { value: number; move: number; inUsd: (x: number) => number | null }) {
-  const amount = Math.abs(value - value / (1 + move));
-  return <Delta value={move}><ByMode abs={<Amount ars={amount} usd={inUsd(amount)} />} pct={pct(move, 2)} /></Delta>;
+/** What a value that ended at `value` gained or lost in a day that moved it by `move`. To the cent,
+ * so that the difference between two of them is the difference between the numbers shown. */
+const dayAmount = (value: number, move: number) => Math.round((value - value / (1 + move)) * 100) / 100;
+
+/** A day's result, as an amount or as a percentage. */
+function DayResult({ amount, percent, inUsd }: { amount: number; percent: string; inUsd: (x: number) => number | null }) {
+  const size = Math.abs(amount);
+  return <Delta value={amount}><ByMode abs={<Amount ars={size} usd={inUsd(size)} />} pct={percent} /></Delta>;
 }
 
 export default async function HistoryPage() {
-  const [sim, history, signals, names, portfolio] = await Promise.all([
+  const [sim, history, names, portfolio] = await Promise.all([
     attempt(api.simulation),
     attempt(() => api.trackRecordHistory(1000)),
-    attempt(api.signals),
     assetNames(),
     attempt(api.portfolio),
   ]);
@@ -62,29 +56,21 @@ export default async function HistoryPage() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-14">
       <section>
         <PageTitle>Resultados</PageTitle>
-        <p className="text-text-2">Si hubieras seguido el plan de cada día desde el {s.start_day && dayLong(asDay(s.start_day))}, tu cartera valdría</p>
-        <p className="num mt-1 text-4xl font-semibold">{money(s.follow_value)}</p>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          <Card>
-            <p className="text-sm text-text-2">Lo que hiciste (sin seguirlo)</p>
-            <p className="num mt-1 text-xl font-semibold">{money(s.base_value)}</p>
-          </Card>
-          <Card>
-            <p className="text-sm text-text-2">Diferencia</p>
-            <p className="mt-1 text-xl font-semibold">
-              <Delta value={diff}>{diff >= 0 ? "+" : "−"}{money(Math.abs(diff))}</Delta>
-            </p>
-          </Card>
-          <Card>
-            <p className="text-sm text-text-2">Aciertos</p>
-            <p className="num mt-1 text-xl font-semibold">{hits} de {recs.length}</p>
-          </Card>
-        </div>
+        <p className="text-text-2">Si hubieras seguido el plan de cada día desde el {s.start_day && dayNumeric(asDay(s.start_day))}, tu cartera valdría</p>
+        <p className="num mt-1 text-3xl font-semibold">{money(s.follow_value)}</p>
+        <Stats
+          className="mt-6"
+          items={[
+            { label: "Lo que hiciste (sin seguirlo)", value: money(s.base_value) },
+            { label: "Diferencia", value: <Delta value={diff}>{diff >= 0 ? "+" : "−"}{money(Math.abs(diff))}</Delta> },
+            { label: "Aciertos", value: `${hits} de ${recs.length}` },
+          ]}
+        />
 
-        <div className="mt-10">
+        <div className="mt-14">
           <SectionTitle
             aside={<UnitToggle />}
             info={`Todo arranca de tu cartera del primer día. El plan se opera a la apertura del día siguiente, con los costos reales de IOL (${(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%). Las líderes del Merval reemplazan al índice, que IOL no publica.`}
@@ -92,7 +78,7 @@ export default async function HistoryPage() {
             Contra qué comparar
           </SectionTitle>
         </div>
-        <ul className="divide-y divide-border border-y border-border">
+        <ul className="divide-y divide-grid">
           {[
             { label: "Siguiendo el plan de cada día", value: s.follow_value, note: "" },
             {
@@ -107,12 +93,9 @@ export default async function HistoryPage() {
           ].map((x) => {
             const c = change(x.value, s.start_value);
             return (
-              <li key={x.label} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <span>
-                  {x.label}
-                  {x.note && <Info>{x.note}</Info>}
-                </span>
-                <span className="num font-semibold">
+              <li key={x.label} className="flex flex-wrap items-center justify-between gap-3 py-4">
+                <span><Term info={x.note}>{x.label}</Term></span>
+                <span className="num">
                   <ByMode abs={<Amount ars={x.value} usd={inUsd(x.value)} />} pct={c == null ? "-" : <Delta value={c}>{pct(c, 2)}</Delta>} />
                 </span>
               </li>
@@ -121,73 +104,49 @@ export default async function HistoryPage() {
         </ul>
       </section>
 
-      {signals.ok && signals.data.some((x) => x.n_vs_day > 0) && (
-        <section>
-          <SectionTitle
-            aside={<UnitToggle currency={false} />}
-            info="Cuántas veces el activo le ganó o perdió contra el resto ese día, como decía la señal. 50% es tirar una moneda, y con tan pocos días todavía no es concluyente."
-          >
-            Qué señal funciona
-          </SectionTitle>
-          <ul className="divide-y divide-border border-y border-border">
-            {signals.data.filter((x) => x.n_vs_day > 0).map((x) => (
-              <li key={x.signal} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <span>{SIGNAL[x.signal]}<Info>{x.days} {x.days === 1 ? "día" : "días"} de datos.</Info></span>
-                <span className="num font-semibold">
-                  <ByMode abs={`${x.hits_vs_day} de ${x.n_vs_day}`} pct={`${Math.round((x.rate_vs_day ?? 0) * 100)}%`} />
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       <section>
         <SectionTitle
-          aside={<UnitToggle />}
-          info="Se mide de apertura a cierre. Mantener algo que tenés acierta si no cae más de 1,5%. Lo de cada activo siempre va en porcentaje: el monto dependería de cuánto hubieras puesto."
+          info="Arriba, cuánto ganó o perdió tu cartera ese día siguiendo el plan y con lo que hiciste. La diferencia es a favor del plan si es positiva. Cada activo se mide de apertura a cierre y siempre en porcentaje: el monto dependería de cuánto hubieras puesto. Mantener algo que tenés acierta si no cae más de 1,5%."
         >
           Día por día
         </SectionTitle>
-        <ul className="space-y-4">
+        <ul className="space-y-14">
           {[...byDay.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([day, items]) => {
             const d = simByDay.get(day);
             return (
               <li key={day}>
-                <Card>
-                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="font-semibold first-letter:uppercase">{dayLong(asDay(day))}</p>
-                    {d && (
-                      <p className="text-sm text-text-2">
-                        Con el plan <DayMove value={d.follow_value} move={d.follow_return} inUsd={inUsd} />, sin el plan <DayMove value={d.base_value} move={d.base_return} inUsd={inUsd} />
-                      </p>
-                    )}
-                  </div>
-                  {d && (d.bought.length > 0 || d.sold.length > 0) && (
-                    <p className="mb-3 text-sm text-text-2">
-                      El plan: {[
-                        ...d.rotated.map((r) => { const [from, to] = r.split(">"); return `rotar de ${from} a ${to}`; }),
-                        ...d.sold.filter((t) => !d.rotated.some((r) => r.startsWith(`${t}>`))).map((t) => `vender ${t}`),
-                        ...d.bought.filter((t) => !d.rotated.some((r) => r.endsWith(`>${t}`))).map((t) => `comprar ${t} con la plata disponible`),
-                      ].join(", ")}.
-                    </p>
-                  )}
-                  <ul className="divide-y divide-border">
-                    {items.sort((a, b) => Number(b.action === "buy") - Number(a.action === "buy") || a.ticker.localeCompare(b.ticker)).map((r) => (
-                      <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
-                        <span>
-                          <Link href={`/ticker/${r.ticker}`} className="font-semibold hover:underline">{r.ticker}</Link>{" "}
-                          <span className="text-text-2">{nameOf(r.ticker, names[r.ticker])}</span>
-                        </span>
-                        <span className="flex items-center gap-4">
-                          <ActionBadge action={r.action} />
-                          <span className="w-20 text-right"><Delta value={r.realized_return ?? 0}>{pct(r.realized_return)}</Delta></span>
-                          <span className="w-14 text-right text-sm">{r.hit ? "Acertó" : "Falló"}</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
+                <p className="mb-4 font-semibold">{dayNumeric(asDay(day))}</p>
+                {d && (() => {
+                  const follow = dayAmount(d.follow_value, d.follow_return);
+                  const base = dayAmount(d.base_value, d.base_return);
+                  const points = (d.follow_return - d.base_return) * 100;
+                  const pointsText = `${points >= 0 ? "+" : "−"}${Math.abs(points).toLocaleString("es-AR", { maximumFractionDigits: 2, minimumFractionDigits: 2 })} pts`;
+                  return (
+                    <Stats
+                      className="mb-4"
+                      items={[
+                        { label: "Siguiendo el plan", value: <DayResult amount={follow} percent={pct(d.follow_return, 2)} inUsd={inUsd} /> },
+                        { label: "Lo que hiciste", value: <DayResult amount={base} percent={pct(d.base_return, 2)} inUsd={inUsd} /> },
+                        { label: "Diferencia", value: <DayResult amount={follow - base} percent={pointsText} inUsd={inUsd} /> },
+                      ]}
+                    />
+                  );
+                })()}
+                <ul className="divide-y divide-grid">
+                  {items.sort((a, b) => Number(b.action === "buy") - Number(a.action === "buy") || a.ticker.localeCompare(b.ticker)).map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                      <span>
+                        <Link href={`/ticker/${r.ticker}`} className="font-semibold hover:underline">{r.ticker}</Link>{" "}
+                        <span className="text-text-2">{nameOf(r.ticker, names[r.ticker])}</span>
+                      </span>
+                      <span className="flex items-center gap-4">
+                        <ActionBadge action={r.action} />
+                        <span className="w-20 text-right"><Delta value={r.realized_return ?? 0}>{pct(r.realized_return)}</Delta></span>
+                        <span className="w-14 text-right">{r.hit ? "Acertó" : "Falló"}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </li>
             );
           })}
