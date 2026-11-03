@@ -49,10 +49,10 @@ export default async function PortfolioPage() {
   const invested = ars.reduce((s, h) => s + h.value, 0);
   const gain = ars.reduce((s, h) => s + h.gain_amount, 0);
   const cost = invested - gain;
-  const cashRows = [
-    { key: "ars", name: "Pesos disponibles", note: "Para invertir, en tu cuenta de IOL", value: cash },
+  const cashRows: { key: string; name: string; note?: string; value: number }[] = [
+    { key: "ars", name: "Pesos disponibles", value: cash },
     ...(reserved >= 0.01 ? [{ key: "res", name: "Pesos reservados", note: "Para tus órdenes de compra pendientes en IOL. Siguen siendo tuyos hasta que se ejecuten.", value: reserved }] : []),
-    ...(p.cash_usd >= 0.01 ? [{ key: "usd", name: "Dólares disponibles", note: `${usd(p.cash_usd)} al dólar MEP`, value: p.cash_usd_ars }] : []),
+    ...(p.cash_usd >= 0.01 ? [{ key: "usd", name: "Dólares disponibles", value: p.cash_usd_ars }] : []),
   ];
   const shares = roundToTotal([...ars.map((h) => (h.value / total) * 100), ...cashRows.map((c) => (c.value / total) * 100)], 0, 100);
   const shareOf = new Map<string, number>([...ars.map((h, i) => [h.ticker, shares[i]] as const), ...cashRows.map((c, i) => [`$${c.key}`, shares[ars.length + i]] as const)]);
@@ -194,7 +194,7 @@ export default async function PortfolioPage() {
               {cashRows.map((c) => (
                 <tr key={c.key}>
                   <td className="py-3 pl-7">
-                    <p className="font-semibold">{c.name}<Info place="left-full top-1/2 ml-2 -translate-y-1/2">{c.note}</Info></p>
+                    <p className="font-semibold">{c.name}{c.note && <Info place="left-full top-1/2 ml-2 -translate-y-1/2">{c.note}</Info>}</p>
                   </td>
                   <td className="py-3" />
                   <td className="py-3" />
