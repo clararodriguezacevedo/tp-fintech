@@ -9,6 +9,7 @@ import httpx
 
 from app import alerts, caucion, reconcile, universe
 from app.analysis import market_hours, scoring, track_record
+from app.analysis import tagger
 from app.analysis.tagger import TagInput, tag_items
 from app.db import get_db, rows_as
 from app.models.db import MarketRow, NewsRow
@@ -18,6 +19,7 @@ from app.sources import corporate_events, kalshi, news, polymarket
 log = logging.getLogger(__name__)
 
 TAG_BATCH_SIZE = 20
+NEWS_BATCHES = 2  # per cycle, so what Google News adds doesn't pile up
 
 
 def _now() -> str:
@@ -70,14 +72,26 @@ def collect_markets() -> None:
 
 
 def collect_news() -> None:
+    try:
+        companies = company_queries(_holding_descriptions())
+    except Exception:
+        log.exception("no company list for the news")
+        companies = {}
     with httpx.Client(timeout=30, follow_redirects=True) as client:
-        items = news.fetch_all(client)
+        items = news.fetch_all(client, news.pick_rotation(companies, market_hours.now_art()))
     if items:
         get_db().table("news_items").upsert(
             [n.model_dump(mode="json") for n in items], on_conflict="external_id",
             ignore_duplicates=True,
         ).execute()
     log.info("fetched %d news items", len(items))
+
+
+def company_queries(holdings: dict[str, str]) -> dict[str, str]:
+    """ticker -> what to search the news for: holdings, Merval leaders and the usual CEDEARs."""
+    g = universe.groups()
+    usual = set(holdings) | g.leaders | set(tagger.UNIVERSE["cedears"])
+    return {t: news.search_name(t, g.names.get(t) or holdings.get(t, t), tagger.ALIASES.get(t)) for t in usual}
 
 
 def _holding_descriptions() -> dict[str, str]:
@@ -97,10 +111,15 @@ def _save_tags(table: str, kind: Literal["news", "market"], items: list[TagInput
             "id", item.id
         ).execute()
         impacts += [
-            {"item_kind": kind, "item_id": item.id, **i.model_dump()} for i in item.impacts
+            {"item_kind": kind, "item_id": item.id, "tag_version": scoring.TAG_VERSION, **i.model_dump()}
+            for i in item.impacts
         ]
     if impacts:
         db.table("ticker_impacts").insert(impacts).execute()
+
+
+def _market_text(m: MarketRow) -> str:
+    return f"Resolves on {m.end_date.date().isoformat()}." if m.end_date else ""
 
 
 def tag_pending() -> None:
@@ -108,35 +127,42 @@ def tag_pending() -> None:
     db = get_db()
     holdings = _holding_descriptions()
     assets = universe.groups().names
-    pending_news = rows_as(
-        NewsRow,
-        db.table("news_items").select("*").is_("tagged_at", "null")
-        .order("published_at", desc=True).limit(TAG_BATCH_SIZE).execute().data,
-    )
-    if pending_news:
+    for _ in range(NEWS_BATCHES):
+        pending_news = rows_as(
+            NewsRow,
+            db.table("news_items").select("*").is_("tagged_at", "null")
+            .order("published_at", desc=True).limit(TAG_BATCH_SIZE).execute().data,
+        )
+        if not pending_news:
+            break
         _save_tags("news_items", "news", [
             TagInput(id=n.id, kind="news", title=n.title, text=n.summary or "") for n in pending_news
         ], holdings, assets)
 
+    # Markets with too little volume wouldn't count: they get tagged if they start trading.
     pending_markets = rows_as(
         MarketRow,
         db.table("prediction_markets").select("*").is_("tagged_at", "null")
+        .gte("volume_24h", scoring.MARKET_MIN_VOLUME)
         .order("volume_24h", desc=True).limit(TAG_BATCH_SIZE).execute().data,
     )
     if pending_markets:
         _save_tags("prediction_markets", "market", [
-            TagInput(id=m.id, kind="market", title=m.title) for m in pending_markets
+            TagInput(id=m.id, kind="market", title=m.title, text=_market_text(m)) for m in pending_markets
         ], holdings, assets)
 
 
 def score_live() -> None:
-    recs = scoring.score_all("live")
+    """Between sessions, a preview of the next one. From the moment the day's recommendations are
+    issued until the close they stay: they're what gets graded, so they're what the site shows."""
+    if market_hours.is_frozen():
+        return
+    recs = scoring.score_all(("live",))
     log.info("scored %d tickers (live)", len(recs))
-    alerts.sell_signals(recs, market_hours.next_close_date())
 
 
-def score_daily() -> None:
-    recs = scoring.score_all("daily")
+def score_open() -> None:
+    recs = scoring.score_all(("live", "daily"))
     alerts.sell_signals(recs, market_hours.next_close_date())
 
 
@@ -168,6 +194,14 @@ def refresh_simulation() -> None:
     }).execute()
 
 
+def refresh_evaluation() -> None:
+    from app.analysis import evaluation  # heavy imports, only for this job
+
+    get_db().table("api_cache").upsert({
+        "key": "evaluation", "value": [t.model_dump(mode="json") for t in evaluation.run()], "created_at": _now(),
+    }).execute()
+
+
 def _alert_failures(job: str, failed: list[str]) -> list[str]:
     if failed:
         alerts.job_failed(job, failed)
@@ -187,11 +221,22 @@ def run_cycle() -> list[str]:
     ]))
 
 
+def before_open() -> list[str]:
+    """10:15 on trading days: the news that came in overnight, then the day's recommendations."""
+    return _alert_failures("before-open", _run_all([
+        ("refresh_holdings", refresh_holdings),
+        ("collect_markets", collect_markets),
+        ("collect_news", collect_news),
+        ("tag_pending", tag_pending),
+        ("score_open", score_open),
+    ]))
+
+
 def after_close() -> list[str]:
-    """17:30 on weekdays: grade the day's recommendations, then issue tomorrow's."""
+    """18:30 on weekdays: grade the day's recommendations and recompute the results."""
     return _alert_failures("after-close", _run_all([
         ("refresh_events", refresh_events),
         ("evaluate_pending", track_record.evaluate_pending),
-        ("score_daily", score_daily),
         ("refresh_simulation", refresh_simulation),
+        ("refresh_evaluation", refresh_evaluation),
     ]))

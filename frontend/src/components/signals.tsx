@@ -2,7 +2,7 @@
 import Link from "next/link";
 
 import { ActionMark, Term } from "@/components/ui";
-import type { CalibrationBucket, Evidence, Impact, Recommendation } from "@/lib/api/client";
+import type { Evidence, Impact, Recommendation } from "@/lib/api/client";
 import { dayShort, integer } from "@/lib/format";
 
 type Action = Recommendation["action"];
@@ -25,30 +25,19 @@ export function ActionBadge({ action }: { action: Action }) {
   );
 }
 
-/** "Señal fuerte" / "moderada" / "débil", from the score's size. */
-export function strength(score: number) {
-  const s = Math.abs(score);
-  return s >= 0.6 ? "Señal fuerte" : s >= 0.3 ? "Señal moderada" : "Señal débil";
-}
+export const CLASS_NAME: Record<string, string> = { stocks: "las acciones", bonds: "los bonos", us: "los CEDEARs" };
 
-export const CALIBRATION_MIN_CASES = 20;
-
-/** How often recommendations like this one were right, once there are enough graded cases;
- * until then, the score's strength in words. */
-export function track(r: Pick<Recommendation, "action" | "held" | "score">, buckets: CalibrationBucket[] = []) {
-  const s = Math.abs(r.score);
-  const b = buckets.find((x) => x.action === r.action && x.held === r.held && s >= x.score_min && s < x.score_max);
-  if (b && b.n >= CALIBRATION_MIN_CASES) {
-    return `Con puntajes así acertó ${Math.round(b.hit_rate * 100)}% de las veces (${b.n} casos)`;
-  }
-  return strength(r.score);
+/** Where it stands against its class, or why it has no place there. */
+export function rankText(r: Pick<Recommendation, "signal_breakdown">) {
+  const b = r.signal_breakdown;
+  if (!b.rank || !b.rank_of) return "Sin noticias ni mercados claros";
+  return `${b.rank} de ${b.rank_of} entre ${b.asset_class ? CLASS_NAME[b.asset_class] : "su clase"}`;
 }
 
 type Breakdown = Recommendation["signal_breakdown"];
 
 const pctText = (x: number) => `${Math.abs(x * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
 
-const GROUP: Record<string, string> = { argentina: "riesgo argentino", exterior: "activos del exterior" };
 export const RISK_NAME: Record<number, string> = { 1: "bajo", 2: "medio", 3: "alto" };
 
 /** "Riesgo medio" as a small tag, with its volatility on hover. */
@@ -83,7 +72,7 @@ export function threeMonths(b: Breakdown | undefined) {
   return fromHigh > -0.01 ? `${change}, en su máximo` : `${change}, ${pctText(fromHigh)} debajo de su máximo`;
 }
 
-/** Plain-language reasons from the market-wide signals, when they are strong enough to matter. */
+/** What else to know, in plain language. Macro is measured next to the score: it doesn't decide. */
 function marketReasons(b: Breakdown | undefined) {
   const out: { up: boolean; text: string; note: string }[] = [];
   if (!b) return out;
@@ -100,38 +89,15 @@ function marketReasons(b: Breakdown | undefined) {
       ? {
           up: !rising,
           text: `El riesgo país ${rising ? "subió" : "bajó"} ${pctText(b.macro_change)} en la última semana${b.macro_level ? ` (${integer(b.macro_level)} puntos)` : ""}.`,
-          note: rising
+          note: `${rising
             ? "Cuando sube, los inversores piden más por el riesgo argentino: suelen bajar los bonos y los bancos."
-            : "Cuando baja, los inversores confían más en Argentina: suelen subir los bonos y los bancos.",
+            : "Cuando baja, los inversores confían más en Argentina: suelen subir los bonos y los bancos."} Es contexto: no entra en el puntaje.`,
         }
       : {
           up: rising,
           text: `El dólar CCL ${rising ? "subió" : "bajó"} ${pctText(b.macro_change)} en la última semana${b.macro_level ? ` ($ ${integer(b.macro_level)})` : ""}.`,
-          note: "Los CEDEARs cotizan en pesos y siguen al dólar CCL: si el dólar sube, suben con él.",
+          note: "Los CEDEARs cotizan en pesos y siguen al dólar CCL: si el dólar sube, suben con él. Es contexto: no entra en el puntaje.",
         });
-  }
-  if ((b.concentration ?? 0) < 0 && b.group_share != null && b.risk_group) {
-    out.push({
-      up: false,
-      text: `Ya tenés ${pctText(b.group_share)} de tu cartera en ${GROUP[b.risk_group] ?? b.risk_group}.`,
-      note: "Sumar más de lo mismo concentra el riesgo.",
-    });
-  }
-  if (Math.abs(b.context) >= 0.3) {
-    out.push({
-      up: b.context > 0,
-      text: b.context > 0 ? "El mercado en general viene subiendo." : "El mercado en general viene bajando.",
-      note: "Cuando todo el mercado se mueve para un lado, arrastra a casi todas las acciones.",
-    });
-  }
-  if (Math.abs(b.gap) >= 0.3) {
-    out.push({
-      up: b.gap > 0,
-      text: b.gap > 0
-        ? "El CEDEAR está más barato de lo habitual comparado con la acción en EE.UU."
-        : "El CEDEAR está más caro de lo habitual comparado con la acción en EE.UU.",
-      note: "Esa diferencia suele corregirse en los días siguientes.",
-    });
   }
   return out;
 }
@@ -160,11 +126,13 @@ function Marker({ up }: { up: boolean }) {
 export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; breakdown?: Breakdown; limit?: number }) {
   const market = marketReasons(breakdown);
   const event = eventNote(breakdown);
-  if (items.length === 0 && market.length === 0) {
+  // An unclear item weighs in the average, but says nothing for or against.
+  const clear = items.filter((e) => e.contribution !== 0);
+  if (clear.length === 0 && market.length === 0) {
     return (
       <div className="space-y-6">
         {event && <EventItem {...event} />}
-        <p className="text-text-2">No hay noticias recientes sobre esta acción. La recomendación se basa en cómo viene su precio.</p>
+        <p className="text-text-2">No hay noticias ni mercados nuevos que digan algo claro sobre este activo.</p>
       </div>
     );
   }
@@ -179,14 +147,14 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
           </div>
         </li>
       ))}
-      {items.slice(0, limit).map((e) => {
-        const up = e.contribution !== 0 ? e.contribution > 0 : e.direction === "up";
+      {clear.slice(0, limit).map((e) => {
+        const up = e.contribution > 0;
         return (
-          <li key={`${e.item_id}-${e.broad}`} className="flex gap-3">
+          <li key={e.item_id} className="flex gap-3">
             <Marker up={up} />
             <div className="min-w-0">
               <p className="text-text">
-                <Term info={e.via && `Sobre ${e.via}, del mismo sector.`}>{evidenceText(e)}</Term>
+                <Term info={e.via && `Llega por este factor: ${e.via}`}>{evidenceText(e)}</Term>
               </p>
               {e.url ? (
                 <a href={e.url} target="_blank" rel="noreferrer" className="text-text-2 hover:text-text hover:underline">
@@ -216,7 +184,11 @@ function EventItem({ text, note }: { text: string; note: string }) {
   );
 }
 
-const BROAD: Record<string, string> = { MERVAL: "Acciones argentinas", BONOS: "Bonos argentinos" };
+// What a market pushes when it isn't an asset (app.analysis.factors), and the first model's broad tags.
+const BROAD: Record<string, string> = {
+  MERVAL: "Acciones argentinas", BONOS: "Bonos argentinos", "F:OIL": "Petróleo", "F:GOLD": "Oro", "F:BITCOIN": "Bitcoin",
+  "F:US_STOCKS": "Bolsa de EE.UU.", "F:AI_TECH": "Tecnología e IA", "F:US_RATES": "Tasas de EE.UU.", "F:AR_RISK": "Riesgo argentino",
+};
 
 /** The tickers a news item or market is expected to move, and which way. */
 export function ImpactList({ impacts }: { impacts: Impact[] }) {

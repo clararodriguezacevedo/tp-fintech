@@ -143,7 +143,7 @@ def _last_close_time(now: datetime) -> datetime:
     from app.prices import last_closed_day  # avoid an import cycle
 
     day = last_closed_day(now)
-    return datetime.combine(day, market_hours.CLOSE, tzinfo=market_hours.ART)
+    return datetime.combine(day, market_hours.SETTLED, tzinfo=market_hours.ART)
 
 
 def _due(latest: Snapshot | None, now: datetime) -> bool:

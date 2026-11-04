@@ -1,6 +1,6 @@
 """Run one scheduled job and exit. This is what the GitHub Actions workflows call.
 
-Usage (from backend/): uv run python -m scripts.run_job {cycle|trades|after-close}
+Usage (from backend/): uv run python -m scripts.run_job {cycle|before-open|trades|after-close}
 
   cycle        collect markets and news, tag them, refresh live recommendations
   trades       fill queued paper trades and check stop loss / take profit (only while open)
@@ -24,13 +24,15 @@ log = logging.getLogger("run_job")
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("job", choices=["cycle", "trades", "after-close"])
+    parser.add_argument("job", choices=["cycle", "before-open", "trades", "after-close"])
     job = parser.parse_args().job
 
     if job == "cycle":
         failed = jobs.run_cycle()
+    elif job == "before-open":
+        failed = jobs.before_open()
     elif job == "trades":
-        # The cron covers 11:00 to 17:00 ART on weekdays; this also skips the edges of that
+        # The cron covers 10:00 to 18:00 ART on weekdays; this also skips the edges of that
         # window and catches a cron that fires late.
         if not market_hours.is_open():
             log.info("market closed, nothing to do")

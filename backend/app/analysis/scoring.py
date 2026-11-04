@@ -1,54 +1,36 @@
-"""Turns tags, prices and the market into buy / sell / keep recommendations.
+"""Turns tags and prediction markets into buy / sell / keep recommendations.
 
-Per ticker:
-  news     sum of direction * strength * recency decay, for news from the last 36 hours. The
-           same story from several outlets counts once (titles grouped by word overlap).
-  markets  sum of direction * strength * (24h probability move / 10 points), for every tagged
-           market; a market that didn't move contributes nothing, however likely it is.
-           Markets of the same event ("ceasefire through Oct 22 / 24 / 31") count once.
-  trend    tanh of how many typical daily moves (ATR) the price sits from its 20-day average
-  context  the trend of the whole market: Merval leaders for stocks, sovereign bonds for
-           bonds, the S&P 500 (SPY in New York) for CEDEARs
-  gap      CEDEARs only: how far the CEDEAR's price sits from its usual relation to the US
-           share, after removing the move common to all CEDEARs (the dollar). Expensive
-           versus usual -> expected to fall.
-  macro    how unusual the 5-day change of riesgo país (bonds and banks; half for other local
-           stocks; falling is good) or of the CCL dollar (CEDEARs; rising is good) is
-  sector   news and markets about a sector peer (GGAL for the other banks) count at 30%
+Every piece of evidence about a ticker has a value (-1 to +1) and a weight:
 
-  concentration  buys only: when the portfolio already has more than 60% in the same risk
-           group ("argentina": local stocks, bonds and Argentine CEDEARs like VIST; "exterior":
-           the rest), 2 points off per point above 60% (at most 0.3).
-           With only two groups one is always at 50% or more, so the bar is above that.
+  news     value +1 good, -1 bad, 0 unclear. Weight 1 until a BYMA open could trade on it, half after
+           one open, nothing after two: nights, weekends and holidays don't age it.
+  market   value = its 24h probability move, beyond what the clock explains, over MARKET_MOVE_UNIT
+           (at most 1), with the sign of what YES does. Weight 1, FACTOR_WEIGHT if it reaches the
+           ticker through a factor (app.analysis.factors), less if it resolves far away.
 
-  score = 0.65 * tanh((news + markets) / 2) + 0.05 * trend + 0.1 * context + 0.1 * gap
-          + 0.1 * macro + concentration
+  score = sum(weight * value) / (sum(weight) + PRIOR_WEIGHT)
 
-Prediction markets about to resolve are ignored: a "hits $130 this week" falls just because the
-week runs out. For the rest of the deadline markets ("hits $115 in November", "by November 30")
-what counts is the 24h move minus what the day passing alone explains (time_decay). All of a ticker's markets together add up to at most MARKETS_CAP, since many are
-bets on the same thing (oil at $105, $115, $130).
+An average, so ten items saying the same aren't worth ten times one; PRIOR_WEIGHT is a neutral vote
+that makes one item count less than several. Between -1 and +1, and 0 without evidence.
 
-Market wrap-ups ("así cerró el mercado", "las acciones subieron hasta 6%") are ignored: they only
-report moves that already happened. Previews of what is coming do count: Gemini tags the
-expectation they convey, when they lean one way.
-News spread from sector peers adds up to at most SECTOR_CAP, however many items there are. A news item tagged both for a ticker and for MERVAL/BONOS
-counts for both. Prediction markets resolving more than 6 months out weigh less.
+Then, per asset class (shares, CEDEARs, bonds), tickers with evidence are ranked by score (equal
+scores share their place):
 
-Investor profile (CNV): an asset whose risk level is above the user's profile (see
-app.analysis.suitability) is never recommended to buy; its score is kept, its action is keep.
+  buy   not held, in the top TOP_SHARE of its class, score >= BUY_THRESHOLD, within the profile
+  sell  held, score <= SELL_THRESHOLD_HELD (selling costs commissions and undoes a choice)
+  keep  everything else
 
-Broad "MERVAL" tags apply at half weight to every stock, "BONOS" tags to every bond.
-Tickers the user holds can only get sell (from -0.45, a higher bar than buying) or keep; the
-rest can only get buy (from +0.3) or keep.
-The weights are judgment calls until there is enough graded history to fit them
-(scripts/fit_weights.py).
+Not news: a repeat of what was already published about the ticker in the last NOVELTY_DAYS (it
+counts once, looking only backwards), and market wrap-ups. A market only counts with enough volume,
+a move above the noise and at least MIN_MARKET_DAYS left. Markets of the same event count once: the
+most traded one.
+
+Riesgo país and the CCL dollar (macro) are measured next to the score, but don't enter it.
 """
 
 import logging
 import math
 import re
-import statistics
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -56,61 +38,46 @@ from types import SimpleNamespace
 
 from pydantic import BaseModel
 
-from app import account, prices, universe
-from app.analysis import market_hours, risk, suitability
+from app import prices, universe
+from app.analysis import factors, market_hours, suitability
 from app.assets import asset_types
-from app.sources import corporate_events, macro
 from app.brokers.iol import get_iol
 from app.db import get_db, rows_as
-from app.models.db import Action, Evidence, MarketRow, NewsRow, SignalBreakdown, TickerImpactRow
+from app.models.db import Action, Evidence, MarketRow, NewsRow, RecommendationRow, SignalBreakdown, TickerImpactRow
 from app.models.iol import DailyBar
 from app.portfolio import BOND_TYPES, EQUITY_TYPES, Holding, get_holdings
 from app.schemas import MarketCase
+from app.sources import corporate_events, macro
 
 log = logging.getLogger(__name__)
 
-STRENGTH = {"low": 0.33, "medium": 0.66, "high": 1.0}
-NEWS_MAX_AGE_HOURS = 36
-NEWS_HALF_LIFE_HOURS = 12
-MARKET_MOVE_UNIT = 0.10  # a 10-point probability move counts like one "high" news item
-MARKET_MOVE_CAP = 1.5
-BROAD_WEIGHT = 0.5
-# Trend got a low weight after scripts/backtest_trend.py found no next-day edge in it
-# (49% right on 3,936 ticker-days, correlation +0.003).
-W_EVIDENCE, W_TREND, W_CONTEXT, W_GAP, W_MACRO = 0.65, 0.05, 0.1, 0.1, 0.1
-SECTOR_WEIGHT = 0.3  # news about a sector peer, versus news about the ticker itself
-SECTOR_CAP = 0.25  # all of a ticker's sector news together, so many small items don't add up to a buy
-# Sectors whose shares tend to move together, each within one risk group.
-SECTORS = {
-    "bancos": ["GGAL", "BMA", "SUPV", "BBAR", "VALO", "BYMA"],
-    "petróleo y gas": ["YPFD", "PAMP", "VIST", "TGSU2", "TGNO4"],
-    "electricidad": ["EDN", "CEPU", "TRAN"],
-    "materiales": ["TXAR", "ALUA", "LOMA"],
-    "tecnología": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META"],
-}
-SECTOR_OF = {t: name for name, members in SECTORS.items() for t in members}
-BANKS = set(SECTORS["bancos"])
-BUY_THRESHOLD = 0.3
-SAME_STORY = 0.4  # title word overlap (Jaccard) above which two news items are one story
-GAP_UNIT = 0.01  # a 1% premium versus usual counts as a strong gap signal
+MODEL_VERSION = 2  # saved with every recommendation: change it when the model changes
+TAG_VERSION = 2  # the tags this model reads (ticker_impacts.tag_version)
+
+PRIOR_WEIGHT = 1.0
+TOP_SHARE = 0.2
+BUY_THRESHOLD = 0.35  # one market through a factor (0.33 at most) isn't enough to buy; two are
+SELL_THRESHOLD_HELD = -0.6  # a single bad headline (-0.5) isn't enough to sell
+NEWS_MAX_OPENS = 2  # opens after which a news item stops counting; each one halves its weight
+NOVELTY_DAYS = 7  # calendar days looked back for repeats, 5 sessions
+NOVELTY_SIMILARITY = 0.4  # word overlap (cosine) of title and summary from which it's the same story
+LOOKBACK_DAYS = 10  # tags read per cycle
+
+MARKET_MOVE_UNIT = 0.10  # a 10-point probability move is a full value
+MARKET_MIN_MOVE = 0.02  # less than this is noise
+MARKET_MIN_VOLUME = 1000.0  # dollars traded in 24 hours: below this a move says little
 MIN_MARKET_DAYS = 3  # markets resolving sooner move by the clock, not by news
-MARKETS_CAP = 1.0  # all of a ticker's prediction markets together, either way
 FAR_MARKET_DAYS = 180  # prediction markets resolving later than this weigh less...
 FAR_MARKET_MIN_WEIGHT = 0.25  # ...down to this share
-SELL_THRESHOLD_HELD = -0.45  # selling something you hold needs more evidence than buying
-CONCENTRATION_LIMIT = 0.60  # above this share of the portfolio in one risk group, buys in it are penalized
-CONCENTRATION_PENALTY = 2.0  # score points per unit of share above the limit (70% -> -0.2)
-CONCENTRATION_MAX = 0.3
-MAX_EVIDENCE_SHOWN = 8
+FACTOR_WEIGHT = 0.5  # a market reaching the ticker through a factor, versus one naming it
+
+CONCENTRATION_LIMIT = 0.60  # of the portfolio in one risk group: buys stop there (app.analysis.risk)
 MAX_SCORED = 100  # tickers scored per cycle (the universe has ~600)
-MAX_GAPS = 40  # CEDEARs whose gap versus the US share is measured per cycle
-BROAD_TICKERS = ("MERVAL", "BONOS")
+BANKS = {"GGAL", "BMA", "SUPV", "BBAR", "VALO", "BYMA"}
 CEDEAR_TYPES = {"CEDEARS", "Cedears"}
 
-
-@dataclass
-class TickerSignals:
-    evidence: list[Evidence] = field(default_factory=list)
+# What the first model (version 1) asked for, to replay its old recommendations in the simulation.
+V1_BUY, V1_SELL = 0.3, -0.45
 
 
 def _fetch_by_ids[M: BaseModel](table: str, model: type[M], ids: list[str]) -> dict[str, M]:
@@ -121,14 +88,15 @@ def _fetch_by_ids[M: BaseModel](table: str, model: type[M], ids: list[str]) -> d
     return out
 
 
-def _all_impacts() -> list[TickerImpactRow]:
+def _recent_impacts(now: datetime) -> list[TickerImpactRow]:
+    start = (now - timedelta(days=LOOKBACK_DAYS)).isoformat()
     impacts: list[TickerImpactRow] = []
     page = 0
     while True:  # PostgREST returns at most 1000 rows per request
         batch = rows_as(
             TickerImpactRow,
-            get_db().table("ticker_impacts").select("*").order("created_at", desc=True)
-            .range(page * 1000, page * 1000 + 999).execute().data,
+            get_db().table("ticker_impacts").select("*").eq("tag_version", TAG_VERSION).gte("created_at", start)
+            .order("created_at", desc=True).range(page * 1000, page * 1000 + 999).execute().data,
         )
         impacts += batch
         if len(batch) < 1000:
@@ -155,15 +123,15 @@ def _news_evidence(imp: TickerImpactRow, item: NewsRow, now: datetime) -> Eviden
     if is_market_recap(item.title):
         return None
     published = item.published_at or item.created_at
-    age_h = (now - published).total_seconds() / 3600
-    if age_h > NEWS_MAX_AGE_HOURS:
+    opens = market_hours.opens_between(published, now)
+    if opens >= NEWS_MAX_OPENS:
         return None
-    sign = 1 if imp.direction == "up" else -1
-    contribution = sign * STRENGTH[imp.strength] * 0.5 ** (max(age_h, 0) / NEWS_HALF_LIFE_HOURS)
+    value = {"up": 1.0, "down": -1.0, "unknown": 0.0}[imp.direction]
+    weight = 0.5**opens
     return Evidence(
         kind="news", item_id=item.id, title=item.title, url=item.url, direction=imp.direction,
-        strength=imp.strength, reason=imp.reason or "", contribution=round(contribution, 4),
-        detail=f"hace {age_h:.0f} h", since=published,
+        reason=imp.reason or "", value=value, weight=weight, contribution=round(value * weight, 4),
+        detail="ya hubo una apertura" if opens else "todavía sin operar", since=published,
     )
 
 
@@ -195,19 +163,10 @@ def time_decay(probability: float, change_24h: float, days_left: float) -> float
 
 
 def _market_evidence(imp: TickerImpactRow, item: MarketRow, now: datetime) -> Evidence | None:
-    if item.change_24h is None:
+    if item.change_24h is None or imp.direction == "unknown":
         return None
-    sign = 1 if imp.direction == "up" else -1
-    decay = 0.0
-    if item.end_date and item.probability is not None and is_deadline_market(item.title):
-        decay = time_decay(item.probability, item.change_24h, (item.end_date - now).total_seconds() / 86400)
-    move = item.change_24h - decay
-    # A fall smaller than the clock explains isn't news, in either direction.
-    if item.change_24h < 0 <= move:
+    if (item.volume_24h or 0) < MARKET_MIN_VOLUME:
         return None
-    scaled = max(-MARKET_MOVE_CAP, min(MARKET_MOVE_CAP, move / MARKET_MOVE_UNIT))
-    prob = f"{item.probability * 100:.0f}% " if item.probability is not None else ""
-    clock = f", {decay * 100:+.1f} por el paso del tiempo" if abs(decay) >= 0.005 else ""
     # A market resolving years from now says little about tomorrow: weight falls past 6 months.
     horizon = 1.0
     if item.end_date:
@@ -216,10 +175,20 @@ def _market_evidence(imp: TickerImpactRow, item: MarketRow, now: datetime) -> Ev
             return None
         if days_left > FAR_MARKET_DAYS:
             horizon = max(FAR_MARKET_MIN_WEIGHT, FAR_MARKET_DAYS / days_left)
+    decay = 0.0
+    if item.end_date and item.probability is not None and is_deadline_market(item.title):
+        decay = time_decay(item.probability, item.change_24h, (item.end_date - now).total_seconds() / 86400)
+    move = item.change_24h - decay
+    # A fall smaller than the clock explains isn't news, in either direction.
+    if item.change_24h < 0 <= move or abs(move) < MARKET_MIN_MOVE:
+        return None
+    sign = 1 if imp.direction == "up" else -1
+    value = sign * max(-1.0, min(1.0, move / MARKET_MOVE_UNIT))
+    prob = f"{item.probability * 100:.0f}% " if item.probability is not None else ""
+    clock = f", {decay * 100:+.1f} por el paso del tiempo" if abs(decay) >= 0.005 else ""
     return Evidence(
         kind="market", item_id=item.id, title=item.title, url=item.url, direction=imp.direction,
-        strength=imp.strength, reason=imp.reason or "",
-        contribution=round(sign * STRENGTH[imp.strength] * scaled * horizon, 4),
+        reason=imp.reason or "", value=round(value, 4), weight=horizon, contribution=round(value * horizon, 4),
         detail=f"{item.source}: {prob}({item.change_24h * 100:+.1f} pts en 24 h{clock})".replace(".", ","),
         since=now - timedelta(hours=24),
     )
@@ -237,8 +206,11 @@ def market_cases() -> list[MarketCase]:
     out = []
     for direction, change, probability, end_date in rows:
         title = "Oil hits $115 by November 30?" if end_date else "Will it happen?"
-        item = SimpleNamespace(id="x", title=title, url=None, source="polymarket", change_24h=change, probability=probability, end_date=end_date)
-        tag = SimpleNamespace(direction=direction, strength="high", reason="")
+        item = SimpleNamespace(
+            id="x", title=title, url=None, source="polymarket", change_24h=change, probability=probability,
+            end_date=end_date, volume_24h=MARKET_MIN_VOLUME,
+        )
+        tag = SimpleNamespace(direction=direction, reason="")
         ev = _market_evidence(tag, item, now)  # type: ignore[arg-type]
         out.append(MarketCase(
             yes_is_good=direction == "up", change=change, deadline=end_date is not None,
@@ -247,7 +219,7 @@ def market_cases() -> list[MarketCase]:
     return out
 
 
-# Same story from several outlets
+# What's new
 
 _STOP = set(
     "para como sobre desde entre hasta pero porque cuando donde este esta estos estas todo todos "
@@ -255,176 +227,129 @@ _STOP = set(
 )
 
 
-def _words(title: str) -> set[str]:
-    plain = unicodedata.normalize("NFKD", title.lower()).encode("ascii", "ignore").decode()
+def _words(text: str) -> set[str]:
+    plain = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
     return {w for w in re.findall(r"[a-z0-9]+", plain) if len(w) > 3 and w not in _STOP}
 
 
-def group_same_story(evidence: list[Evidence]) -> list[Evidence]:
-    """Keep the strongest news item of each story; markets pass through untouched."""
-    news = sorted((e for e in evidence if e.kind == "news"), key=lambda e: -abs(e.contribution))
-    stories: list[tuple[set[str], Evidence]] = []
-    for e in news:
-        words = _words(e.title)
-        for i, (seen, rep) in enumerate(stories):
-            overlap = len(words & seen) / max(len(words | seen), 1)
-            if overlap >= SAME_STORY:
-                stories[i] = (seen | words, rep.model_copy(update={"sources": rep.sources + 1}))
-                break
-        else:
-            stories.append((words, e))
-    return [rep for _, rep in stories] + [e for e in evidence if e.kind == "market"]
+def similarity(a: set[str], b: set[str]) -> float:
+    return len(a & b) / math.sqrt(len(a) * len(b)) if a and b else 0.0
 
 
-def collect_signals(now: datetime | None = None) -> dict[str, TickerSignals]:
-    """Evidence per tagged ticker (including the broad MERVAL and BONOS pseudo-tickers)."""
+def drop_repeats(items: list[tuple[datetime, str, Evidence | None]]) -> list[Evidence]:
+    """Items about one ticker, as (published, text, evidence or None if it no longer counts). Each
+    is compared only with earlier ones: what repeats one of them isn't new, whatever its outlet. A
+    repeat adds a source to the one it repeats, when that one still counts."""
+    seen: list[tuple[datetime, set[str]]] = []
+    kept: list[Evidence] = []
+    position: dict[int, int] = {}  # index in seen -> index in kept
+    for when, text, ev in sorted(items, key=lambda x: x[0]):
+        words = _words(text)
+        original = next(
+            (k for k, (at, w) in enumerate(seen)
+             if when - at <= timedelta(days=NOVELTY_DAYS) and similarity(words, w) >= NOVELTY_SIMILARITY),
+            None,
+        )
+        if original is not None:
+            if original in position:
+                at = position[original]
+                kept[at] = kept[at].model_copy(update={"sources": kept[at].sources + 1})
+            continue
+        if ev is not None:
+            position[len(seen)] = len(kept)
+            kept.append(ev)
+        seen.append((when, words))
+    return kept
+
+
+def collect_signals(now: datetime | None = None) -> dict[str, list[Evidence]]:
+    """Evidence per ticker: its own news and markets, plus the markets reaching it through a factor."""
     now = now or datetime.now(timezone.utc)
-    impacts = _all_impacts()
-    news = _fetch_by_ids(
-        "news_items", NewsRow, list({i.item_id for i in impacts if i.item_kind == "news"})
-    )
+    impacts = _recent_impacts(now)
+    news = _fetch_by_ids("news_items", NewsRow, list({i.item_id for i in impacts if i.item_kind == "news"}))
     markets = _fetch_by_ids(
-        "prediction_markets", MarketRow, list({i.item_id for i in impacts if i.item_kind == "market"})
+        "prediction_markets", MarketRow, list({i.item_id for i in impacts if i.item_kind == "market"}),
     )
 
-    signals: dict[str, TickerSignals] = {}
-    # Strongest market evidence per (ticker, event), so one event counts once.
-    by_event: dict[tuple[str, str], Evidence] = {}
+    per_ticker: dict[str, list[tuple[datetime, str, Evidence | None]]] = {}
+    # Per (ticker, event), the market that counts: one naming the ticker over a factor's, then the
+    # most traded. Not the one that moved the most: that would pick the noise.
+    by_event: dict[tuple[str, str], tuple[tuple[bool, float], Evidence]] = {}
+    seen: set[tuple[str, str]] = set()
     for imp in impacts:
+        if (imp.item_id, imp.ticker) in seen:
+            continue
+        seen.add((imp.item_id, imp.ticker))
         if imp.item_kind == "news":
             n = news.get(imp.item_id)
-            ev = _news_evidence(imp, n, now) if n else None
-            if ev and abs(ev.contribution) > 1e-4:
-                signals.setdefault(imp.ticker, TickerSignals()).evidence.append(ev)
-        else:
-            m = markets.get(imp.item_id)
-            ev = _market_evidence(imp, m, now) if m else None
-            if not m or not ev or abs(ev.contribution) <= 1e-4:
-                continue
-            key = (imp.ticker, m.event_key or m.id)
-            if key not in by_event or abs(ev.contribution) > abs(by_event[key].contribution):
-                by_event[key] = ev
-
-    for (ticker, _), ev in by_event.items():
-        signals.setdefault(ticker, TickerSignals()).evidence.append(ev)
-    for s in signals.values():
-        s.evidence = group_same_story(s.evidence)
-    return signals
-
-
-# Prices
-
-def trend_score(bars: list[DailyBar], last: float) -> float:
-    """tanh(z / 2) where z is how many ATRs `last` sits from the 20-day average close."""
-    bars = [b for b in bars if b.close > 0]
-    if len(bars) < 21:
-        return 0.0
-    closes = [b.close for b in bars]
-    atr = risk.atr([b.high for b in bars], [b.low for b in bars], closes)
-    if atr <= 0:
-        return 0.0
-    return math.tanh((last - sum(closes[-20:]) / 20) / atr / 2)
-
-
-def market_context() -> dict[str, float]:
-    """Trend of the whole market per group: Merval leaders, sovereign bonds and the S&P 500."""
-    def median_trend(tickers: list[str]) -> float:
-        values = []
-        for t in tickers:
-            try:
-                bars = prices.daily_bars(t)
-                if bars:
-                    values.append(trend_score(bars, bars[-1].close))
-            except Exception:
-                log.warning("no history for %s in market context", t)
-        return statistics.median(values) if values else 0.0
-
-    us = 0.0
-    try:
-        spy = prices.daily_bars("SPY", market="US")
-        if spy:
-            us = trend_score(spy, get_iol().quote("SPY", "US").price or spy[-1].close)
-    except Exception:
-        log.warning("no S&P 500 data for market context")
-    g = universe.groups()
-    return {
-        "stocks": median_trend(sorted(g.leaders)),
-        "bonds": median_trend(sorted(g.sovereign)),
-        "us": us,
-    }
-
-
-def cedear_gaps(local_prices: dict[str, float]) -> dict[str, float]:
-    """Gap signal per CEDEAR: -tanh(premium versus its usual relation to the US share, after
-    removing the median premium of all CEDEARs, which is the dollar's move)."""
-    premiums: dict[str, float] = {}
-    for ticker, price in local_prices.items():
-        try:
-            local = {b.day: b.close for b in prices.daily_bars(ticker) if b.close > 0}
-            us_bars = prices.daily_bars(ticker, market="US")
-            ratios = [local[b.day] / b.close for b in us_bars if b.day in local and b.close > 0][-20:]
-            us_now = get_iol().quote(ticker, "US").price
-            if len(ratios) < 10 or not us_now:
-                continue
-            premiums[ticker] = (price / us_now) / statistics.median(ratios) - 1
-        except Exception:
-            log.warning("no US data for CEDEAR %s", ticker)
-    if len(premiums) < 3:
-        return {}
-    common = statistics.median(premiums.values())
-    return {t: -math.tanh((p - common) / GAP_UNIT) for t, p in premiums.items()}
-
-
-# Scoring
-
-class Recommendation(BaseModel):
-    ticker: str
-    action: Action
-    score: float
-    confidence: float
-    driver: str
-    held: bool
-    price: float | None
-    breakdown: SignalBreakdown
-    evidence: list[Evidence]
-
-
-@dataclass
-class _Inputs:
-    ticker: str
-    held: bool
-    price: float | None
-    own: list[Evidence]
-    broad: list[Evidence]
-    trend: float
-    context: float
-    risk_group: str | None = None
-    group_share: float | None = None
-    change_3m: float | None = None
-    from_high: float | None = None
-    sector: list[Evidence] = field(default_factory=list)
-    macro: float = 0.0
-    macro_source: str | None = None
-    macro_level: float | None = None
-    macro_change: float | None = None
-    event: corporate_events.CorporateEvent | None = None
-    risk: suitability.RiskLevel | None = None
-    profile: suitability.Profile = "conservador"
-
-
-def sector_evidence(ticker: str, signals: dict[str, TickerSignals]) -> list[Evidence]:
-    """Evidence about the ticker's sector peers, strongest per item, tagged with the peer."""
-    sector = SECTOR_OF.get(ticker)
-    if not sector:
-        return []
-    best: dict[str, Evidence] = {}
-    for peer in SECTORS[sector]:
-        if peer == ticker or peer not in signals:
+            if n:
+                per_ticker.setdefault(imp.ticker, []).append((
+                    n.published_at or n.created_at, f"{n.title} {n.summary or ''}", _news_evidence(imp, n, now),
+                ))
             continue
-        for e in signals[peer].evidence:
-            if e.item_id not in best or abs(e.contribution) > abs(best[e.item_id].contribution):
-                best[e.item_id] = e.model_copy(update={"via": peer})
-    return list(best.values())
+        m = markets.get(imp.item_id)
+        ev = _market_evidence(imp, m, now) if m else None
+        if not m or not ev:
+            continue
+        direct = not factors.is_factor(imp.ticker)
+        reached = {imp.ticker: 1} if direct else factors.reach(imp.ticker)
+        for ticker, sign in reached.items():
+            this = ev if direct else ev.model_copy(update={
+                "value": ev.value * sign, "weight": ev.weight * FACTOR_WEIGHT,
+                "contribution": round(ev.contribution * sign * FACTOR_WEIGHT, 4),
+                "direction": ev.direction if sign > 0 else ("down" if ev.direction == "up" else "up"),
+                "via": factors.FACTORS[imp.ticker].label,
+            })
+            key = (ticker, m.event_key or m.id)
+            rank = (direct, m.volume_24h or 0)
+            if key not in by_event or rank > by_event[key][0]:
+                by_event[key] = (rank, this)
+
+    signals = {t: drop_repeats(items) for t, items in per_ticker.items()}
+    for (ticker, _), (_, ev) in by_event.items():
+        signals.setdefault(ticker, []).append(ev)
+    return {t: evs for t, evs in signals.items() if evs}
+
+
+def score_of(evidence: list[Evidence]) -> float:
+    return sum(e.weight * e.value for e in evidence) / (sum(e.weight for e in evidence) + PRIOR_WEIGHT)
+
+
+def rank_by_class(recs: list["Recommendation"]) -> None:
+    """Fill each ticker's place within its asset class, among those with evidence."""
+    classes: dict[str, list[Recommendation]] = {}
+    for r in recs:
+        if r.evidence and r.score != 0:
+            classes.setdefault(r.breakdown.asset_class or "otros", []).append(r)
+    for rs in classes.values():
+        rs.sort(key=lambda r: -r.score)
+        # A factor gives the same score to all it reaches: equal scores share their place, so the
+        # alphabet doesn't choose among them.
+        cutoff = rs[max(1, math.ceil(len(rs) * TOP_SHARE)) - 1].score
+        for r in rs:
+            r.breakdown.rank = next(k for k, x in enumerate(rs, 1) if x.score == r.score)
+            r.breakdown.rank_of, r.breakdown.top_rank = len(rs), r.score >= cutoff
+
+
+def decide(score: float, held: bool, top_rank: bool, out_of_profile: bool) -> Action:
+    if held:
+        return "sell" if score <= SELL_THRESHOLD_HELD else "keep"
+    return "buy" if top_rank and score >= BUY_THRESHOLD and not out_of_profile else "keep"
+
+
+def is_buy_signal(r: RecommendationRow) -> bool:
+    """Whether this recommendation asks to buy, for a portfolio that doesn't hold it. What it says
+    depended on the real portfolio, and the simulation has its own."""
+    b = r.signal_breakdown
+    if r.model_version < 2:
+        return not b.out_of_profile and r.score - b.concentration >= V1_BUY
+    return decide(r.score, False, b.top_rank, b.out_of_profile) == "buy"
+
+
+def is_sell_signal(r: RecommendationRow) -> bool:
+    if r.model_version < 2:
+        return r.score - r.signal_breakdown.concentration <= V1_SELL
+    return r.score <= SELL_THRESHOLD_HELD
 
 
 def macro_for(ticker: str, group: str | None, signals: dict[str, macro.MacroSignal]) -> tuple[float, str | None]:
@@ -450,12 +375,6 @@ def risk_group(ticker: str, stocks: set[str], bonds: set[str]) -> str:
     return "argentina" if ticker in stocks or ticker in bonds or ticker in ARGENTINE_CEDEARS else "exterior"
 
 
-def concentration_penalty(share: float | None) -> float:
-    if share is None or share <= CONCENTRATION_LIMIT:
-        return 0.0
-    return -min(CONCENTRATION_MAX, CONCENTRATION_PENALTY * (share - CONCENTRATION_LIMIT))
-
-
 def three_month_context(bars: list[DailyBar], price: float) -> tuple[float | None, float | None]:
     """(change over ~3 months, distance from the 3-month high), shown next to a signal."""
     window = [b for b in bars if b.close > 0][-63:]
@@ -465,72 +384,44 @@ def three_month_context(bars: list[DailyBar], price: float) -> tuple[float | Non
     return price / window[0].close - 1, price / high - 1
 
 
-def cap_markets(evidence: list[Evidence]) -> list[Evidence]:
-    """Scale a ticker's prediction markets so they add up to at most MARKETS_CAP either way."""
-    total = abs(sum(e.contribution for e in evidence if e.kind == "market"))
-    if total <= MARKETS_CAP:
-        return evidence
-    scale = MARKETS_CAP / total
-    return [
-        e.model_copy(update={"contribution": round(e.contribution * scale, 4)}) if e.kind == "market" else e
-        for e in evidence
-    ]
+class Recommendation(BaseModel):
+    ticker: str
+    action: Action
+    score: float
+    held: bool
+    price: float | None
+    breakdown: SignalBreakdown
+    evidence: list[Evidence]
 
 
-def _combine(i: _Inputs, gap: float) -> Recommendation:
-    # A news item tagged for this ticker and for the whole market counts for both. One about a
-    # peer counts only if it wasn't tagged here already.
-    broad = [
-        e.model_copy(update={"contribution": round(e.contribution * BROAD_WEIGHT, 4), "broad": True})
-        for e in i.broad
-    ]
-    seen = {e.item_id for e in i.own} | {e.item_id for e in broad}
-    sector = [e for e in i.sector if e.item_id not in seen]
-    # Each peer item at SECTOR_WEIGHT, and all of them together at most SECTOR_CAP either way.
-    total = abs(sum(e.contribution for e in sector)) * SECTOR_WEIGHT
-    scale = SECTOR_WEIGHT * (min(1.0, SECTOR_CAP / total) if total > 0 else 1.0)
-    sector = [e.model_copy(update={"contribution": round(e.contribution * scale, 4)}) for e in sector]
-    evidence = cap_markets(i.own + broad + sector)
+@dataclass
+class _Inputs:
+    ticker: str
+    held: bool
+    price: float | None
+    evidence: list[Evidence] = field(default_factory=list)
+    asset_class: str | None = None
+    change_3m: float | None = None
+    from_high: float | None = None
+    macro: float = 0.0
+    macro_source: str | None = None
+    macro_level: float | None = None
+    macro_change: float | None = None
+    event: corporate_events.CorporateEvent | None = None
+    risk: suitability.RiskLevel | None = None
+    profile: suitability.Profile = "conservador"
+
+
+def _combine(i: _Inputs) -> Recommendation:
+    """The score alone. The action needs the ranking: see recommend()."""
+    out_of_profile = i.risk is not None and not suitability.allowed(i.risk.level, i.profile)
+    evidence = sorted(i.evidence, key=lambda e: abs(e.contribution), reverse=True)
     news = sum(e.contribution for e in evidence if e.kind == "news")
     markets = sum(e.contribution for e in evidence if e.kind == "market")
-    evidence_part = W_EVIDENCE * math.tanh((news + markets) / 2)
-    # Buying more of a risk the portfolio is already heavy in needs a stronger case.
-    concentration = 0.0 if i.held else concentration_penalty(i.group_share)
-    score = (
-        evidence_part + W_TREND * i.trend + W_CONTEXT * i.context + W_GAP * gap + W_MACRO * i.macro
-        + concentration
-    )
-
-    action: Action
-    if i.held:
-        action = "sell" if score <= SELL_THRESHOLD_HELD else "keep"
-    else:
-        action = "buy" if score >= BUY_THRESHOLD else "keep"
-    out_of_profile = i.risk is not None and not suitability.allowed(i.risk.level, i.profile)
-    if out_of_profile and action == "buy":
-        action = "keep"
-
-    # More independent pieces of evidence, more confidence; trend alone never gets far.
-    coverage = 1 - math.exp(-(len(evidence) + 1) / 3)
-    confidence = min(1.0, abs(score) / 0.8) * coverage
-    total = abs(news) + abs(markets) or 1
-    parts = {
-        "news": abs(evidence_part) * abs(news) / total,
-        "markets": abs(evidence_part) * abs(markets) / total,
-        "trend": W_TREND * abs(i.trend),
-        "context": W_CONTEXT * abs(i.context),
-        "gap": W_GAP * abs(gap),
-        "macro": W_MACRO * abs(i.macro),
-    }
-    evidence.sort(key=lambda e: abs(e.contribution), reverse=True)
     return Recommendation(
-        ticker=i.ticker, action=action, score=round(score, 4), confidence=round(confidence, 3),
-        driver=max(parts, key=lambda k: parts[k]), held=i.held, price=i.price,
+        ticker=i.ticker, action="keep", score=round(score_of(evidence), 4), held=i.held, price=i.price,
         breakdown=SignalBreakdown(
-            news=round(news, 4), markets=round(markets, 4), trend=round(i.trend, 4),
-            context=round(i.context, 4), gap=round(gap, 4), concentration=round(concentration, 4),
-            risk_group=i.risk_group,
-            group_share=round(i.group_share, 4) if i.group_share is not None else None,
+            news=round(news, 4), markets=round(markets, 4), asset_class=i.asset_class,  # type: ignore[arg-type]
             change_3m=round(i.change_3m, 4) if i.change_3m is not None else None,
             from_high=round(i.from_high, 4) if i.from_high is not None else None,
             macro=round(i.macro, 4), macro_source=i.macro_source,  # type: ignore[arg-type]
@@ -543,27 +434,31 @@ def _combine(i: _Inputs, gap: float) -> Recommendation:
             volatility=round(i.risk.volatility, 4) if i.risk and i.risk.volatility is not None else None,
             profile=i.profile, out_of_profile=out_of_profile,
         ),
-        evidence=evidence[:MAX_EVIDENCE_SHOWN],
+        evidence=evidence,  # all of it: the page adds it up to the score
     )
 
 
-def pick_scored(tickers: set[str], held: set[str], signals: dict[str, TickerSignals]) -> set[str]:
+def recommend(inputs: list[_Inputs]) -> list[Recommendation]:
+    recs = [_combine(i) for i in inputs]
+    rank_by_class(recs)
+    for r in recs:
+        r.action = decide(r.score, r.held, r.breakdown.top_rank, r.breakdown.out_of_profile)
+    return recs
+
+
+def pick_scored(tickers: set[str], held: set[str], signals: dict[str, list[Evidence]]) -> set[str]:
     """At most MAX_SCORED tickers, so a cycle fits its time: holdings always, then the ones with
     the strongest news and markets of their own."""
     if len(tickers) <= MAX_SCORED:
         return tickers
-    strength = lambda t: sum(abs(e.contribution) for e in signals[t].evidence) if t in signals else 0.0
+    strength = lambda t: sum(abs(e.contribution) for e in signals.get(t, []))
     rest = sorted(tickers - held, key=lambda t: (-strength(t), t))
     log.warning("scoring %d of %d tickers", MAX_SCORED, len(tickers))
     return held | set(rest[: max(0, MAX_SCORED - len(held))])
 
 
-def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommendation]:
-    """Score every ticker with evidence plus every holding, and save the results.
-
-    kind="live": refreshed each cycle, one row per ticker and target day.
-    kind="daily": run after the close; graded on the next day.
-    """
+def compute(now: datetime | None = None) -> list[Recommendation]:
+    """Score every ticker with evidence plus every holding. Saves nothing."""
     signals = collect_signals(now)
     holdings: dict[str, Holding]
     try:
@@ -576,29 +471,8 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     stocks = g.stocks | {t for t, h in holdings.items() if h.type in EQUITY_TYPES}
     bonds = g.bonds | {t for t, h in holdings.items() if h.type in BOND_TYPES}
     cedears = g.cedears | {t for t, h in holdings.items() if h.type in CEDEAR_TYPES}
-    tickers = {t for t in signals if t not in BROAD_TICKERS} | set(holdings)
-    # Peers of a ticker with news get scored too, so the news can spread to them.
-    tickers |= {p for t in list(tickers) if t in SECTOR_OF for p in SECTORS[SECTOR_OF[t]]}
-    # Broad news is scored on the leaders, not on all of the hundreds of assets it also reaches.
-    if "MERVAL" in signals:
-        tickers |= g.leaders
-    if "BONOS" in signals:
-        tickers |= g.sovereign
-    tickers = pick_scored(tickers, set(holdings), signals)
-
-    # Share of the portfolio in each risk group: positions valued in pesos over the whole
-    # portfolio, cash included (cash is in neither group, and selling a position lowers it).
-    peso_holdings = [h for h in holdings.values() if h.currency == "ARS"]
-    try:
-        cash = account.latest_cash_total()
-    except Exception:
-        log.warning("no cash for the concentration check")
-        cash = 0.0
-    total_value = sum(h.value for h in peso_holdings) + cash
-    group_shares: dict[str, float] = {}
-    for h in peso_holdings:
-        g = risk_group(h.ticker, stocks, bonds)
-        group_shares[g] = group_shares.get(g, 0.0) + h.value / total_value
+    known = stocks | bonds | cedears
+    tickers = pick_scored({t for t in signals if t in known} | set(holdings), set(holdings), signals)
 
     profile = suitability.INVESTOR_PROFILE
     try:
@@ -606,7 +480,6 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     except Exception:
         log.exception("no asset types; every asset counts as high risk")
         kinds = {}
-
     try:
         macro_signals = macro.fetch()
     except Exception:
@@ -617,23 +490,15 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
     except Exception:
         log.exception("could not load corporate events")
         events = {}
-
     try:
         live = universe.live_prices()
     except Exception:
         log.warning("no panel prices; asking IOL ticker by ticker")
         live = {}
 
-    try:
-        context = market_context()
-    except Exception:
-        log.exception("market context failed; left at 0")
-        context = {"stocks": 0.0, "bonds": 0.0, "us": 0.0}
-
     inputs: list[_Inputs] = []
     for ticker in sorted(tickers):
         group = "stocks" if ticker in stocks else "bonds" if ticker in bonds else "us" if ticker in cedears else None
-        broad = signals.get("MERVAL") if group == "stocks" else signals.get("BONOS") if group == "bonds" else None
         bars: list[DailyBar] = []
         try:
             bars = prices.daily_bars(ticker, days=100)
@@ -648,50 +513,39 @@ def score_all(kind: str = "live", now: datetime | None = None) -> list[Recommend
                 log.warning("no live price for %s; using the last close", ticker)
         if not price and bars:
             price = bars[-1].close
-        own = signals[ticker].evidence if ticker in signals else []
-        broad_ev = broad.evidence if broad else []
-        peers = sector_evidence(ticker, signals)
         macro_value, macro_source = macro_for(ticker, group, macro_signals)
         ms = macro_signals.get(macro_source) if macro_source else None
         change_3m, from_high = three_month_context(bars, price) if price else (None, None)
-        rg = risk_group(ticker, stocks, bonds)
         inputs.append(_Inputs(
-            ticker=ticker, held=ticker in holdings, price=price, own=own,
-            broad=broad_ev, sector=peers,
-            trend=trend_score(bars, price) if price else 0.0,
-            context=context[group] if group else 0.0,
-            risk_group=rg, group_share=group_shares.get(rg, 0.0) if total_value else None,
-            change_3m=change_3m, from_high=from_high,
+            ticker=ticker, held=ticker in holdings, price=price, evidence=signals.get(ticker, []),
+            asset_class=group, change_3m=change_3m, from_high=from_high,
             macro=macro_value, macro_source=macro_source,
             macro_level=ms.level if ms else None, macro_change=ms.change if ms else None,
             event=events.get(ticker),
             risk=suitability.risk_level(ticker, kinds.get(ticker), bars), profile=profile,
         ))
+    return recommend(inputs)
 
-    # The gap takes a US quote per CEDEAR: only for the ones with the most evidence.
-    by_evidence = sorted(
-        (i for i in inputs if i.ticker in cedears and i.price),
-        key=lambda i: (not i.held, -sum(abs(e.contribution) for e in i.own)),
-    )
-    gaps = cedear_gaps({i.ticker: i.price or 0.0 for i in by_evidence[:MAX_GAPS]})
-    recs = [_combine(i, gaps.get(i.ticker, 0.0)) for i in inputs]
 
+def score_all(kinds: tuple[str, ...] = ("live",), now: datetime | None = None) -> list[Recommendation]:
+    """Score and save. kinds: "live" is what the site shows; "daily" is the batch that gets graded,
+    saved together with "live" just before the open, so what is measured is what was shown."""
+    recs = compute(now)
     if recs:
         target = market_hours.next_close_date(now)
         rows = [{
             "ticker": r.ticker,
             "action": r.action,
             "score": r.score,
-            "confidence": r.confidence,
-            "driver": r.driver,
             "held": r.held,
             "price_at_rec": r.price,
             "signal_breakdown": r.breakdown.model_dump(mode="json"),  # dates (event_date) as text
             "evidence": [e.model_dump(mode="json") for e in r.evidence],
             "target_date": target.isoformat(),
             "kind": kind,
+            "model_version": MODEL_VERSION,
             "updated_at": datetime.now(timezone.utc).isoformat(),
-        } for r in recs]
+        } for r in recs for kind in kinds]
         get_db().table("recommendations").upsert(rows, on_conflict="ticker,target_date,kind").execute()
-        log.info("scored %d tickers (%s) for %s", len(recs), kind, target)
+        log.info("scored %d tickers (%s) for %s", len(recs), ",".join(kinds), target)
     return recs

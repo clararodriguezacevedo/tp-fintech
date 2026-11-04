@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 Action = Literal["buy", "sell", "keep"]
-Direction = Literal["up", "down"]
+Direction = Literal["up", "down", "unknown"]
 Strength = Literal["low", "medium", "high"]
 TradeStatus = Literal[
     "queued", "sent", "filled", "stopped_out", "took_profit", "closed", "cancelled", "failed"
@@ -62,7 +62,9 @@ class TickerImpactRow(Row):
     item_id: str
     ticker: str
     direction: Direction
-    strength: Strength
+    strength: Strength | None = None  # only in the first model's tags
+    mention: str | None = None  # the words of the text that name the asset
+    tag_version: int = 1
     reason: str | None = None
     created_at: datetime
 
@@ -75,30 +77,27 @@ class Evidence(BaseModel):
     title: str
     url: str | None = None
     direction: Direction
-    strength: Strength
     reason: str
-    contribution: float  # after discounting what the price already did
+    value: float = 0.0  # -1 to +1: what it says
+    weight: float = 1.0  # how much it counts
+    contribution: float  # value * weight
     detail: str = ""
-    broad: bool = False  # came from a MERVAL / BONOS tag, applied at half weight
     since: datetime | None = None  # news: published; market: start of its 24h move
-    move_since: float | None = None  # price move of the ticker since `since`
-    priced_in: float = 0.0  # 0..1, share of the signal the price already reflected
     sources: int = 1  # how many outlets ran the same story
-    via: str | None = None  # the sector peer the item was about, when it spread from one
+    via: str | None = None  # the factor a market reaches the ticker through
 
 
 class SignalBreakdown(BaseModel):
     news: float
     markets: float
-    trend: float
-    context: float = 0.0  # whole market's trend (Merval leaders, bonds or S&P 500)
-    gap: float = 0.0  # CEDEAR cheap (+) or expensive (-) versus its US share and the dollar
-    concentration: float = 0.0  # penalty (<= 0) for buying more of a risk the portfolio is heavy in
-    risk_group: str | None = None  # "argentina" or "exterior"
-    group_share: float | None = None  # share of the portfolio already in that risk group
+    asset_class: Literal["stocks", "bonds", "us"] | None = None  # what it's ranked against
+    rank: int | None = None  # place within its class, among those with evidence
+    rank_of: int | None = None
+    top_rank: bool = False  # in the top share of its class
+    concentration: float = 0.0  # first model only: penalty in the score
     change_3m: float | None = None  # price change over the last 3 months (shown, not scored)
     from_high: float | None = None  # distance from the 3-month high, <= 0 (shown, not scored)
-    macro: float = 0.0  # riesgo país (bonds, local stocks) or CCL dollar (CEDEARs) moving its way
+    macro: float = 0.0  # riesgo país or CCL dollar moving its way: measured, not in the score
     macro_source: Literal["riesgo_pais", "ccl"] | None = None
     macro_level: float | None = None  # riesgo país points or CCL pesos
     macro_change: float | None = None  # its change over 5 trading days
@@ -117,8 +116,7 @@ class RecommendationRow(Row):
     action: Action
     kind: Literal["live", "daily"]
     score: float
-    confidence: float
-    driver: Literal["news", "markets", "trend", "context", "gap", "macro"] | None = None
+    model_version: int = 1
     held: bool
     signal_breakdown: SignalBreakdown
     evidence: list[Evidence]
@@ -128,6 +126,7 @@ class RecommendationRow(Row):
     close_on_target: float | None = None
     realized_return: float | None = None  # open -> close of the target day
     close_return: float | None = None  # previous close -> close, plus any dividend detached
+    excess_return: float | None = None  # realized_return minus the day's median of its class
     event_yield: float | None = None  # dividend added back on an ex-date
     hit: bool | None = None
     evaluated_at: datetime | None = None

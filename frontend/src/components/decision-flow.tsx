@@ -1,4 +1,4 @@
-// The whole decision, step by step. Every number and the prompt come from the backend (/model), so
+// The whole decision, step by step. Every number and the prompts come from the backend (/model), so
 // this can't say something different from what the code does.
 import type { ReactNode } from "react";
 
@@ -33,6 +33,10 @@ function Rule({ children }: { children: ReactNode }) {
   return <p className="rounded-lg bg-surface px-3 py-2 font-mono text-text">{children}</p>;
 }
 
+function Prompt({ children }: { children: string }) {
+  return <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 font-mono text-text">{children}</pre>;
+}
+
 const HEAD = "py-2 pr-4";
 const CELL = "py-2 pr-4 align-top";
 
@@ -45,7 +49,7 @@ function MarketCases({ m }: { m: ModelInfo }) {
           <tr className="border-b border-border">
             <th className={HEAD}>Si el SÍ pasa, para el activo es</th>
             <th className={HEAD}>La probabilidad</th>
-            <th className={HEAD}>Resultado</th>
+            <th className={HEAD}>Valor</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-grid text-text">
@@ -65,33 +69,26 @@ function MarketCases({ m }: { m: ModelInfo }) {
   );
 }
 
-function Effects({ m }: { m: ModelInfo }) {
-  const w = m.weights;
-  const rows = [
-    { name: "Tendencia", weight: w.trend, what: "Qué tan lejos está el precio de hoy de su promedio de los últimos 20 días, medido en lo que suele moverse en un día.", effect: "Sigue la inercia: si está por encima de su promedio suma, porque viene subiendo; si está por debajo resta. Pesa poco porque en la historia no anticipó el día siguiente." },
-    { name: "Contexto", weight: w.context, what: "La misma cuenta para todo el mercado: líderes del Merval, bonos soberanos o S&P 500, según el activo.", effect: "Si el mercado viene subiendo, sube el puntaje; si viene bajando, lo baja." },
-    { name: "Brecha del CEDEAR", weight: w.gap, what: `Cuánto se aleja su precio de la relación habitual con la acción afuera (mediana de 20 días), sacando el movimiento común a todos los CEDEARs, que es el dólar.`, effect: `Más caro de lo habitual baja el puntaje, porque se espera que corrija; más barato lo sube. Con ${pctOf(m.gap_unit)} de diferencia la señal ya da ${score(Math.tanh(1))} sobre 1.` },
-    { name: "Riesgo país", weight: w.macro, what: "Qué tan inusual es su cambio en 5 días, comparado con los últimos 250. Para bonos, bancos, otras acciones locales y VIST.", effect: "Si sube, baja el puntaje; si baja, lo sube. Cuenta entero en bonos y bancos, y la mitad en el resto." },
-    { name: "Dólar CCL", weight: w.macro, what: "La misma medida. Para los CEDEARs, salvo VIST.", effect: "Si sube, sube el puntaje, porque cotizan en pesos; si baja, lo baja." },
-  ];
+const GROUPS: Record<string, string> = { "@leaders": "líderes del Merval", "@sovereign": "bonos soberanos" };
+const names = (xs: string[]) => xs.map((x) => GROUPS[x] ?? x).join(", ");
+
+function Factors({ m }: { m: ModelInfo }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[620px] text-left">
+      <table className="w-full min-w-[520px] text-left">
         <thead className="text-text-2">
           <tr className="border-b border-border">
-            <th className={HEAD}>Señal</th>
-            <th className={HEAD}>Peso</th>
-            <th className={HEAD}>Qué mide</th>
-            <th className={HEAD}>Para qué lado empuja</th>
+            <th className={HEAD}>Factor</th>
+            <th className={HEAD}>Si sube, suben</th>
+            <th className={HEAD}>Si sube, bajan</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-grid text-text">
-          {rows.map((r) => (
-            <tr key={r.name}>
-              <td className={CELL}>{r.name}</td>
-              <td className={`num ${CELL}`}>{pctOf(r.weight)}</td>
-              <td className={CELL}>{r.what}</td>
-              <td className={CELL}>{r.effect}</td>
+          {m.factors.map((f) => (
+            <tr key={f.key}>
+              <td className={CELL}>{f.label}</td>
+              <td className={CELL}>{names(f.up) || "-"}</td>
+              <td className={CELL}>{names(f.down) || "-"}</td>
             </tr>
           ))}
         </tbody>
@@ -101,64 +98,73 @@ function Effects({ m }: { m: ModelInfo }) {
 }
 
 export function DecisionFlow({ m }: { m: ModelInfo }) {
-  const w = m.weights;
   return (
     <ol>
       <Step n={1} title="Junta la información" summary="Cada 10 minutos, sin IA.">
-        <p>Noticias (GDELT y RSS), mercados de predicción (Polymarket y Kalshi), tu cartera y los precios (IOL), y riesgo país y dólar CCL (argentinadatos).</p>
+        <p>Noticias generales (RSS y GDELT), noticias por empresa (Google News, de tu cartera, las líderes del Merval y los CEDEARs más comunes, por turnos), mercados de predicción (Polymarket y Kalshi), tu cartera y los precios (IOL), y riesgo país y dólar CCL (argentinadatos).</p>
       </Step>
 
-      <Step n={2} ai title="Gemini etiqueta cada noticia y cada mercado" summary="El único paso con IA. No da una recomendación: solo dice a qué activos afecta y para qué lado.">
-        <p>
-          Se usa {m.tagger_model}, en lotes de hasta {m.tag_batch}. Para cada uno recibe el título y hasta 600 caracteres de texto. De tu cartera solo ve qué activos tenés, no cuánta plata. Devuelve un resumen y, por cada activo afectado, dirección (sube o baja), fuerza (baja, media o alta) y el motivo. Las respuestas con un activo que no existe o con texto roto se descartan.
-        </p>
-        <p>Este es el prompt, tal cual se envía:</p>
-        <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 font-mono text-text">{m.tagger_prompt}</pre>
+      <Step n={2} ai title="Gemini lee cada noticia" summary="Una pregunta: de qué activo habla, y si es bueno, malo o incierto para su precio en 1 a 3 días.">
+        <p>Se usa {m.tagger_model}, en lotes de hasta {m.tag_batch}, con temperatura 0. De tu cartera solo ve qué activos tenés, no cuánta plata. No da recomendaciones. Este es el prompt, tal cual se envía:</p>
+        <Prompt>{m.news_prompt}</Prompt>
       </Step>
 
-      <Step n={3} title="Cada noticia pasa a un número" summary="Según su dirección, su fuerza y qué tan nueva es.">
-        <Rule>dirección (+1 o −1) × fuerza (baja {num(m.strength.low)}, media {num(m.strength.medium)}, alta {num(m.strength.high)}) × mitad cada {num(m.news_half_life_hours)} horas</Rule>
-        <p>Después de {num(m.news_max_age_hours)} horas no cuenta. Tampoco las notas de cierre, y la misma historia en varios medios cuenta una vez. Los adelantos sí cuentan: Gemini etiqueta la expectativa que transmiten, si se inclinan para un lado.</p>
+      <Step n={3} ai title="Gemini lee cada mercado de predicción" summary="Una pregunta: qué significa el SÍ, y qué empuja para arriba o para abajo.">
+        <p>No adivina qué activos mueve un mercado sobre el mundo: dice de qué factor se trata, y una tabla fija dice a quién llega.</p>
+        <Prompt>{m.market_prompt}</Prompt>
+        <Factors m={m} />
       </Step>
 
-      <Step n={4} title="Cada mercado de predicción pasa a un número" summary="Cuenta cuánto se movió la probabilidad, no qué tan alta está, y para quién es bueno.">
-        <Rule>dirección (+1 o −1) × fuerza × (cambio en 24 h ÷ {num(m.market_move_unit * 100)} pts, hasta ±{num(m.market_move_cap)})</Rule>
-        <p>Si el SÍ es bueno o malo para el activo lo decide Gemini en el paso 2, leyendo el título del mercado: no hay una regla fija ni una revisión posterior. Por eso un mercado malo para el activo cuya probabilidad baja suma a favor: se está alejando algo malo. Así da la cuenta, con fuerza alta:</p>
-        <MarketCases m={m} />
+      <Step n={4} title="Se controla lo que respondió" summary="Con reglas, sin confiar en Gemini.">
         <ul className="list-disc space-y-1 pl-5">
-          <li>Los que se resuelven en menos de {m.min_market_days} días no cuentan.</li>
-          <li>Con fecha límite (&quot;llega a $115 antes del 30&quot;) la probabilidad baja sola al pasar los días, así que eso se descuenta: una caída que el tiempo ya explica no cuenta.</li>
-          <li>A más de {m.far_market_days} días pesan menos, hasta un mínimo de {pctOf(m.far_market_min_weight)}.</li>
-          <li>Varios mercados del mismo evento cuentan una vez, y todos los de un activo suman como máximo {num(m.markets_cap)}.</li>
+          <li>El activo tiene que estar nombrado en el texto, con palabras que sean de ese activo. Si no, la etiqueta se descarta.</li>
+          <li>Una apuesta sobre el precio de una acción o un índice se descarta, aunque Gemini la haya etiquetado.</li>
+          <li>En una apuesta sobre el petróleo, el oro o bitcoin, la dirección sale del título: un mínimo empuja para abajo, responda lo que responda.</li>
+          <li>Un rango (&quot;entre 400 y 425&quot;) no dice para qué lado va: queda como incierto.</li>
+          <li>Un activo que no existe, un factor inventado o un texto roto también se descartan.</li>
         </ul>
       </Step>
 
-      <Step n={5} title="Lo indirecto pesa menos" summary="Lo que no habla directamente del activo cuenta una parte.">
-        <p>Las noticias generales del Merval o de los bonos cuentan {pctOf(m.broad_weight)}. Las de otra empresa del sector cuentan {pctOf(m.sector_weight)}, y juntas suman como máximo {num(m.sector_cap)}. Una noticia etiquetada para el activo y para todo el mercado cuenta por las dos.</p>
+      <Step n={5} title="Cada noticia pasa a un número" summary="Vale +1, −1 o 0, y pesa según cuántas aperturas pudieron operarla.">
+        <Rule>valor: sube +1, baja −1, incierto 0. Peso: 1 sin aperturas, la mitad con una, nada con {m.news_max_opens}</Rule>
+        <p>Una noticia incierta no suma para ningún lado, pero pesa: acerca el promedio a cero. Lo que repite algo de los últimos {m.novelty_days} días no cuenta, y las notas de cierre tampoco.</p>
       </Step>
 
-      <Step n={6} title="Se miden el precio, el mercado y el contexto del país" summary="Sin IA: salen de los precios y de datos públicos, cada una entre −1 y +1.">
-        <Effects m={m} />
-      </Step>
-
-      <Step n={7} title="Todo se suma en un puntaje" summary="Un número entre −1 y +1, aproximadamente.">
-        <Rule>
-          puntaje = {pctOf(w.evidence)} × tanh((noticias + mercados) ÷ 2) + {pctOf(w.trend)} × tendencia + {pctOf(w.context)} × contexto + {pctOf(w.gap)} × brecha + {pctOf(w.macro)} × riesgo país o dólar + concentración
-        </Rule>
-        <p>La curva tanh achica los extremos, para que diez noticias no valgan diez veces una. Los pesos son una decisión nuestra hasta tener suficiente historia para ajustarlos.</p>
-      </Step>
-
-      <Step n={8} title="El puntaje se vuelve una recomendación" summary={`Comprar desde ${score(m.buy_threshold)}, vender desde ${score(m.sell_threshold_held)}, y si no, mantener.`}>
+      <Step n={6} title="Cada mercado pasa a un número" summary="Cuenta cuánto se movió la probabilidad, no qué tan alta está.">
+        <Rule>valor: cambio en 24 h ÷ {num(m.market_move_unit * 100)} pts, entre −1 y +1, con el signo de lo que hace el SÍ</Rule>
+        <p>Por eso un mercado malo para el activo cuya probabilidad baja suma a favor: se está alejando algo malo.</p>
+        <MarketCases m={m} />
         <ul className="list-disc space-y-1 pl-5">
-          <li>Si no lo tenés: comprar con {score(m.buy_threshold)} o más. Si no, mantener.</li>
-          <li>Si lo tenés: vender con {score(m.sell_threshold_held)} o menos. Si no, mantener.</li>
-          <li>Con más del {pctOf(m.concentration_limit)} de la cartera en el mismo tipo de riesgo, comprar más de eso resta hasta {num(m.concentration_max)} puntos.</li>
+          <li>Pide US$ {num(m.market_min_volume)} operados en el día, un movimiento de {num(m.market_min_move * 100)} puntos o más, y al menos {m.min_market_days} días por delante.</li>
+          <li>Con fecha límite (&quot;llega a $115 antes del 30&quot;) la probabilidad baja sola al pasar los días: eso se descuenta.</li>
+          <li>Varios mercados del mismo evento cuentan una vez: el más operado, no el que más se movió, porque eso elegiría el ruido.</li>
+          <li>Pesa 1 si nombra al activo y {num(m.factor_weight)} si llega por un factor. A más de {m.far_market_days} días pesa menos, hasta un mínimo de {pctOf(m.far_market_min_weight)}.</li>
+        </ul>
+      </Step>
+
+      <Step n={7} title="Todo se promedia en un puntaje" summary="Un número entre −1 y +1, y 0 si no hay nada.">
+        <Rule>puntaje = suma(peso × valor) ÷ (suma(pesos) + {num(m.prior_weight)})</Rule>
+        <p>Es un promedio, así que diez noticias que dicen lo mismo no valen diez veces una. El {num(m.prior_weight)} es un voto neutro: con una sola noticia el puntaje es {score(1 / (1 + m.prior_weight))}, con tres, {score(3 / (3 + m.prior_weight))}.</p>
+      </Step>
+
+      <Step n={8} title="Se compara dentro de cada clase" summary={`Acciones, CEDEARs y bonos por separado. Comprar pide el ${pctOf(m.top_share)} mejor.`}>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Si no lo tenés: comprar si está en el {pctOf(m.top_share)} mejor de su clase y tiene {score(m.buy_threshold)} o más. Los puntajes iguales comparten el puesto, y un solo mercado por factor no llega a ese puntaje: hacen falta dos, o una noticia sobre el activo.</li>
+          <li>Si lo tenés: vender con {score(m.sell_threshold_held)} o menos. Una sola mala noticia ({score(-1 / (1 + m.prior_weight))}) no alcanza, porque vender desarma una posición que elegiste.</li>
           <li>Lo que está por encima de tu perfil ({m.profile}) nunca sale comprar, aunque tenga buen puntaje.</li>
         </ul>
       </Step>
 
-      <Step n={9} title="Las recomendaciones se vuelven tu plan" summary="Qué hacer hoy, con la plata que tenés.">
+      <Step n={9} title="Antes de abrir, sale la del día" summary="A las 10:15, en días de mercado, antes de la subasta de apertura. Lo que ves es lo que se mide.">
+        <p>Junta lo último, lo etiqueta y emite las recomendaciones. Así entran las noticias de la noche, y desde ese momento hasta el cierre no cambian: lo que ves es lo que se califica. BYMA abre a las 10:30, y acciones y CEDEARs operan hasta las 18:00 (bonos y cauciones, hasta las 17:00). Entre sesiones, la página muestra una vista previa del día siguiente.</p>
+      </Step>
+
+      <Step n={10} title="Las recomendaciones se vuelven tu plan" summary="Qué hacer hoy, con la plata que tenés.">
         <p>Primero se vende lo que dice vender. Después cada compra, de la mejor a la peor, se paga con tu plata disponible. Si no alcanza, propone rotar desde algo bastante peor. Si sobra suficiente, sugiere caución.</p>
+      </Step>
+
+      <Step n={11} title="Después del cierre se mide" summary="A las 18:30, con los precios de cierre ya firmes, contra la mediana de su clase.">
+        <p>Se califica el día, se actualiza la cartera simulada que sigue el plan y se recalculan las pruebas de <span className="text-text">Resultados</span>.</p>
       </Step>
     </ol>
   );

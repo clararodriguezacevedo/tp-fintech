@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import re
 from datetime import datetime, timezone
 from time import mktime
 
@@ -103,6 +104,64 @@ def _fetch_gdelt(client: httpx.Client, timespan: str) -> list[NewsRecord]:
     ]
 
 
-def fetch_all(client: httpx.Client) -> list[NewsRecord]:
-    items = {n.external_id: n for n in fetch_rss(client) + fetch_gdelt(client)}
+# The general feeds talk about the economy. This is what talks about each company.
+GOOGLE_NEWS = "https://news.google.com/rss/search"
+PER_COMPANY = 5  # the most recent of each search
+COMPANIES_PER_CYCLE = 8  # one request each; at one cycle every 10 minutes, all of them about hourly
+
+
+def search_name(ticker: str, name: str, aliases: list[str] | None = None) -> str:
+    """What the press calls it: the first alias, or the name without its legal ending."""
+    if aliases:
+        return aliases[0]
+    clean = re.sub(r"\b(inc|corp|corporation|ltd|s\.?a\.?|co|plc|n\.?v\.?)\b\.?", "", name, flags=re.IGNORECASE)
+    return " ".join(clean.split()) or ticker
+
+
+def pick_rotation(companies: dict[str, str], now: datetime) -> list[str]:
+    """Which companies to search this cycle, taking turns, from nothing but the time."""
+    if not companies:
+        return []
+    names = sorted(companies.values())
+    start = (now.hour * 6 + now.minute // 10) * COMPANIES_PER_CYCLE % len(names)
+    return (names + names)[start : start + min(COMPANIES_PER_CYCLE, len(names))]
+
+
+def fetch_company_news(client: httpx.Client, names: list[str]) -> list[NewsRecord]:
+    out = []
+    for name in names:
+        try:
+            r = client.get(
+                GOOGLE_NEWS, headers=HEADERS,
+                params={"q": f'"{name}" when:2d', "hl": "es-419", "gl": "AR", "ceid": "AR:es-419"},
+            )
+            r.raise_for_status()
+        except httpx.HTTPError:
+            continue
+        entries = feedparser.parse(r.content).entries
+        dated = [e for e in entries if e.get("published_parsed")]
+        dated.sort(key=lambda e: e["published_parsed"], reverse=True)  # type: ignore[arg-type, return-value]
+        for e in dated[:PER_COMPANY]:
+            link, title = e.get("link"), e.get("title")
+            if not isinstance(link, str) or not isinstance(title, str):
+                continue
+            source = e.get("source")
+            outlet = str(source.get("title", "")) if isinstance(source, dict) else ""
+            out.append(NewsRecord(
+                external_id=_id(link),
+                source=outlet or "google news",
+                # Titles end in " - Outlet". Its summary is only links, so it isn't kept.
+                title=title.removesuffix(f" - {outlet}") if outlet else title,
+                summary="",
+                url=link,
+                published_at=datetime.fromtimestamp(mktime(e["published_parsed"]), tz=timezone.utc),  # type: ignore[arg-type]
+            ))
+    return out
+
+
+def fetch_all(client: httpx.Client, companies: list[str] | None = None) -> list[NewsRecord]:
+    items = {
+        n.external_id: n
+        for n in fetch_rss(client) + fetch_gdelt(client) + fetch_company_news(client, companies or [])
+    }
     return list(items.values())

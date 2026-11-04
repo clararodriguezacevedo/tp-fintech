@@ -21,13 +21,13 @@ log = logging.getLogger(__name__)
 US_CLOSE = time(18, 0)
 
 
-def last_closed_day(now: datetime | None = None, close: time = market_hours.CLOSE) -> date:
-    """The most recent weekday whose session has already closed (holidays not handled)."""
+def last_closed_day(now: datetime | None = None, close: time = market_hours.SETTLED) -> date:
+    """The most recent trading day whose session has already closed and settled its prices."""
     now = (now or market_hours.now_art()).astimezone(market_hours.ART)
     day = now.date()
-    if now.weekday() >= 5 or now.time() < close:
+    if now.time() < close:
         day -= timedelta(days=1)
-    while day.weekday() >= 5:
+    while not market_hours.is_trading_day(day):
         day -= timedelta(days=1)
     return day
 
@@ -89,7 +89,7 @@ def _daily_bars(ticker: str, days: int, now: datetime | None, market: str) -> li
     symbol = ticker.upper()
     ticker = symbol if market == "BCBA" else f"{market}:{symbol}"
     start = date.today() - timedelta(days=days)
-    last_closed = last_closed_day(now, market_hours.CLOSE if market == "BCBA" else US_CLOSE)
+    last_closed = last_closed_day(now, market_hours.SETTLED if market == "BCBA" else US_CLOSE)
     bars = _stored(ticker, start)
     # Backfill when asked for more history than is cached (e.g. a backtest).
     if bars and bars[0].day > start + timedelta(days=7):
@@ -126,6 +126,29 @@ def _daily_bars(ticker: str, days: int, now: datetime | None, market: str) -> li
             on_conflict="ticker,day",
         ).execute()
     return bars + fetched
+
+
+def refetch_from(start: date) -> tuple[int, int]:
+    """Ask IOL again for what's stored from `start` on: a candle stored before its day had closed
+    stays wrong, since closed days are never asked for again. Returns (tickers, candles changed)."""
+    rows = get_db().table("daily_bars").select("ticker,day,close").gte("day", start.isoformat()).limit(50000).execute().data
+    stored = {(str(r["ticker"]), str(r["day"])): float(r["close"]) for r in rows}  # type: ignore[index, arg-type]
+    tickers = sorted({t for t, _ in stored if ":" not in t})  # those of other markets close by their own hours
+    last_closed = last_closed_day()
+    changed = 0
+    for ticker in tickers:
+        try:
+            fresh = [b for b in get_iol().daily_history(ticker, start, last_closed + timedelta(days=1)) if start <= b.day <= last_closed]
+        except Exception:
+            log.warning("no history for %s; left as it was", ticker)
+            continue
+        different = [b for b in fresh if stored.get((ticker, b.day.isoformat())) != b.close]
+        changed += len(different)
+        if fresh:
+            get_db().table("daily_bars").upsert(
+                [{"ticker": ticker, **b.model_dump(mode="json")} for b in fresh], on_conflict="ticker,day",
+            ).execute()
+    return len(tickers), changed
 
 
 def bar_on(ticker: str, day: date) -> DailyBar | None:

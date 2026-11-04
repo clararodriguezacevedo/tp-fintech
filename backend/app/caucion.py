@@ -35,7 +35,7 @@ def _shortest_term():
 
 def refresh() -> None:
     """Keep the last rate seen, for when the market is closed."""
-    if not market_hours.is_open():
+    if not market_hours.is_open(close=market_hours.BONDS_CLOSE):
         return
     rate = _best_rate(_shortest_term().term_id)
     if rate is not None:

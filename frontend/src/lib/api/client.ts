@@ -28,8 +28,7 @@ export type BuyRequest = z.infer<typeof schemas.BuyRequest>;
 export type Trade = z.infer<typeof schemas.TradeRow>;
 export type Recommendation = z.infer<typeof schemas.RecommendationRow>;
 export type Evidence = z.infer<typeof schemas.Evidence>;
-export type TrackRecordSummary = z.infer<typeof schemas.TrackRecordSummary>;
-export type CalibrationBucket = z.infer<typeof schemas.CalibrationBucket>;
+export type SignalTest = z.infer<typeof schemas.SignalTest>;
 export type ModelInfo = z.infer<typeof schemas.ModelInfo>;
 export type Transfer = z.infer<typeof schemas.Transfer>;
 export type Quote = z.infer<typeof schemas.Quote>;
@@ -111,10 +110,9 @@ export const api = {
   sell: (req: SellRequest) =>
     request(schemas.TradeRow, "/trades/sell", { method: "POST", body: JSON.stringify(schemas.SellRequest.parse(req)) }),
   closeTrade: (tradeId: string) => request(schemas.TradeRow, `/trades/${tradeId}/close`, { method: "POST" }),
-  trackRecord: () => request(schemas.TrackRecordSummary, "/track-record"),
   simulation: () => request(schemas.Simulation, "/track-record/simulation"),
   signals: () => request(z.array(schemas.SignalStats), "/track-record/signals"),
-  calibration: () => request(z.array(schemas.CalibrationBucket), "/track-record/calibration"),
+  evaluation: () => request(z.array(schemas.SignalTest), "/track-record/evaluation"),
   model: () => request(schemas.ModelInfo, "/model"),
   trackRecordHistory: (limit = 100) =>
     request(z.array(schemas.RecommendationRow), "/track-record/history", { query: { limit } }),

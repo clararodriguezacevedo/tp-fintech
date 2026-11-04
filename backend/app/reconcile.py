@@ -52,7 +52,7 @@ def latest() -> AccountCheck | None:
 
 def _site_value_at_close(day: date, mep: float) -> tuple[datetime, float] | None:
     db = get_db()
-    since = datetime.combine(day, market_hours.CLOSE, tzinfo=market_hours.ART)
+    since = datetime.combine(day, market_hours.SETTLED, tzinfo=market_hours.ART)
     until = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=market_hours.ART)
     cash = (
         db.table("cash_snapshots").select("captured_at,ars,usd").gte("captured_at", since.isoformat())
@@ -72,7 +72,7 @@ def run() -> AccountCheck | None:
     until today's close: early on, IOL's value for yesterday can be just the positions (at 07:10
     on 2026-11-03 it said 5.436.392 for the 2nd, later 5.917.131)."""
     now = market_hours.now_art()
-    if now.time() < market_hours.CLOSE:
+    if now.time() < market_hours.SETTLED:
         return None
     day = last_trading_day(now.date())
     done = latest()

@@ -2,7 +2,7 @@ import { BuyPanel } from "@/components/buy-panel";
 import { TickerSplit, loadDollar } from "@/components/cedear-move";
 import { SellPanel } from "@/components/sell-panel";
 import { LineChart, type TradeMark } from "@/components/charts";
-import { ActionBadge, Reasons, RiskBadge, threeMonths, track } from "@/components/signals";
+import { ActionBadge, rankText, Reasons, RiskBadge, threeMonths } from "@/components/signals";
 import { attempt, Card, Delta, Notice, SectionTitle } from "@/components/ui";
 import { api, type TickerTrade } from "@/lib/api/client";
 import { fromEntry, integer, money, pct, pctPoints, price } from "@/lib/format";
@@ -33,13 +33,12 @@ function tradeMarksOf(trades: TickerTrade[], points: { t: string }[]): TradeMark
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const ticker = (await params).symbol.toUpperCase();
   const dollar = loadDollar();
-  const [recs, bars, plan, health, holdings, calibration, quote, sellPlan, trades, names, cedears] = await Promise.all([
+  const [recs, bars, plan, health, holdings, quote, sellPlan, trades, names, cedears] = await Promise.all([
     attempt(() => api.recommendations({ ticker })),
     attempt(() => api.bars(ticker, 365)),
     attempt(() => api.tradePlan(ticker)),
     attempt(api.health),
     attempt(api.portfolio),
-    attempt(api.calibration),
     attempt(() => api.quote(ticker)),
     attempt(() => api.sellPlan(ticker)),
     attempt(() => api.tickerTrades(ticker)),
@@ -99,7 +98,7 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
         {rec && (
           <div className="text-right">
             <ActionBadge action={rec.action} />
-            <p className="mt-2 text-text-2">{track(rec, calibration.ok ? calibration.data : [])}</p>
+            <p className="mt-2 text-text-2">{rankText(rec)}</p>
           </div>
         )}
       </header>

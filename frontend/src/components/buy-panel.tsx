@@ -81,7 +81,7 @@ export function BuyPanel({ ticker, plan, mode, recommended, recommendationId }: 
         </p>
         <p className="mt-2 text-text-2">
           {t.status === "queued"
-            ? `${t.quantity} ${t.ticker} se compran cuando abra el mercado, a las 11:00.`
+            ? `${t.quantity} ${t.ticker} se compran cuando abra el mercado, a las 10:30.`
             : `Compraste ${t.quantity} ${t.ticker} a ${money(t.fill_price)}.`}
         </p>
         <Link href="/operaciones" className="mt-4 inline-block underline">Ver mis operaciones</Link>
@@ -154,7 +154,7 @@ export function BuyPanel({ ticker, plan, mode, recommended, recommendationId }: 
             <p className="mt-3 text-text-2">
               {mode === "paper"
                 ? "El mercado está cerrado: la simulación compra al último precio de cierre."
-                : "El mercado está cerrado: la compra se hace cuando abra, a las 11:00."}
+                : "El mercado está cerrado: la compra se hace cuando abra, a las 10:30."}
             </p>
           )}
           {state.status === "error" && <p className="mt-3" role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}

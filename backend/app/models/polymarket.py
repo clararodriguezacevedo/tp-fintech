@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -28,7 +28,7 @@ class GammaMarket(PMModel):
     outcomes: list[str]
     outcome_prices: list[float]
     clob_token_ids: list[str]
-    volume_24hr: float = 0
+    volume_24hr: float = Field(0, alias="volume24hr")  # to_camel would look for "volume24Hr"
     one_hour_price_change: float | None = None
     one_day_price_change: float | None = None
     one_week_price_change: float | None = None

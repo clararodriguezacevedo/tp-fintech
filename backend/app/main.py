@@ -12,7 +12,8 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app import account as acct, alerts, caucion, cedears, jobs, prices, reconcile, universe
-from app.analysis import market_hours, risk, rotation, scoring, simulation, suitability, tagger, track_record
+from app.analysis import evaluation, factors, market_hours, risk, rotation, scoring, simulation, suitability, tagger, track_record
+from app.analysis.evaluation import SignalTest
 from app.assets import asset_types
 from app.reconcile import AccountCheck
 from app.analysis.simulation import Simulation
@@ -26,9 +27,9 @@ from app.models.db import (
 from app.portfolio import current_holdings, get_holdings, value_history
 from app.models.iol import DailyBar
 from app.schemas import (
-    AccountSummary, AssetOut, BuyRequest, CalibrationBucket, Health, HoldingOut, Impact, JobResult, MarketOut,
+    AccountSummary, AssetOut, BuyRequest, FactorInfo, Health, HoldingOut, Impact, JobResult, MarketOut,
     ModelInfo, NewsOut, OperationsOut, PlanStep, PortfolioOut, PortfolioPlan, UnfundedBuy, PortfolioValuePoint, ProbabilityPoint, SignalStats,
-    Quote, SellPlan, SellRequest, TickerTrade, TrackRecordSummary, TradePlan, Transfer,
+    Quote, SellPlan, SellRequest, TickerTrade, TradePlan, Transfer,
 )
 from app.sources import polymarket
 from app.trading import history, paper
@@ -47,10 +48,12 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(jobs.run_cycle, "interval", minutes=get_settings().collect_interval_minutes)
     # Fill queued buys and check stop loss / take profit every minute while BYMA is open.
     scheduler.add_job(
-        paper.check_open_trades, "cron", day_of_week="mon-fri", hour="11-16", minute="*"
+        lambda: market_hours.is_open() and paper.check_open_trades(), "cron", day_of_week="mon-fri", hour="10-17", minute="*"
     )
-    # Grade today's recommendations and issue tomorrow's once the close is in.
-    scheduler.add_job(jobs.after_close, "cron", day_of_week="mon-fri", hour=17, minute=30)
+    # The day's recommendations, just before the open.
+    scheduler.add_job(jobs.before_open, "cron", day_of_week="mon-fri", hour=market_hours.ISSUE.hour, minute=market_hours.ISSUE.minute)
+    # Grade today's recommendations once the close is in.
+    scheduler.add_job(jobs.after_close, "cron", day_of_week="mon-fri", hour=18, minute=30)
     scheduler.start()
     yield
     scheduler.shutdown()
@@ -124,26 +127,31 @@ def run_trades_job() -> JobResult:
 
 @app.post("/jobs/after-close", response_model=JobResult)
 def run_after_close_job() -> JobResult:
-    """Grade today's daily recommendations and issue tomorrow's."""
+    """Grade today's recommendations and recompute the results."""
     return JobResult(failed=jobs.after_close())
 
 
+@app.post("/jobs/before-open", response_model=JobResult)
+def run_before_open_job() -> JobResult:
+    """Fresh news and markets, then the day's recommendations: what is shown and what gets graded."""
+    if not market_hours.is_trading_day(market_hours.now_art().date()):
+        return JobResult(failed=[], skipped=True)
+    return JobResult(failed=jobs.before_open())
+
+
 def _impacts_for(kind: Literal["news", "market"], ids: list[str]) -> dict[str, list[Impact]]:
-    """Tickers each item is expected to move, strongest first, one entry per ticker."""
+    """What each item is expected to push, one entry per ticker or factor. Unclear ones don't show."""
     out: dict[str, dict[str, Impact]] = {}
-    rank = {"high": 3, "medium": 2, "low": 1}
     for i in range(0, len(ids), 100):
         rows = rows_as(
             TickerImpactRow,
-            get_db().table("ticker_impacts").select("*").eq("item_kind", kind)
+            get_db().table("ticker_impacts").select("*").eq("item_kind", kind).eq("tag_version", scoring.TAG_VERSION)
             .in_("item_id", ids[i : i + 100]).execute().data,
         )
         for r in rows:
-            per_item = out.setdefault(r.item_id, {})
-            current = per_item.get(r.ticker)
-            if current is None or rank[r.strength] > rank[current.strength]:
-                per_item[r.ticker] = Impact(ticker=r.ticker, direction=r.direction, strength=r.strength)
-    return {k: sorted(v.values(), key=lambda x: -rank[x.strength]) for k, v in out.items()}
+            if r.direction != "unknown":
+                out.setdefault(r.item_id, {})[r.ticker] = Impact(ticker=r.ticker, direction=r.direction)
+    return {k: list(v.values()) for k, v in out.items()}
 
 
 @app.get("/news", response_model=list[NewsOut])
@@ -512,45 +520,30 @@ def portfolio_advice() -> list[RecommendationRow]:
     return list_recommendations(kind="live", held=True)
 
 
-@app.get("/track-record", response_model=TrackRecordSummary)
-def track_record_summary() -> TrackRecordSummary:
-    return track_record.summary()
-
-
 @app.get("/track-record/signals", response_model=list[SignalStats])
 def track_record_signals() -> list[SignalStats]:
-    """How often each signal of the score (news and markets, trend, context, CEDEAR gap, macro) called the direction."""
+    """How often each signal (news, markets, and macro, which isn't in the score) was right."""
     return track_record.signal_stats()
-
-
-@app.get("/track-record/calibration", response_model=list[CalibrationBucket])
-def track_record_calibration() -> list[CalibrationBucket]:
-    """Hit rate by action and score size, to say how often scores like a new one were right."""
-    return track_record.calibration()
 
 
 @app.get("/model", response_model=ModelInfo)
 def model_info() -> ModelInfo:
-    """The scoring model's weights and thresholds."""
+    """The model's constants and prompts."""
     investor = suitability.INVESTOR_PROFILE
+    prompts = tagger.prompts_for_display()
     return ModelInfo(
-        weights={
-            "evidence": scoring.W_EVIDENCE, "trend": scoring.W_TREND, "context": scoring.W_CONTEXT,
-            "gap": scoring.W_GAP, "macro": scoring.W_MACRO,
-        },
+        version=scoring.MODEL_VERSION, prior_weight=scoring.PRIOR_WEIGHT, top_share=scoring.TOP_SHARE,
         buy_threshold=scoring.BUY_THRESHOLD, sell_threshold_held=scoring.SELL_THRESHOLD_HELD,
-        broad_weight=scoring.BROAD_WEIGHT, sector_weight=scoring.SECTOR_WEIGHT, sector_cap=scoring.SECTOR_CAP,
-        sectors=scoring.SECTORS,
-        news_half_life_hours=scoring.NEWS_HALF_LIFE_HOURS, news_max_age_hours=scoring.NEWS_MAX_AGE_HOURS,
-        concentration_limit=scoring.CONCENTRATION_LIMIT,
-        concentration_penalty=scoring.CONCENTRATION_PENALTY, concentration_max=scoring.CONCENTRATION_MAX,
+        news_max_opens=scoring.NEWS_MAX_OPENS, novelty_days=scoring.NOVELTY_DAYS, novelty_similarity=scoring.NOVELTY_SIMILARITY,
+        market_move_unit=scoring.MARKET_MOVE_UNIT, market_min_move=scoring.MARKET_MIN_MOVE, market_min_volume=scoring.MARKET_MIN_VOLUME,
+        min_market_days=scoring.MIN_MARKET_DAYS, far_market_days=scoring.FAR_MARKET_DAYS,
+        far_market_min_weight=scoring.FAR_MARKET_MIN_WEIGHT, factor_weight=scoring.FACTOR_WEIGHT,
+        factors=[FactorInfo(key=k, label=f.label, up=list(f.up), down=list(f.down)) for k, f in factors.FACTORS.items()],
+        market_cases=scoring.market_cases(), concentration_limit=scoring.CONCENTRATION_LIMIT,
         risk_per_trade=suitability.RISK_PER_TRADE[investor], max_position=suitability.MAX_POSITION[investor],
         profile=investor, bond_low_vol=suitability.BOND_LOW_VOL, equity_mid_vol=suitability.EQUITY_MID_VOL,
-        max_volume_share=risk.MAX_VOLUME_SHARE, calibration_min_cases=track_record.CALIBRATION_MIN_CASES,
-        tagger_model=get_settings().tagger_model, tagger_prompt=tagger.prompt_for_display(), tag_batch=jobs.TAG_BATCH_SIZE,
-        strength=scoring.STRENGTH, market_move_unit=scoring.MARKET_MOVE_UNIT, market_move_cap=scoring.MARKET_MOVE_CAP,
-        markets_cap=scoring.MARKETS_CAP, min_market_days=scoring.MIN_MARKET_DAYS, far_market_days=scoring.FAR_MARKET_DAYS,
-        far_market_min_weight=scoring.FAR_MARKET_MIN_WEIGHT, gap_unit=scoring.GAP_UNIT, market_cases=scoring.market_cases(),
+        max_volume_share=risk.MAX_VOLUME_SHARE, tagger_model=get_settings().tagger_model,
+        news_prompt=prompts["news"], market_prompt=prompts["market"], tag_batch=jobs.TAG_BATCH_SIZE,
     )
 
 
@@ -573,6 +566,23 @@ def track_record_simulation() -> Simulation:
         "key": "simulation", "value": sim.model_dump(mode="json"), "created_at": datetime.now(timezone.utc).isoformat(),
     }).execute()
     return sim
+
+
+@app.get("/track-record/evaluation", response_model=list[SignalTest])
+def track_record_evaluation() -> list[SignalTest]:
+    """Whether the ranking says anything: costs, placebos and delay, per model version."""
+    db = get_db()
+    rows = db.table("api_cache").select("value,created_at").eq("key", "evaluation").execute().data
+    if rows:
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(str(rows[0]["created_at"]))  # type: ignore[index]
+        if age < SIMULATION_TTL:
+            return [SignalTest.model_validate(x) for x in rows[0]["value"]]  # type: ignore[index, union-attr]
+    tests = evaluation.run()
+    db.table("api_cache").upsert({
+        "key": "evaluation", "value": [t.model_dump(mode="json") for t in tests],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+    return tests
 
 
 @app.get("/track-record/history", response_model=list[RecommendationRow])

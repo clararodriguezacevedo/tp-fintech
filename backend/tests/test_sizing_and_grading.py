@@ -51,8 +51,8 @@ def test_liquidity_cap():
 def rec(price: float = 100.0, action: str = "keep", held: bool = True) -> RecommendationRow:
     now = datetime(2026, 10, 1, tzinfo=timezone.utc)
     return RecommendationRow(
-        id="r", ticker="KO", action=action, kind="daily", score=0, confidence=0, held=held,  # type: ignore[arg-type]
-        signal_breakdown=SignalBreakdown(news=0, markets=0, trend=0), evidence=[], price_at_rec=price,
+        id="r", ticker="KO", action=action, kind="daily", score=0, held=held,  # type: ignore[arg-type]
+        signal_breakdown=SignalBreakdown(news=0, markets=0), evidence=[], price_at_rec=price,
         target_date=date(2026, 10, 2), created_at=now, updated_at=now,
     )
 
@@ -71,18 +71,13 @@ def test_dividend_is_added_back_to_close_return():
     g = track_record._grade(rec(), BAR, event)
     assert g["close_return"] == pytest.approx(0.01)
     assert g["event_yield"] == 0.02
-    assert g["hit"] is True  # graded open -> close, which the dividend doesn't touch
+    assert g["realized_return"] == pytest.approx(99 / 98 - 1, abs=1e-6)  # the dividend doesn't touch open -> close
 
 
 def test_coupon_of_unknown_size_drops_the_overnight_gap():
     event = CorporateEvent(ticker="KO", ex_date=BAR.day, kind="coupon", source="t")
     g = track_record._grade(rec(), BAR, event)
     assert g["close_return"] == g["realized_return"]
-
-
-@pytest.mark.parametrize("score, bucket", [(0.1, (0.0, 0.15)), (-0.32, (0.3, 0.45)), (0.99, (0.6, 1.01))])
-def test_score_bucket(score, bucket):
-    assert track_record.score_bucket(score) == bucket
 
 
 # Corporate events and macro
@@ -154,20 +149,6 @@ def test_profiles_allow_up_to_their_level():
     assert s.allowed(1, "conservador") and not s.allowed(2, "conservador")
     assert s.allowed(2, "moderado") and not s.allowed(3, "moderado")
     assert s.allowed(3, "arriesgado")
-
-
-def test_out_of_profile_is_never_a_buy():
-    from app.analysis import scoring, suitability
-    from app.models.db import Evidence
-
-    strong = [Evidence(kind="news", item_id="a", title="t", direction="up", strength="high", reason="", contribution=3.0)]
-    base = dict(ticker="GGAL", held=False, price=100.0, own=strong, broad=[], trend=0.0, context=0.0)
-    risky = suitability.RiskLevel(level=3, kind="stock", volatility=0.4)
-    inside = scoring._combine(scoring._Inputs(**base, risk=risky, profile="arriesgado"), gap=0.0)  # type: ignore[arg-type]
-    outside = scoring._combine(scoring._Inputs(**base, risk=risky, profile="moderado"), gap=0.0)  # type: ignore[arg-type]
-    assert inside.action == "buy" and not inside.breakdown.out_of_profile
-    assert outside.action == "keep" and outside.breakdown.out_of_profile
-    assert outside.score == inside.score
 
 
 # Account value
@@ -308,8 +289,8 @@ def test_scoring_keeps_holdings_and_the_strongest_news_when_over_the_cap(monkeyp
     from app.models.db import Evidence
 
     monkeypatch.setattr(scoring, "MAX_SCORED", 3)
-    ev = lambda c: Evidence(kind="news", item_id="a", title="t", direction="up", strength="low", reason="", contribution=c)
-    signals = {"A": scoring.TickerSignals([ev(0.1)]), "B": scoring.TickerSignals([ev(0.9)]), "C": scoring.TickerSignals([ev(-0.5)])}
+    ev = lambda c: Evidence(kind="news", item_id="a", title="t", direction="up", reason="", contribution=c)
+    signals = {"A": [ev(0.1)], "B": [ev(0.9)], "C": [ev(-0.5)]}
     assert scoring.pick_scored({"A", "B", "C", "HELD"}, {"HELD"}, signals) == {"HELD", "B", "C"}
     assert scoring.pick_scored({"A", "HELD"}, {"HELD"}, signals) == {"A", "HELD"}
 
@@ -331,27 +312,3 @@ def test_last_trading_day_skips_weekends():
 
     assert reconcile.last_trading_day(date(2026, 11, 2)) == date(2026, 10, 30)  # Monday -> Friday
     assert reconcile.last_trading_day(date(2026, 11, 3)) == date(2026, 11, 2)
-
-
-def test_signals_are_measured_against_the_days_median(monkeypatch):
-    from app.analysis import track_record
-
-    now = datetime(2026, 10, 1, tzinfo=timezone.utc)
-
-    def row(ticker, day, news, ret):
-        return RecommendationRow(
-            id=ticker + str(day), ticker=ticker, action="keep", kind="daily", score=0, confidence=0, held=False,
-            signal_breakdown=SignalBreakdown(news=news, markets=0, trend=0), evidence=[], target_date=day,
-            realized_return=ret, created_at=now, updated_at=now,
-        )
-
-    d1, d2 = date(2026, 10, 1), date(2026, 10, 2)
-    # A day when everything falls: "up" is wrong in direction, but right if the asset beat the rest.
-    rows = [row("A", d1, 0.5, -0.01), row("B", d1, 0.0, -0.03), row("C", d1, -0.5, -0.05), row("D", d2, 0.5, 0.02), row("E", d2, 0.0, 0.01)]
-
-    monkeypatch.setattr(track_record, "get_db", MagicMock())
-    monkeypatch.setattr(track_record, "rows_as", lambda _m, _data: rows)
-    evidence = next(s for s in track_record.signal_stats() if s.signal == "evidence")
-    assert (evidence.n, evidence.hits) == (3, 2)
-    assert (evidence.n_vs_day, evidence.hits_vs_day, evidence.days) == (3, 3, 2)
-    assert evidence.rate_vs_day == 1.0

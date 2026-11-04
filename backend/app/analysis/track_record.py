@@ -1,14 +1,15 @@
 """Grades each daily recommendation against its target day.
 
-A recommendation made after the close of day D can only be acted on at the open of D+1, so it
-is graded on that day's open -> close (realized_return = close(D+1) / open(D+1) - 1). The
-close -> close move is kept too (close_return), for positions already held overnight.
+Recommendations are issued just before the open, so each is graded on that day's open -> close
+(realized_return = close / open - 1). The close -> close move is kept too (close_return), for
+positions already held overnight.
 
-  buy   right if the price went up
-  sell  right if the price went down
-  keep  for a position the user holds: right unless it fell more than KEEP_BAND (selling
-        would have been better); for one they don't hold: right unless it rose more than
-        KEEP_BAND (buying would have been better)
+What counts is the excess: its return minus the day's median of its asset class (excess_return).
+Whether the whole market rose or fell says nothing about the recommendation.
+
+  buy   right if it beat its class that day
+  sell  right if it lagged its class
+  keep  no verdict: staying put isn't a call
 
 Dividends and coupons: the price drops overnight on an ex-date, which open -> close doesn't
 see but close -> close does. So on an ex-date the dividend yield is added back to close_return
@@ -21,32 +22,53 @@ from collections import defaultdict
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 
-from app.analysis import market_hours
-from app import prices
+from app import prices, universe
+from app.analysis import market_hours, scoring
 from app.db import get_db, rows_as
 from app.models.db import Action, RecommendationRow, SignalBreakdown
 from app.models.iol import DailyBar
-from app.schemas import CalibrationBucket, HitStats, SignalStats, TrackRecordSummary
+from app.schemas import SignalStats
 from app.sources.corporate_events import CorporateEvent, events_between
 
 log = logging.getLogger(__name__)
 
-KEEP_BAND = 0.015
 # After this many days without a price for the target day (holiday, suspended ticker),
 # give up and mark it evaluated with no result.
 GIVE_UP_AFTER_DAYS = 5
+MIN_IN_CLASS = 3  # below this, the day's median of a class says nothing
 
 
 def bar_on(ticker: str, day: date) -> DailyBar | None:
     return prices.bar_on(ticker, day)
 
 
-def is_hit(action: Action, ret: float, held: bool) -> bool:
+def is_hit(action: Action, excess: float) -> bool | None:
     if action == "buy":
-        return ret > 0
+        return excess > 0
     if action == "sell":
-        return ret < 0
-    return ret > -KEEP_BAND if held else ret < KEEP_BAND
+        return excess < 0
+    return None
+
+
+def asset_class(r: RecommendationRow) -> str:
+    if r.signal_breakdown.asset_class:
+        return r.signal_breakdown.asset_class
+    g = universe.groups()  # the first model didn't save it
+    return "stocks" if r.ticker in g.stocks else "bonds" if r.ticker in g.bonds else "us"
+
+
+def excess_returns(rows: list[RecommendationRow]) -> dict[str, float]:
+    """id -> realized return minus the median of its class that day."""
+    groups: dict[tuple[date, str], list[RecommendationRow]] = defaultdict(list)
+    for r in rows:
+        if r.realized_return is not None:
+            groups[(r.target_date, asset_class(r))].append(r)
+    out: dict[str, float] = {}
+    for rs in groups.values():
+        if len(rs) >= MIN_IN_CLASS:
+            median = statistics.median(r.realized_return or 0.0 for r in rs)
+            out.update({r.id: (r.realized_return or 0.0) - median for r in rs})
+    return out
 
 
 def _grade(
@@ -67,7 +89,6 @@ def _grade(
         "realized_return": round(ret, 6),
         "close_return": round(close_ret, 6) if close_ret is not None else None,
         "event_yield": round(event_yield, 6) if event_yield is not None else None,
-        "hit": is_hit(rec.action, ret, rec.held),
     }
 
 
@@ -81,14 +102,40 @@ def _events_for(rows: list[RecommendationRow]) -> dict[tuple[str, date], Corpora
         return {}
 
 
+def graded_daily(version: int | None = None) -> list[RecommendationRow]:
+    """Every graded daily recommendation, oldest first."""
+    out: list[RecommendationRow] = []
+    page = 0
+    while True:  # PostgREST returns at most 1000 rows per request
+        q = get_db().table("recommendations").select("*").eq("kind", "daily").not_.is_("realized_return", "null")
+        if version is not None:
+            q = q.eq("model_version", version)
+        batch = rows_as(RecommendationRow, q.order("target_date").order("id").range(page * 1000, page * 1000 + 999).execute().data)
+        out += batch
+        if len(batch) < 1000:
+            return out
+        page += 1
+
+
+def update_excess(days: set[date] | None = None) -> None:
+    """Save each recommendation's excess and verdict. It takes the whole day's batch graded."""
+    rows = graded_daily()
+    if days is not None:
+        rows = [r for r in rows if r.target_date in days]
+    excess = excess_returns(rows)
+    db = get_db()
+    for r in rows:
+        value = excess.get(r.id)
+        db.table("recommendations").update({
+            "excess_return": round(value, 6) if value is not None else None,
+            "hit": is_hit(r.action, value) if value is not None else None,
+        }).eq("id", r.id).execute()
+
+
 def regrade_all(bar_fn: Callable[[str, date], DailyBar | None] = bar_on) -> int:
     """Re-grade every graded recommendation with the current rules."""
     db = get_db()
-    rows = rows_as(
-        RecommendationRow,
-        db.table("recommendations").select("*").eq("kind", "daily")
-        .not_.is_("evaluated_at", "null").execute().data,
-    )
+    rows = graded_daily()
     events = _events_for(rows)
     changed = 0
     for r in rows:
@@ -97,6 +144,7 @@ def regrade_all(bar_fn: Callable[[str, date], DailyBar | None] = bar_on) -> int:
             grade = _grade(r, bar, events.get((r.ticker, r.target_date)))
             db.table("recommendations").update(grade).eq("id", r.id).execute()
             changed += 1
+    update_excess()
     return changed
 
 
@@ -105,7 +153,7 @@ def evaluate_pending(
 ) -> int:
     """Grade daily recommendations whose target day has closed. Returns how many were graded."""
     now = (now or market_hours.now_art()).astimezone(market_hours.ART)
-    last_closed = now.date() if now.time() >= market_hours.CLOSE else now.date() - timedelta(days=1)
+    last_closed = now.date() if now.time() >= market_hours.SETTLED else now.date() - timedelta(days=1)
     db = get_db()
     pending = rows_as(
         RecommendationRow,
@@ -114,6 +162,7 @@ def evaluate_pending(
     )
     events = _events_for(pending)
     graded = 0
+    days: set[date] = set()
     for rec in pending:
         fields: dict[str, str | float | bool | None] = {"evaluated_at": datetime.now(timezone.utc).isoformat()}
         try:
@@ -127,131 +176,41 @@ def evaluate_pending(
         else:
             fields |= _grade(rec, bar, events.get((rec.ticker, rec.target_date)))
             graded += 1
+            days.add(rec.target_date)
         db.table("recommendations").update(fields).eq("id", rec.id).execute()
+    if days:
+        update_excess(days)
     log.info("graded %d recommendations", graded)
     return graded
 
 
-def _bucket(confidence: float) -> str:
-    return "alta (>=0.6)" if confidence >= 0.6 else "media (0.3-0.6)" if confidence >= 0.3 else "baja (<0.3)"
-
-
-def _stats(rs: list[RecommendationRow]) -> HitStats:
-    n = len(rs)
-    hits = sum(1 for r in rs if r.hit)
-    avg = sum(r.realized_return or 0 for r in rs) / n if n else None
-    return HitStats(
-        n=n, hits=hits, hit_rate=round(hits / n, 3) if n else None,
-        avg_return=round(avg, 5) if avg is not None else None,
-    )
-
-
-def summary() -> TrackRecordSummary:
-    """Hit rate overall and by action, main driver, confidence and held vs not held."""
-    rows = rows_as(
-        RecommendationRow,
-        get_db().table("recommendations").select("*").eq("kind", "daily")
-        .not_.is_("hit", "null").execute().data,
-    )
-    action: dict[Action, list[RecommendationRow]] = defaultdict(list)
-    driver: dict[str, list[RecommendationRow]] = defaultdict(list)
-    confidence: dict[str, list[RecommendationRow]] = defaultdict(list)
-    held: dict[str, list[RecommendationRow]] = defaultdict(list)
-    for r in rows:
-        action[r.action].append(r)
-        driver[r.driver or "trend"].append(r)
-        confidence[_bucket(r.confidence)].append(r)
-        held["en cartera" if r.held else "fuera de cartera"].append(r)
-    return TrackRecordSummary(
-        overall=_stats(rows),
-        action={k: _stats(v) for k, v in action.items()},
-        driver={k: _stats(v) for k, v in driver.items()},
-        confidence={k: _stats(v) for k, v in confidence.items()},
-        held={k: _stats(v) for k, v in held.items()},
-    )
-
-
-SIGNALS = ("evidence", "trend", "context", "gap", "macro")  # the score's components, each with its weight
-SIGNAL_MIN = 0.05  # a component smaller than this didn't really point anywhere
+SIGNALS = ("news", "markets", "macro")
+IN_SCORE = {"news", "markets"}
+SIGNAL_MIN = 0.05  # smaller than this didn't really point anywhere
 
 
 def _signal_value(b: SignalBreakdown, name: str) -> float:
-    """News and markets are one component: the score adds them up before weighing them."""
-    return b.news + b.markets if name == "evidence" else getattr(b, name)
+    return getattr(b, name)
 
 
-def signal_stats() -> list[SignalStats]:
-    """For each score component: how often its sign matched the next day's open -> close move,
-    and how often the asset beat or lagged that day's median as the signal said. The second doesn't
-    depend on whether the whole market rose or fell that day, which is what a day's signals share."""
-    rows = rows_as(
-        RecommendationRow,
-        get_db().table("recommendations").select("*").eq("kind", "daily")
-        .not_.is_("realized_return", "null").execute().data,
-    )
-    by_day: dict[date, list[float]] = defaultdict(list)
-    for r in rows:
-        if r.realized_return is not None:
-            by_day[r.target_date].append(r.realized_return)
-    median = {d: statistics.median(v) for d, v in by_day.items()}
+def signal_stats(rows: list[RecommendationRow] | None = None) -> list[SignalStats]:
+    """For each signal: how often the asset beat or lagged its class that day as it said. Only
+    recommendations of this model: the first one's tags meant something else."""
+    if rows is None:
+        rows = graded_daily(scoring.MODEL_VERSION)
     out = []
     for name in SIGNALS:
-        ups: list[float] = []
-        downs: list[float] = []
-        n_vs_day = hits_vs_day = 0
+        n = hits = 0
         days: set[date] = set()
         for r in rows:
             value = _signal_value(r.signal_breakdown, name)
-            if abs(value) < SIGNAL_MIN or r.realized_return is None:
+            if abs(value) < SIGNAL_MIN or not r.excess_return:
                 continue
-            (ups if value > 0 else downs).append(r.realized_return)
+            n += 1
+            hits += (value > 0) == (r.excess_return > 0)
             days.add(r.target_date)
-            excess = r.realized_return - median[r.target_date]
-            if excess != 0:
-                n_vs_day += 1
-                hits_vs_day += (value > 0) == (excess > 0)
-        n = len(ups) + len(downs)
-        hits = sum(1 for x in ups if x > 0) + sum(1 for x in downs if x < 0)
         out.append(SignalStats(
-            signal=name, n=n, hits=hits, hit_rate=round(hits / n, 3) if n else None,
-            avg_when_up=round(sum(ups) / len(ups), 5) if ups else None,
-            avg_when_down=round(sum(downs) / len(downs), 5) if downs else None,
-            n_vs_day=n_vs_day, hits_vs_day=hits_vs_day,
-            rate_vs_day=round(hits_vs_day / n_vs_day, 3) if n_vs_day else None, days=len(days),
+            signal=name, in_score=name in IN_SCORE, n=n, hits=hits,  # type: ignore[arg-type]
+            rate=round(hits / n, 3) if n else None, days=len(days),
         ))
     return out
-
-
-# How often a score like this one was right
-
-CALIBRATION_MIN_CASES = 20
-SCORE_EDGES = (0.0, 0.15, 0.3, 0.45, 0.6, 1.01)
-
-
-def score_bucket(score: float) -> tuple[float, float]:
-    """The [lo, hi) range of |score| a recommendation falls in."""
-    s = abs(score)
-    for lo, hi in zip(SCORE_EDGES, SCORE_EDGES[1:]):
-        if s < hi:
-            return lo, hi
-    return SCORE_EDGES[-2], SCORE_EDGES[-1]
-
-
-def calibration() -> list[CalibrationBucket]:
-    """Hit rate of graded daily recommendations by action, held or not, and score size, so a
-    new recommendation can say "with scores like this, it was right X% of the time"."""
-    rows = rows_as(
-        RecommendationRow,
-        get_db().table("recommendations").select("*").eq("kind", "daily")
-        .not_.is_("hit", "null").execute().data,
-    )
-    groups: dict[tuple[Action, bool, float, float], list[RecommendationRow]] = defaultdict(list)
-    for r in rows:
-        groups[(r.action, r.held, *score_bucket(r.score))].append(r)
-    return [
-        CalibrationBucket(
-            action=action, held=held, score_min=lo, score_max=min(hi, 1.0), n=len(rs),
-            hits=sum(1 for r in rs if r.hit), hit_rate=round(sum(1 for r in rs if r.hit) / len(rs), 3),
-        )
-        for (action, held, lo, hi), rs in sorted(groups.items())
-    ]

@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.db import Action, Direction, MarketRow, NewsRow, Strength
+from app.models.db import Direction, MarketRow, NewsRow
 
 
 class Health(BaseModel):
@@ -21,7 +21,6 @@ class Health(BaseModel):
 class Impact(BaseModel):
     ticker: str
     direction: Direction
-    strength: Strength
 
 
 class NewsOut(NewsRow):
@@ -221,42 +220,13 @@ class Quote(BaseModel):
     live: bool  # False when IOL didn't answer and this is the last stored close
 
 
-class HitStats(BaseModel):
-    n: int
-    hits: int
-    hit_rate: float | None
-    avg_return: float | None
-
-
 class SignalStats(BaseModel):
-    signal: Literal["evidence", "trend", "context", "gap", "macro"]
+    signal: Literal["news", "markets", "macro"]
+    in_score: bool  # macro is measured, but doesn't decide
     n: int  # graded recommendations where this signal pointed somewhere
-    hits: int  # ... and the price moved that way (open -> close)
-    hit_rate: float | None
-    avg_when_up: float | None  # average move when the signal said up
-    avg_when_down: float | None  # average move when it said down
-    n_vs_day: int = 0  # cases where the asset moved differently from the day's median
-    hits_vs_day: int = 0  # ... and it did better or worse than that median as the signal said
-    rate_vs_day: float | None = None
-    days: int = 0  # different trading days behind these numbers
-
-
-class TrackRecordSummary(BaseModel):
-    overall: HitStats
-    action: dict[Action, HitStats]
-    driver: dict[str, HitStats]
-    confidence: dict[str, HitStats]
-    held: dict[str, HitStats]
-
-
-class CalibrationBucket(BaseModel):
-    action: Action
-    held: bool
-    score_min: float  # |score| range, inclusive
-    score_max: float  # exclusive
-    n: int
-    hits: int
-    hit_rate: float
+    hits: int  # ... and the asset did better or worse than its class's median as it said
+    rate: float | None
+    days: int  # different trading days behind these numbers
 
 
 class MarketCase(BaseModel):
@@ -268,37 +238,41 @@ class MarketCase(BaseModel):
     contribution: float
 
 
-class ModelInfo(BaseModel):
-    """The scoring model's constants, so the "Cómo decide" page always matches the code."""
+class FactorInfo(BaseModel):
+    key: str
+    label: str
+    up: list[str]  # rise with the factor
+    down: list[str]  # fall with the factor
 
-    weights: dict[str, float]
+
+class ModelInfo(BaseModel):
+    """The model's constants, so the "Cómo decide" page always matches the code."""
+
+    version: int
+    prior_weight: float
+    top_share: float  # of each class, that can be bought
     buy_threshold: float
     sell_threshold_held: float
-    broad_weight: float
-    sector_weight: float
-    sector_cap: float  # all sector news together, either way
-    sectors: dict[str, list[str]]
-    news_half_life_hours: float
-    news_max_age_hours: float
+    news_max_opens: int
+    novelty_days: int
+    novelty_similarity: float
+    market_move_unit: float
+    market_min_move: float
+    market_min_volume: float
+    min_market_days: int
+    far_market_days: int
+    far_market_min_weight: float
+    factor_weight: float
+    factors: list[FactorInfo]
+    market_cases: list[MarketCase]
     concentration_limit: float
-    concentration_penalty: float
-    concentration_max: float
     risk_per_trade: float  # for the user's profile
     max_position: float  # for the user's profile
     profile: Literal["conservador", "moderado", "arriesgado"]
     bond_low_vol: float
     equity_mid_vol: float
     max_volume_share: float
-    calibration_min_cases: int
     tagger_model: str
-    tagger_prompt: str
+    news_prompt: str
+    market_prompt: str
     tag_batch: int
-    strength: dict[str, float]
-    market_move_unit: float
-    market_move_cap: float
-    markets_cap: float
-    min_market_days: int
-    far_market_days: int
-    far_market_min_weight: float
-    gap_unit: float
-    market_cases: list[MarketCase]

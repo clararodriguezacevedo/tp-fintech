@@ -112,7 +112,7 @@ def test_breakdown_with_an_event_date_can_be_saved():
 
     from app.models.db import SignalBreakdown
 
-    b = SignalBreakdown(news=0, markets=0, trend=0, event_kind="dividend", event_date=date(2026, 10, 30))
+    b = SignalBreakdown(news=0, markets=0, event_kind="dividend", event_date=date(2026, 10, 30))
     assert json.loads(json.dumps(b.model_dump(mode="json")))["event_date"] == "2026-10-30"
 
 
@@ -121,16 +121,26 @@ def test_garbled_ids_and_unknown_tickers_are_dropped(monkeypatch):
 
     answer = tagger.TagBatch(items=[
         tagger.TaggedItem(id="news-1", summary="Sube.", impacts=[
-            tagger.TickerImpact(ticker="ASML", direction="up", strength="low", reason="r"),
-            tagger.TickerImpact(ticker="INVENTADO", direction="up", strength="low", reason="r"),
+            tagger.TickerImpact(ticker="ASML", direction="up", mention="ASML", reason="r"),
+            tagger.TickerImpact(ticker="INVENTADO", direction="up", mention="ASML", reason="r"),
         ]),
         tagger.TaggedItem(id="news-1x", summary="Id roto.", impacts=[]),
     ])
     fake = SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_: SimpleNamespace(parsed=answer)))
     monkeypatch.setattr(tagger, "_get_client", lambda: fake)
-    got = tagger.tag_items([tagger.TagInput(id="news-1", kind="news", title="t")], universe={"ASML": "Asml Holding Nv"})
+    got = tagger.tag_items([tagger.TagInput(id="news-1", kind="news", title="ASML sube")], universe={"ASML": "Asml Holding Nv"})
     assert [i.id for i in got] == ["news-1"]
     assert [x.ticker for x in got[0].impacts] == ["ASML"]
+
+
+def test_an_item_left_out_of_a_good_answer_counts_as_seen(monkeypatch):
+    from app.analysis import tagger
+
+    answer = tagger.TagBatch(items=[tagger.TaggedItem(id="a", summary="Sube.", impacts=[])])
+    fake = SimpleNamespace(models=SimpleNamespace(generate_content=lambda **_: SimpleNamespace(parsed=answer)))
+    monkeypatch.setattr(tagger, "_get_client", lambda: fake)
+    got = tagger.tag_items([tagger.TagInput(id=i, kind="news", title="t") for i in "ab"])
+    assert sorted(i.id for i in got) == ["a", "b"]
 
 
 def test_market_reasons_say_how_the_probability_moved():

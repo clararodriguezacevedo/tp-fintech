@@ -148,8 +148,55 @@
     "/jobs/after-close": {
       "post": {
         "summary": "Run After Close Job",
-        "description": "Grade today's daily recommendations and issue tomorrow's.",
+        "description": "Grade today's recommendations and recompute the results.",
         "operationId": "run_after_close_job",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/before-open": {
+      "post": {
+        "summary": "Run Before Open Job",
+        "description": "Fresh news and markets, then the day's recommendations: what is shown and what gets graded.",
+        "operationId": "run_before_open_job",
         "parameters": [
           {
             "name": "x-api-key",
@@ -1770,56 +1817,10 @@
         }
       }
     },
-    "/track-record": {
-      "get": {
-        "summary": "Track Record Summary",
-        "operationId": "track_record_summary",
-        "parameters": [
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TrackRecordSummary"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/track-record/signals": {
       "get": {
         "summary": "Track Record Signals",
-        "description": "How often each signal of the score (news and markets, trend, context, CEDEAR gap, macro) called the direction.",
+        "description": "How often each signal (news, markets, and macro, which isn't in the score) was right.",
         "operationId": "track_record_signals",
         "parameters": [
           {
@@ -1867,61 +1868,10 @@
         }
       }
     },
-    "/track-record/calibration": {
-      "get": {
-        "summary": "Track Record Calibration",
-        "description": "Hit rate by action and score size, to say how often scores like a new one were right.",
-        "operationId": "track_record_calibration",
-        "parameters": [
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CalibrationBucket"
-                  },
-                  "title": "Response Track Record Calibration"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/model": {
       "get": {
         "summary": "Model Info",
-        "description": "The scoring model's weights and thresholds.",
+        "description": "The model's constants and prompts.",
         "operationId": "model_info",
         "parameters": [
           {
@@ -1995,6 +1945,57 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Simulation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/track-record/evaluation": {
+      "get": {
+        "summary": "Track Record Evaluation",
+        "description": "Whether the ranking says anything: costs, placebos and delay, per model version.",
+        "operationId": "track_record_evaluation",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SignalTest"
+                  },
+                  "title": "Response Track Record Evaluation"
                 }
               }
             }
@@ -2211,54 +2212,6 @@
         ],
         "title": "BuyRequest"
       },
-      "CalibrationBucket": {
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "buy",
-              "sell",
-              "keep"
-            ],
-            "title": "Action"
-          },
-          "held": {
-            "type": "boolean",
-            "title": "Held"
-          },
-          "score_min": {
-            "type": "number",
-            "title": "Score Min"
-          },
-          "score_max": {
-            "type": "number",
-            "title": "Score Max"
-          },
-          "n": {
-            "type": "integer",
-            "title": "N"
-          },
-          "hits": {
-            "type": "integer",
-            "title": "Hits"
-          },
-          "hit_rate": {
-            "type": "number",
-            "title": "Hit Rate"
-          }
-        },
-        "type": "object",
-        "required": [
-          "action",
-          "held",
-          "score_min",
-          "score_max",
-          "n",
-          "hits",
-          "hit_rate"
-        ],
-        "title": "CalibrationBucket"
-      },
       "CaucionSuggestion": {
         "properties": {
           "amount": {
@@ -2425,22 +2378,24 @@
             "type": "string",
             "enum": [
               "up",
-              "down"
+              "down",
+              "unknown"
             ],
             "title": "Direction"
-          },
-          "strength": {
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "title": "Strength"
           },
           "reason": {
             "type": "string",
             "title": "Reason"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value",
+            "default": 0.0
+          },
+          "weight": {
+            "type": "number",
+            "title": "Weight",
+            "default": 1.0
           },
           "contribution": {
             "type": "number",
@@ -2450,11 +2405,6 @@
             "type": "string",
             "title": "Detail",
             "default": ""
-          },
-          "broad": {
-            "type": "boolean",
-            "title": "Broad",
-            "default": false
           },
           "since": {
             "anyOf": [
@@ -2467,22 +2417,6 @@
               }
             ],
             "title": "Since"
-          },
-          "move_since": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Move Since"
-          },
-          "priced_in": {
-            "type": "number",
-            "title": "Priced In",
-            "default": 0.0
           },
           "sources": {
             "type": "integer",
@@ -2507,12 +2441,45 @@
           "item_id",
           "title",
           "direction",
-          "strength",
           "reason",
           "contribution"
         ],
         "title": "Evidence",
         "description": "One news item or market behind a recommendation."
+      },
+      "FactorInfo": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "up": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Up"
+          },
+          "down": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Down"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "up",
+          "down"
+        ],
+        "title": "FactorInfo"
       },
       "HTTPValidationError": {
         "properties": {
@@ -2564,48 +2531,6 @@
           "mode"
         ],
         "title": "Health"
-      },
-      "HitStats": {
-        "properties": {
-          "n": {
-            "type": "integer",
-            "title": "N"
-          },
-          "hits": {
-            "type": "integer",
-            "title": "Hits"
-          },
-          "hit_rate": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hit Rate"
-          },
-          "avg_return": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avg Return"
-          }
-        },
-        "type": "object",
-        "required": [
-          "n",
-          "hits",
-          "hit_rate",
-          "avg_return"
-        ],
-        "title": "HitStats"
       },
       "HoldingOut": {
         "properties": {
@@ -2674,6 +2599,42 @@
         ],
         "title": "HoldingOut"
       },
+      "HorizonResult": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "sessions": {
+            "type": "integer",
+            "title": "Sessions"
+          },
+          "spread_bp": {
+            "type": "number",
+            "title": "Spread Bp"
+          },
+          "top_bp": {
+            "type": "number",
+            "title": "Top Bp"
+          },
+          "top_net_bp": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Top Net Bp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "days",
+          "sessions",
+          "spread_bp",
+          "top_bp",
+          "top_net_bp"
+        ],
+        "title": "HorizonResult"
+      },
       "Impact": {
         "properties": {
           "ticker": {
@@ -2684,25 +2645,16 @@
             "type": "string",
             "enum": [
               "up",
-              "down"
+              "down",
+              "unknown"
             ],
             "title": "Direction"
-          },
-          "strength": {
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "title": "Strength"
           }
         },
         "type": "object",
         "required": [
           "ticker",
-          "direction",
-          "strength"
+          "direction"
         ],
         "title": "Impact"
       },
@@ -2930,12 +2882,17 @@
       },
       "ModelInfo": {
         "properties": {
-          "weights": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Weights"
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "prior_weight": {
+            "type": "number",
+            "title": "Prior Weight"
+          },
+          "top_share": {
+            "type": "number",
+            "title": "Top Share"
           },
           "buy_threshold": {
             "type": "number",
@@ -2945,47 +2902,63 @@
             "type": "number",
             "title": "Sell Threshold Held"
           },
-          "broad_weight": {
-            "type": "number",
-            "title": "Broad Weight"
+          "news_max_opens": {
+            "type": "integer",
+            "title": "News Max Opens"
           },
-          "sector_weight": {
-            "type": "number",
-            "title": "Sector Weight"
+          "novelty_days": {
+            "type": "integer",
+            "title": "Novelty Days"
           },
-          "sector_cap": {
+          "novelty_similarity": {
             "type": "number",
-            "title": "Sector Cap"
+            "title": "Novelty Similarity"
           },
-          "sectors": {
-            "additionalProperties": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+          "market_move_unit": {
+            "type": "number",
+            "title": "Market Move Unit"
+          },
+          "market_min_move": {
+            "type": "number",
+            "title": "Market Min Move"
+          },
+          "market_min_volume": {
+            "type": "number",
+            "title": "Market Min Volume"
+          },
+          "min_market_days": {
+            "type": "integer",
+            "title": "Min Market Days"
+          },
+          "far_market_days": {
+            "type": "integer",
+            "title": "Far Market Days"
+          },
+          "far_market_min_weight": {
+            "type": "number",
+            "title": "Far Market Min Weight"
+          },
+          "factor_weight": {
+            "type": "number",
+            "title": "Factor Weight"
+          },
+          "factors": {
+            "items": {
+              "$ref": "#/components/schemas/FactorInfo"
             },
-            "type": "object",
-            "title": "Sectors"
+            "type": "array",
+            "title": "Factors"
           },
-          "news_half_life_hours": {
-            "type": "number",
-            "title": "News Half Life Hours"
-          },
-          "news_max_age_hours": {
-            "type": "number",
-            "title": "News Max Age Hours"
+          "market_cases": {
+            "items": {
+              "$ref": "#/components/schemas/MarketCase"
+            },
+            "type": "array",
+            "title": "Market Cases"
           },
           "concentration_limit": {
             "type": "number",
             "title": "Concentration Limit"
-          },
-          "concentration_penalty": {
-            "type": "number",
-            "title": "Concentration Penalty"
-          },
-          "concentration_max": {
-            "type": "number",
-            "title": "Concentration Max"
           },
           "risk_per_trade": {
             "type": "number",
@@ -3016,101 +2989,56 @@
             "type": "number",
             "title": "Max Volume Share"
           },
-          "calibration_min_cases": {
-            "type": "integer",
-            "title": "Calibration Min Cases"
-          },
           "tagger_model": {
             "type": "string",
             "title": "Tagger Model"
           },
-          "tagger_prompt": {
+          "news_prompt": {
             "type": "string",
-            "title": "Tagger Prompt"
+            "title": "News Prompt"
+          },
+          "market_prompt": {
+            "type": "string",
+            "title": "Market Prompt"
           },
           "tag_batch": {
             "type": "integer",
             "title": "Tag Batch"
-          },
-          "strength": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Strength"
-          },
-          "market_move_unit": {
-            "type": "number",
-            "title": "Market Move Unit"
-          },
-          "market_move_cap": {
-            "type": "number",
-            "title": "Market Move Cap"
-          },
-          "markets_cap": {
-            "type": "number",
-            "title": "Markets Cap"
-          },
-          "min_market_days": {
-            "type": "integer",
-            "title": "Min Market Days"
-          },
-          "far_market_days": {
-            "type": "integer",
-            "title": "Far Market Days"
-          },
-          "far_market_min_weight": {
-            "type": "number",
-            "title": "Far Market Min Weight"
-          },
-          "gap_unit": {
-            "type": "number",
-            "title": "Gap Unit"
-          },
-          "market_cases": {
-            "items": {
-              "$ref": "#/components/schemas/MarketCase"
-            },
-            "type": "array",
-            "title": "Market Cases"
           }
         },
         "type": "object",
         "required": [
-          "weights",
+          "version",
+          "prior_weight",
+          "top_share",
           "buy_threshold",
           "sell_threshold_held",
-          "broad_weight",
-          "sector_weight",
-          "sector_cap",
-          "sectors",
-          "news_half_life_hours",
-          "news_max_age_hours",
+          "news_max_opens",
+          "novelty_days",
+          "novelty_similarity",
+          "market_move_unit",
+          "market_min_move",
+          "market_min_volume",
+          "min_market_days",
+          "far_market_days",
+          "far_market_min_weight",
+          "factor_weight",
+          "factors",
+          "market_cases",
           "concentration_limit",
-          "concentration_penalty",
-          "concentration_max",
           "risk_per_trade",
           "max_position",
           "profile",
           "bond_low_vol",
           "equity_mid_vol",
           "max_volume_share",
-          "calibration_min_cases",
           "tagger_model",
-          "tagger_prompt",
-          "tag_batch",
-          "strength",
-          "market_move_unit",
-          "market_move_cap",
-          "markets_cap",
-          "min_market_days",
-          "far_market_days",
-          "far_market_min_weight",
-          "gap_unit",
-          "market_cases"
+          "news_prompt",
+          "market_prompt",
+          "tag_batch"
         ],
         "title": "ModelInfo",
-        "description": "The scoring model's constants, so the \"Cómo decide\" page always matches the code."
+        "description": "The model's constants, so the \"Cómo decide\" page always matches the code."
       },
       "NewsOut": {
         "properties": {
@@ -3325,6 +3253,24 @@
           "realized"
         ],
         "title": "OperationsOut"
+      },
+      "Placebo": {
+        "properties": {
+          "mean_bp": {
+            "type": "number",
+            "title": "Mean Bp"
+          },
+          "share_at_least_real": {
+            "type": "number",
+            "title": "Share At Least Real"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mean_bp",
+          "share_at_least_real"
+        ],
+        "title": "Placebo"
       },
       "PlanStep": {
         "properties": {
@@ -3621,28 +3567,10 @@
             "type": "number",
             "title": "Score"
           },
-          "confidence": {
-            "type": "number",
-            "title": "Confidence"
-          },
-          "driver": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "news",
-                  "markets",
-                  "trend",
-                  "context",
-                  "gap",
-                  "macro"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Driver"
+          "model_version": {
+            "type": "integer",
+            "title": "Model Version",
+            "default": 1
           },
           "held": {
             "type": "boolean",
@@ -3718,6 +3646,17 @@
             ],
             "title": "Close Return"
           },
+          "excess_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excess Return"
+          },
           "event_yield": {
             "anyOf": [
               {
@@ -3770,7 +3709,6 @@
           "action",
           "kind",
           "score",
-          "confidence",
           "held",
           "signal_breakdown",
           "evidence",
@@ -3862,6 +3800,37 @@
         ],
         "title": "SellRequest"
       },
+      "SeriesStats": {
+        "properties": {
+          "total_return": {
+            "type": "number",
+            "title": "Total Return"
+          },
+          "max_drawdown": {
+            "type": "number",
+            "title": "Max Drawdown"
+          },
+          "sortino": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortino"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_return",
+          "max_drawdown",
+          "sortino"
+        ],
+        "title": "SeriesStats",
+        "description": "One line of the comparison, as the papers report it."
+      },
       "SignalBreakdown": {
         "properties": {
           "news": {
@@ -3872,46 +3841,53 @@
             "type": "number",
             "title": "Markets"
           },
-          "trend": {
-            "type": "number",
-            "title": "Trend"
+          "asset_class": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "stocks",
+                  "bonds",
+                  "us"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Class"
           },
-          "context": {
-            "type": "number",
-            "title": "Context",
-            "default": 0.0
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
           },
-          "gap": {
-            "type": "number",
-            "title": "Gap",
-            "default": 0.0
+          "rank_of": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank Of"
+          },
+          "top_rank": {
+            "type": "boolean",
+            "title": "Top Rank",
+            "default": false
           },
           "concentration": {
             "type": "number",
             "title": "Concentration",
             "default": 0.0
-          },
-          "risk_group": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Risk Group"
-          },
-          "group_share": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Share"
           },
           "change_3m": {
             "anyOf": [
@@ -4062,8 +4038,7 @@
         "type": "object",
         "required": [
           "news",
-          "markets",
-          "trend"
+          "markets"
         ],
         "title": "SignalBreakdown"
       },
@@ -4072,13 +4047,15 @@
           "signal": {
             "type": "string",
             "enum": [
-              "evidence",
-              "trend",
-              "context",
-              "gap",
+              "news",
+              "markets",
               "macro"
             ],
             "title": "Signal"
+          },
+          "in_score": {
+            "type": "boolean",
+            "title": "In Score"
           },
           "n": {
             "type": "integer",
@@ -4088,7 +4065,7 @@
             "type": "integer",
             "title": "Hits"
           },
-          "hit_rate": {
+          "rate": {
             "anyOf": [
               {
                 "type": "number"
@@ -4097,67 +4074,117 @@
                 "type": "null"
               }
             ],
-            "title": "Hit Rate"
-          },
-          "avg_when_up": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avg When Up"
-          },
-          "avg_when_down": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avg When Down"
-          },
-          "n_vs_day": {
-            "type": "integer",
-            "title": "N Vs Day",
-            "default": 0
-          },
-          "hits_vs_day": {
-            "type": "integer",
-            "title": "Hits Vs Day",
-            "default": 0
-          },
-          "rate_vs_day": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rate Vs Day"
+            "title": "Rate"
           },
           "days": {
             "type": "integer",
-            "title": "Days",
-            "default": 0
+            "title": "Days"
           }
         },
         "type": "object",
         "required": [
           "signal",
+          "in_score",
           "n",
           "hits",
-          "hit_rate",
-          "avg_when_up",
-          "avg_when_down"
+          "rate",
+          "days"
         ],
         "title": "SignalStats"
+      },
+      "SignalTest": {
+        "properties": {
+          "model_version": {
+            "type": "integer",
+            "title": "Model Version"
+          },
+          "sessions": {
+            "type": "integer",
+            "title": "Sessions"
+          },
+          "recommendations": {
+            "type": "integer",
+            "title": "Recommendations"
+          },
+          "enough": {
+            "type": "boolean",
+            "title": "Enough"
+          },
+          "horizons": {
+            "items": {
+              "$ref": "#/components/schemas/HorizonResult"
+            },
+            "type": "array",
+            "title": "Horizons"
+          },
+          "reaction_bp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaction Bp"
+          },
+          "placebo_tickers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Placebo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "placebo_dates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Placebo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inverted_bp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inverted Bp"
+          },
+          "delayed_bp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delayed Bp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_version",
+          "sessions",
+          "recommendations",
+          "enough",
+          "horizons",
+          "reaction_bp",
+          "placebo_tickers",
+          "placebo_dates",
+          "inverted_bp",
+          "delayed_bp"
+        ],
+        "title": "SignalTest"
       },
       "SimDay": {
         "properties": {
@@ -4186,6 +4213,22 @@
             },
             "type": "array",
             "title": "Rotated",
+            "default": []
+          },
+          "stopped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stopped",
+            "default": []
+          },
+          "took_profit": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Took Profit",
             "default": []
           },
           "base_return": {
@@ -4311,6 +4354,14 @@
             "type": "number",
             "title": "Transfers",
             "default": 0.0
+          },
+          "stats": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SeriesStats"
+            },
+            "type": "object",
+            "title": "Stats",
+            "default": {}
           }
         },
         "type": "object",
@@ -4351,18 +4402,42 @@
             "type": "string",
             "enum": [
               "up",
-              "down"
+              "down",
+              "unknown"
             ],
             "title": "Direction"
           },
           "strength": {
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Strength"
+          },
+          "mention": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mention"
+          },
+          "tag_version": {
+            "type": "integer",
+            "title": "Tag Version",
+            "default": 1
           },
           "reason": {
             "anyOf": [
@@ -4388,7 +4463,6 @@
           "item_id",
           "ticker",
           "direction",
-          "strength",
           "created_at"
         ],
         "title": "TickerImpactRow"
@@ -4445,57 +4519,6 @@
         ],
         "title": "TickerTrade",
         "description": "A buy or sell of a ticker, for its price chart."
-      },
-      "TrackRecordSummary": {
-        "properties": {
-          "overall": {
-            "$ref": "#/components/schemas/HitStats"
-          },
-          "action": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/HitStats"
-            },
-            "propertyNames": {
-              "enum": [
-                "buy",
-                "sell",
-                "keep"
-              ]
-            },
-            "type": "object",
-            "title": "Action"
-          },
-          "driver": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/HitStats"
-            },
-            "type": "object",
-            "title": "Driver"
-          },
-          "confidence": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/HitStats"
-            },
-            "type": "object",
-            "title": "Confidence"
-          },
-          "held": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/HitStats"
-            },
-            "type": "object",
-            "title": "Held"
-          }
-        },
-        "type": "object",
-        "required": [
-          "overall",
-          "action",
-          "driver",
-          "confidence",
-          "held"
-        ],
-        "title": "TrackRecordSummary"
       },
       "TradePlan": {
         "properties": {

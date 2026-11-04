@@ -11,7 +11,7 @@ import { assetNames, nameOf } from "@/lib/names";
 export const metadata = { title: "Operaciones | El Parqué" };
 
 const STATUS: Record<Trade["status"], string> = {
-  queued: "Se compra a las 11:00",
+  queued: "Se compra a las 10:30",
   sent: "Enviada",
   filled: "Abierta",
   stopped_out: "Cerrada por stop loss",

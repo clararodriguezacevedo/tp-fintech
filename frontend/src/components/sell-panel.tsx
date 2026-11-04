@@ -89,7 +89,7 @@ export function SellPanel({ plan, mode, recommended, recommendationId }: {
             <p className="mt-3 text-text-2">
               {mode === "paper"
                 ? "El mercado está cerrado: la simulación vende al último precio de cierre."
-                : "El mercado está cerrado: la venta se hace cuando abra, a las 11:00."}
+                : "El mercado está cerrado: la venta se hace cuando abra, a las 10:30."}
             </p>
           )}
           {state.status === "error" && <p className="mt-3" role="alert" style={{ color: "var(--sell)" }}>{state.message}</p>}
