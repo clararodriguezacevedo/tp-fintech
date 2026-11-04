@@ -547,5 +547,10 @@ def score_all(kinds: tuple[str, ...] = ("live",), now: datetime | None = None) -
             "updated_at": datetime.now(timezone.utc).isoformat(),
         } for r in recs for kind in kinds]
         get_db().table("recommendations").upsert(rows, on_conflict="ticker,target_date,kind").execute()
+        if "live" in kinds:
+            # What the site shows is this batch: a ticker that no longer has evidence leaves it.
+            get_db().table("recommendations").delete().eq("kind", "live").eq("target_date", target.isoformat()).not_.in_(
+                "ticker", [r.ticker for r in recs],
+            ).execute()
         log.info("scored %d tickers (%s) for %s", len(recs), ",".join(kinds), target)
     return recs
