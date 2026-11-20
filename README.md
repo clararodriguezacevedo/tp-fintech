@@ -8,8 +8,9 @@ mercado argentino (acciones, CEDEARs, bonos).
 
 1. **Recolectar** cada 10 minutos: noticias (RSS, GDELT y Google News por empresa), mercados de
    Polymarket y Kalshi, y el cambio de probabilidad de cada mercado (no solo su nivel).
-2. **Leer**: Gemini Flash-Lite (free tier, temperatura 0) responde una sola pregunta por noticia (de
-   qué activo habla, y si es bueno, malo o incierto) y por mercado (qué empuja su SÍ).
+2. **Leer** cada media hora: Gemini Flash-Lite (free tier, temperatura 0) responde una sola pregunta
+   por noticia (de qué activo habla, y si es bueno, malo o incierto) y por mercado (qué empuja su
+   SÍ). Cada media hora y no cada 10 minutos porque el free tier permite 500 pedidos por día.
 3. **Controlar** con reglas lo que respondió: el activo tiene que estar nombrado en el texto, y una
    apuesta sobre el precio de una acción se descarta.
 4. **Puntuar**: promedio ponderado de lo que se sabe de cada activo, entre -1 y +1.
@@ -147,7 +148,7 @@ GitHub Actions, pero en la práctica corría cada ~5 horas en vez de cada 10 min
 
 | Job | Cuándo (hora Argentina) | Endpoint | Qué hace |
 | --- | --- | --- | --- |
-| `collect` | cada 10 minutos | `POST /jobs/run` | cartera, mercados y noticias, etiquetado con Gemini, y entre sesiones una vista previa del día siguiente |
+| `collect` | cada 10 minutos | `POST /jobs/run` | cartera, mercados y noticias, etiquetado con Gemini (solo en las corridas de :00 y :30), y entre sesiones una vista previa del día siguiente |
 | `before-open` | 10:15, días de mercado | `POST /jobs/before-open` | lo último de noticias y mercados, y las recomendaciones del día: las que se ven y las que se miden |
 | `trades` | cada 5 minutos, mientras BYMA está abierto | `POST /jobs/trades` | llena compras en cola y revisa stop loss / take profit |
 | `after-close` | 18:30, lunes a viernes | `POST /jobs/after-close` | baja dividendos y cupones, califica las recomendaciones del día y recalcula la simulación y las pruebas |

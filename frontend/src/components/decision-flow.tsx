@@ -105,7 +105,7 @@ export function DecisionFlow({ m }: { m: ModelInfo }) {
       </Step>
 
       <Step n={2} ai title="Gemini lee cada noticia" summary="Una pregunta: de qué activo habla, y si es bueno, malo o incierto para su precio en 1 a 3 días.">
-        <p>Se usa {m.tagger_model}, en lotes de hasta {m.tag_batch}, con temperatura 0. De tu cartera solo ve qué activos tenés, no cuánta plata. No da recomendaciones. Este es el prompt, tal cual se envía:</p>
+        <p>Cada media hora (y a las 10:15, antes de las recomendaciones del día). Se usa {m.tagger_model}, en lotes de hasta {m.tag_batch}, con temperatura 0. De tu cartera solo ve qué activos tenés, no cuánta plata. No da recomendaciones. Este es el prompt, tal cual se envía:</p>
         <Prompt>{m.news_prompt}</Prompt>
       </Step>
 

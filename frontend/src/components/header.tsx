@@ -54,7 +54,7 @@ export async function Header() {
   return (
     <header className="border-b border-border">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-3">
-        <Link href="/" className="font-semibold tracking-tight">El Parqué</Link>
+        <Link href="/" className="text-xl font-semibold tracking-tight">El Parqué</Link>
         <div className="flex items-center gap-2">
           <NavLinks />
           <TickerSearch assets={assets.ok ? assets.data : []} />

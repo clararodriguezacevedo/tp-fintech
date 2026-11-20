@@ -19,7 +19,10 @@ from app.sources import corporate_events, kalshi, news, polymarket
 log = logging.getLogger(__name__)
 
 TAG_BATCH_SIZE = 20
-NEWS_BATCHES = 2  # per cycle, so what Google News adds doesn't pile up
+NEWS_BATCHES = 3  # per tagging run, so half an hour of Google News doesn't pile up
+# The collect cycle runs every 10 minutes but only tags every half hour: Gemini's free tier allows
+# 500 requests a day, and tagging every 10 minutes ran out of them around midnight.
+TAG_EVERY_MINUTES = 30
 
 
 def _now() -> str:
@@ -152,6 +155,16 @@ def tag_pending() -> None:
         ], holdings, assets)
 
 
+def is_tagging_slot(now: datetime) -> bool:
+    """True for the cycle that starts each half hour (:00 and :30), allowing a few minutes of delay."""
+    return now.minute % TAG_EVERY_MINUTES < 10
+
+
+def tag_pending_on_schedule() -> None:
+    if is_tagging_slot(datetime.now(timezone.utc)):
+        tag_pending()
+
+
 def score_live() -> None:
     """Between sessions, a preview of the next one. From the moment the day's recommendations are
     issued until the close they stay: they're what gets graded, so they're what the site shows."""
@@ -214,7 +227,7 @@ def run_cycle() -> list[str]:
         ("refresh_holdings", refresh_holdings),
         ("collect_markets", collect_markets),
         ("collect_news", collect_news),
-        ("tag_pending", tag_pending),
+        ("tag_pending", tag_pending_on_schedule),
         ("score_live", score_live),
         ("check_account", reconcile.run),
         ("save_caucion_rate", caucion.refresh),
