@@ -19,7 +19,7 @@ from app.reconcile import AccountCheck
 from app.analysis.simulation import Simulation
 from app.brokers.iol import IOLUnavailable, get_iol, trade_cost_rate
 from app.config import get_settings
-from app.db import get_db, rows_as
+from app.db import all_rows, get_db, rows_as
 from app.models.db import (
     Action, MarketRow, NewsRow, RecommendationRow, SnapshotRow, TickerImpactRow, TradeRow,
     TradeStatus,
@@ -586,10 +586,9 @@ def track_record_evaluation() -> list[SignalTest]:
 
 
 @app.get("/track-record/history", response_model=list[RecommendationRow])
-def track_record_history(limit: int = Query(100, ge=1, le=1000)) -> list[RecommendationRow]:
+def track_record_history(limit: int = Query(100, ge=1, le=20000)) -> list[RecommendationRow]:
     return rows_as(
         RecommendationRow,
-        get_db().table("recommendations").select("*").eq("kind", "daily")
-        .not_.is_("evaluated_at", "null").order("target_date", desc=True).limit(limit)
-        .execute().data,
+        all_rows(lambda: get_db().table("recommendations").select("*").eq("kind", "daily")
+                 .not_.is_("evaluated_at", "null").order("target_date", desc=True).order("id"), limit),
     )

@@ -2024,7 +2024,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 1000,
+              "maximum": 20000,
               "minimum": 1,
               "default": 100,
               "title": "Limit"
@@ -4268,6 +4268,16 @@
               }
             ],
             "title": "Merval Value"
+          },
+          "base_change": {
+            "type": "number",
+            "title": "Base Change",
+            "default": 0.0
+          },
+          "follow_change": {
+            "type": "number",
+            "title": "Follow Change",
+            "default": 0.0
           }
         },
         "type": "object",

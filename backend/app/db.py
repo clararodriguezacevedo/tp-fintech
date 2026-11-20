@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from functools import lru_cache
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import httpx
 from pydantic import BaseModel
@@ -20,6 +21,22 @@ def get_db() -> Client:
     # a while ("Server disconnected"), and every request under way at that moment fails.
     options = SyncClientOptions(httpx_client=httpx.Client(http2=False, timeout=120))
     return create_client(s.supabase_url, s.supabase_key, options)
+
+
+PAGE = 1000  # PostgREST returns at most this many rows per request
+
+
+def all_rows(query: Callable[[], Any], limit: int | None = None) -> list[dict[str, Any]]:
+    """Every row of a query, past PostgREST's page size. `query` builds it again for each page
+    (a builder can't be reused) and must be ordered, so pages don't overlap."""
+    out: list[dict[str, Any]] = []
+    while limit is None or len(out) < limit:
+        size = PAGE if limit is None else min(PAGE, limit - len(out))
+        batch = query().range(len(out), len(out) + size - 1).execute().data
+        out += batch  # type: ignore[arg-type]
+        if len(batch) < size:
+            break
+    return out
 
 
 def rows_as(model: type[M], data: object) -> list[M]:

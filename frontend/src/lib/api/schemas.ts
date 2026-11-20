@@ -493,6 +493,8 @@ const SimDay = z
     follow_value: z.number(),
     hold_value: z.union([z.number(), z.null()]).optional(),
     merval_value: z.union([z.number(), z.null()]).optional(),
+    base_change: z.number().optional().default(0),
+    follow_change: z.number().optional().default(0),
   })
   .passthrough();
 const SeriesStats = z

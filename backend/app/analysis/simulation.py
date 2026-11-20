@@ -29,7 +29,9 @@ Anchored to the real account: "without following" is then the account's actual v
 (IOL's daily close, and today the same value Mi cartera shows), minus the deposits and plus the
 withdrawals made since the start, so moving money in or out is not a gain or a loss. "Following"
 starts from that same value and gets the same deposits and withdrawals as cash, taken out of its
-value the same way. Without IOL's history, the modeled values above are shown instead.
+value the same way. Returns and stats come from those net values; at the end the transfers are
+added back to every value (the references get them as cash), so "without following" shows what the
+account was actually worth. Without IOL's history, the modeled values above are shown instead.
 """
 
 import logging
@@ -45,7 +47,7 @@ from app import prices, universe
 from app.analysis import market_hours, risk, rotation, scoring, suitability
 from app.brokers.iol import trade_cost_rate
 from app.config import get_settings
-from app.db import get_db, rows_as
+from app.db import all_rows, get_db, rows_as
 from app.models.db import RecommendationRow
 from app.models.iol import DailyBar
 from app.portfolio import cash_at
@@ -72,6 +74,8 @@ class SimDay(BaseModel):
     follow_value: float
     hold_value: float | None = None
     merval_value: float | None = None
+    base_change: float = 0.0  # pesos gained or lost that day, deposits and withdrawals aside
+    follow_change: float = 0.0
 
 
 class SeriesStats(BaseModel):
@@ -92,8 +96,8 @@ class Simulation(BaseModel):
     buy_allocation: float  # average share of the portfolio per simulated buy
     commission: float
     days: list[SimDay]
-    anchored: bool = False  # True: base values are the real account, net of transfers
-    transfers: float = 0.0  # deposits (+) minus withdrawals since the start, taken out of base
+    anchored: bool = False  # True: base values are the real account
+    transfers: float = 0.0  # deposits (+) minus withdrawals since the start, included in every value
     stats: dict[str, SeriesStats] = {}  # follow, base, hold, merval
 
 
@@ -369,8 +373,8 @@ def _load_account(first: date) -> _Account | None:
 def simulate() -> Simulation:
     recs = rows_as(
         RecommendationRow,
-        get_db().table("recommendations").select("*").eq("kind", "daily")
-        .not_.is_("evaluated_at", "null").order("target_date").execute().data,
+        all_rows(lambda: get_db().table("recommendations").select("*").eq("kind", "daily")
+                 .not_.is_("evaluated_at", "null").order("target_date").order("id")),
     )
     by_day: dict[date, list[RecommendationRow]] = defaultdict(list)
     for r in recs:
@@ -493,7 +497,43 @@ def simulate() -> Simulation:
         commission=cost_rate, days=days,
     )
     sim = _anchor_to_account(sim, real) if real else sim
-    return sim.model_copy(update={"stats": _stats(sim)})
+    sim = _with_changes(sim.model_copy(update={"stats": _stats(sim)}))
+    return _with_transfers(sim, real) if real else sim
+
+
+def _with_changes(sim: Simulation) -> Simulation:
+    """Each day's gain or loss in pesos, from the values net of transfers."""
+    days, base, follow = [], sim.start_value, sim.start_value
+    for d in sim.days:
+        days.append(d.model_copy(update={
+            "base_change": round(d.base_value - base, 2), "follow_change": round(d.follow_value - follow, 2),
+        }))
+        base, follow = d.base_value, d.follow_value
+    return sim.model_copy(update={"days": days})
+
+
+def _with_transfers(sim: Simulation, acct: _Account) -> Simulation:
+    """Put the deposits and withdrawals back into every value, so "without following" is what the
+    account was worth (the same as Mi cartera) and the others are what it would have been. Returns,
+    changes and stats were computed without them, so they still aren't a gain or a loss."""
+
+    def moved(day: date) -> float:
+        return sum(t.amount for t in acct.moved if acct.ref_day < t.day <= day)
+
+    def plus(value: float | None, day: date) -> float | None:
+        return None if value is None else round(value + moved(day), 2)
+
+    days = [d.model_copy(update={
+        "base_value": plus(d.base_value, d.day), "follow_value": plus(d.follow_value, d.day),
+        "hold_value": plus(d.hold_value, d.day), "merval_value": plus(d.merval_value, d.day),
+    }) for d in sim.days]
+    if not days:
+        return sim
+    last = days[-1]
+    return sim.model_copy(update={
+        "days": days, "base_value": last.base_value, "follow_value": last.follow_value,
+        "hold_value": last.hold_value, "merval_value": last.merval_value,
+    })
 
 
 def series_stats(values: list[float], start: float) -> SeriesStats | None:
