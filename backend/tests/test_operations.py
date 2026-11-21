@@ -72,3 +72,43 @@ def test_a_cancelled_simulated_trade_isnt_marked_on_the_chart():
         fill_price=814, filled_at=now, created_at=now, updated_at=now,
     )
     assert history.from_simulated([row]) == []
+
+
+def _plain(day, side, ticker, source="iol"):
+    return history.Operation(
+        id=f"{side}{ticker}", at=datetime(2026, 11, day, 15, tzinfo=history.market_hours.ART), side=side, ticker=ticker,
+        status="completed", quantity=1, price=1, currency="ARS", amount=1, source=source,
+    )
+
+
+def test_what_the_plan_said_counts_in_any_quantity():
+    ops = [_plain(20, "sell", "IBM"), _plain(20, "buy", "TM"), _plain(20, "buy", "KO"), _plain(19, "sell", "XLP")]
+    recs = {
+        date(2026, 11, 20): {"TM": ("buy", 0.5), "KO": ("keep", 0.2), "IBM": ("keep", 0.0)},
+        date(2026, 11, 19): {"XLP": ("sell", -0.7)},
+    }
+    history.mark_plan(ops, recs)
+    # IBM pays for TM the way the plan rotates: TM beats it by 0.35 or more and it wasn't expected to rise.
+    assert [o.followed_plan for o in ops] == [True, True, False, True]
+
+
+def test_a_sell_with_no_planned_buy_that_day_isnt_a_rotation():
+    ops = [_plain(20, "sell", "IBM"), _plain(20, "buy", "TM", source="simulated")]
+    history.mark_plan(ops, {date(2026, 11, 20): {"TM": ("buy", 0.5), "IBM": ("keep", 0.0)}})
+    assert [o.followed_plan for o in ops] == [False, True]
+
+
+def test_paper_trades_from_the_site_are_operations():
+    from app.models.db import TradeRow
+
+    when = datetime(2026, 11, 20, 14, tzinfo=history.market_hours.ART)
+    base = dict(market="BCBA", entry_price=100.0, created_at=when, updated_at=when, filled_at=when, fill_price=100.0)
+    rows = [
+        TradeRow(id="a", ticker="KO", quantity=2, status="closed", live=False, exit_price=120.0, closed_at=when, realized_pnl=40.0, **base),
+        TradeRow(id="b", ticker="TM", quantity=1, status="filled", live=True, **base),  # already in IOL's operations
+        TradeRow(id="c", ticker="NU", quantity=1, status="cancelled", live=False, **base),
+    ]
+    out = history.simulated_operations(rows)
+    assert [(o.id, o.side, o.result, o.cost, o.source) for o in out] == [
+        ("site-a", "buy", None, None, "simulated"), ("site-a-exit", "sell", 40.0, 200.0, "simulated"),
+    ]

@@ -11,9 +11,9 @@ from datetime import date, datetime, timedelta
 from typing import Literal
 
 from app import prices
-from app.analysis import market_hours
+from app.analysis import market_hours, rotation
 from app.brokers.iol import get_iol
-from app.db import get_db, rows_as
+from app.db import all_rows, get_db, rows_as
 from app.models.db import TradeRow
 from app.models.iol import DailyBar, Trade
 from app.schemas import Operation, OperationsOut, TickerTrade
@@ -138,8 +138,86 @@ def _operation(
     )
 
 
+def simulated_operations(rows: list[TradeRow]) -> list[Operation]:
+    """The site's paper trades as operations: a buy, and its sell once it closed. Real orders sent
+    from the site are left out, since they already come in IOL's operations."""
+    out = []
+    for t in rows:
+        if t.live or t.status in ("cancelled", "failed"):
+            continue
+        done = t.fill_price is not None and t.filled_at is not None
+        at = t.filled_at if done and t.filled_at else t.created_at
+        price = t.fill_price if done and t.fill_price is not None else t.entry_price
+        status: Literal["completed", "pending"] = "completed" if done else "pending"
+        common = {"ticker": t.ticker, "quantity": float(t.quantity), "currency": "ARS", "source": "simulated"}
+        if t.side == "sell":
+            out.append(Operation(
+                id=f"site-{t.id}", at=at.astimezone(market_hours.ART), side="sell", status=status, price=price,
+                amount=price * t.quantity, result=t.realized_pnl, cost=t.cost_basis if t.realized_pnl is not None else None,
+                **common,  # type: ignore[arg-type]
+            ))
+            continue
+        out.append(Operation(
+            id=f"site-{t.id}", at=at.astimezone(market_hours.ART), side="buy", status=status, price=price,
+            amount=price * t.quantity, **common,  # type: ignore[arg-type]
+        ))
+        if t.exit_price is not None and t.closed_at is not None:
+            out.append(Operation(
+                id=f"site-{t.id}-exit", at=t.closed_at.astimezone(market_hours.ART), side="sell", status="completed",
+                price=t.exit_price, amount=t.exit_price * t.quantity, result=t.realized_pnl,
+                cost=round(price * t.quantity, 2) if t.realized_pnl is not None else None, **common,  # type: ignore[arg-type]
+            ))
+    return out
+
+
+def mark_plan(ops: list[Operation], recs: dict[date, dict[str, tuple[str, float]]]) -> None:
+    """Marks the operations that did what that day's plan said, in any quantity.
+
+    `recs` is each day's batch, ticker to (action, score). A buy follows the plan when the batch
+    said buy. A sell does when the batch said sell, or when it pays for a planned buy made the
+    same day the way the plan rotates (rotation.build): the buy beats it by ROTATION_GAP or more
+    and the sold position wasn't expected to rise."""
+    for day in {o.at.date() for o in ops}:
+        batch = recs.get(day)
+        if not batch:
+            continue
+        mine = [o for o in ops if o.at.date() == day]
+
+        def score(t: str, batch: dict[str, tuple[str, float]] = batch) -> float:
+            return batch[t][1] if t in batch else 0.0  # as the plan reads a missing one
+
+        bought: list[tuple[bool, float]] = []  # a paper sell only pays for a paper buy
+        for o in mine:
+            if o.side == "buy" and batch.get(o.ticker, ("", 0.0))[0] == "buy":
+                o.followed_plan = True
+                bought.append((o.source == "simulated", score(o.ticker)))
+        for o in mine:
+            if o.side != "sell":
+                continue
+            s = score(o.ticker)
+            o.followed_plan = batch.get(o.ticker, ("", 0.0))[0] == "sell" or any(
+                paper == (o.source == "simulated") and b - s >= rotation.ROTATION_GAP and s <= rotation.ROTATION_MAX_HELD_SCORE
+                for paper, b in bought
+            )
+
+
+def daily_batches(days: set[date]) -> dict[date, dict[str, tuple[str, float]]]:
+    """Each day's daily batch, ticker to (action, score)."""
+    if not days:
+        return {}
+    wanted = sorted(d.isoformat() for d in days)
+    rows = all_rows(lambda: (
+        get_db().table("recommendations").select("ticker,action,score,target_date").eq("kind", "daily")
+        .in_("target_date", wanted).order("id")
+    ))
+    out: dict[date, dict[str, tuple[str, float]]] = defaultdict(dict)
+    for r in rows:
+        out[date.fromisoformat(str(r["target_date"]))][str(r["ticker"])] = (str(r["action"]), float(r["score"]))
+    return out
+
+
 def operations() -> OperationsOut:
-    """Every real buy and sell, from the first one."""
+    """Every buy and sell, real from the first one and simulated from the site, newest first."""
     today = market_hours.now_art().date()
     ops = get_iol().operations(FIRST_DAY, today)
     try:
@@ -147,7 +225,19 @@ def operations() -> OperationsOut:
     except Exception:
         log.warning("no MEP rates for the operations' results")
         days = []
-    return real_operations(ops, {d.date: d.exchange_rate.mep for d in days if d.exchange_rate.mep > 0})
+    out = real_operations(ops, {d.date: d.exchange_rate.mep for d in days if d.exchange_rate.mep > 0})
+    trades = rows_as(TradeRow, get_db().table("trade_intents").select("*").execute().data)
+    sent = {str(n) for t in trades if t.live for n in (t.iol_order_number, t.exit_order_number) if n}
+    for o in out.operations:
+        if o.id in sent:
+            o.source = "site"
+    out.operations += simulated_operations(trades)
+    out.operations.sort(key=lambda x: x.at, reverse=True)
+    try:
+        mark_plan(out.operations, daily_batches({o.at.date() for o in out.operations}))
+    except Exception:
+        log.exception("could not compare the operations with each day's plan")
+    return out
 
 
 def ticker_trades(ticker: str) -> list[TickerTrade]:

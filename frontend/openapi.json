@@ -3216,6 +3216,21 @@
               }
             ],
             "title": "Rate"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "iol",
+              "site",
+              "simulated"
+            ],
+            "title": "Source",
+            "default": "iol"
+          },
+          "followed_plan": {
+            "type": "boolean",
+            "title": "Followed Plan",
+            "default": false
           }
         },
         "type": "object",
@@ -3231,7 +3246,7 @@
           "amount"
         ],
         "title": "Operation",
-        "description": "A real buy or sell in IOL, done or still waiting to execute."
+        "description": "A buy or sell, done or still waiting to execute: in IOL, or simulated from the site."
       },
       "OperationsOut": {
         "properties": {

@@ -140,7 +140,7 @@ class TickerTrade(BaseModel):
 
 
 class Operation(BaseModel):
-    """A real buy or sell in IOL, done or still waiting to execute."""
+    """A buy or sell, done or still waiting to execute: in IOL, or simulated from the site."""
 
     id: str
     at: datetime
@@ -154,6 +154,9 @@ class Operation(BaseModel):
     result: float | None = None  # sells, in pesos: what it brought minus its average cost
     cost: float | None = None  # sells with a result, in pesos: that average cost
     rate: float | None = None  # that day's MEP rate, to show it in the other currency
+    # iol: placed in IOL itself. site: a real order sent from this site. simulated: a paper trade.
+    source: Literal["iol", "site", "simulated"] = "iol"
+    followed_plan: bool = False  # what that day's plan said to do, whatever the quantity
 
 
 class OperationsOut(BaseModel):

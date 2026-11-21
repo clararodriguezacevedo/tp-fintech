@@ -286,6 +286,8 @@ const Operation = z
     result: z.union([z.number(), z.null()]).optional(),
     cost: z.union([z.number(), z.null()]).optional(),
     rate: z.union([z.number(), z.null()]).optional(),
+    source: z.enum(["iol", "site", "simulated"]).optional().default("iol"),
+    followed_plan: z.boolean().optional().default(false),
   })
   .passthrough();
 const OperationsOut = z

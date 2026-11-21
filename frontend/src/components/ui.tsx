@@ -7,7 +7,8 @@ export const BUTTON_ALT = "rounded-lg border border-border px-4 py-2.5 hover:bor
 export const BUTTON_SMALL = "whitespace-nowrap rounded-lg bg-text px-3 py-1.5 text-bg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40";
 export const BUTTON_SMALL_ALT = "whitespace-nowrap rounded-lg border border-border px-3 py-1.5 hover:border-text";
 
-const POPUP = "pointer-events-none absolute z-20 hidden rounded-lg border border-border bg-bg px-2.5 py-1.5 text-left leading-snug tracking-normal text-text-2 shadow-lg";
+// The same look wherever it opens: it doesn't take the size or weight of a title it sits on.
+const POPUP = "pointer-events-none absolute z-20 hidden rounded-lg border border-border bg-bg px-2.5 py-1.5 text-left text-sm font-normal normal-case leading-snug tracking-normal text-text-2 shadow-lg";
 
 /** A small popup over `children`, on hover or focus, that doesn't show while `content` is empty.
  * `place`: where it opens. Inside a table that scrolls sideways, open it to a side: anything above

@@ -60,8 +60,8 @@ function eventNote(b: Breakdown | undefined) {
   const when = dayShort(asDay(b.event_date));
   const size = b.event_yield != null ? ` (${pctText(b.event_yield)})` : "";
   return b.event_kind === "dividend"
-    ? { text: `El ${when} corta dividendo${size}.`, note: "Ese día el precio baja por el pago del dividendo. No es una pérdida: lo cobra quien tenía la acción el día anterior." }
-    : { text: `El ${when} corta cupón.`, note: "Ese día el precio del bono baja por el pago de renta y amortización. No es una pérdida: lo cobra quien tenía el bono el día anterior." };
+    ? { text: `El ${when} corta dividendo${size}.`, note: "Ese día el precio baja por el pago del dividendo. No es una pérdida, porque lo cobra quien tenía la acción el día anterior." }
+    : { text: `El ${when} corta cupón.`, note: "Ese día el precio del bono baja por el pago de renta y amortización. No es una pérdida, porque lo cobra quien tenía el bono el día anterior." };
 }
 
 /** "+12% en 3 meses, 8% debajo de su máximo": where the price stands, to judge if it already ran. */
@@ -90,13 +90,13 @@ function marketReasons(b: Breakdown | undefined) {
           up: !rising,
           text: `El riesgo país ${rising ? "subió" : "bajó"} ${pctText(b.macro_change)} en la última semana${b.macro_level ? ` (${integer(b.macro_level)} puntos)` : ""}.`,
           note: `${rising
-            ? "Cuando sube, los inversores piden más por el riesgo argentino: suelen bajar los bonos y los bancos."
-            : "Cuando baja, los inversores confían más en Argentina: suelen subir los bonos y los bancos."} Es contexto: no entra en el puntaje.`,
+            ? "Cuando sube, los inversores piden más por el riesgo argentino, y suelen bajar los bonos y los bancos."
+            : "Cuando baja, los inversores confían más en Argentina, y suelen subir los bonos y los bancos."} Es contexto, no entra en el puntaje.`,
         }
       : {
           up: rising,
           text: `El dólar CCL ${rising ? "subió" : "bajó"} ${pctText(b.macro_change)} en la última semana${b.macro_level ? ` ($ ${integer(b.macro_level)})` : ""}.`,
-          note: "Los CEDEARs cotizan en pesos y siguen al dólar CCL: si el dólar sube, suben con él. Es contexto: no entra en el puntaje.",
+          note: "Los CEDEARs cotizan en pesos y siguen al dólar CCL. Si el dólar sube, suben con él. Es contexto, no entra en el puntaje.",
         });
   }
   return out;
@@ -107,7 +107,7 @@ function marketReasons(b: Breakdown | undefined) {
 export function evidenceText(e: Evidence) {
   if (e.kind !== "market" || e.contribution === 0) return e.reason;
   const against = e.contribution > 0 !== (e.direction === "up");
-  return `${against ? "Bajó" : "Subió"} la probabilidad de esto: ${e.reason}`;
+  return `${against ? "Bajó" : "Subió"} la probabilidad de "${e.reason}"`;
 }
 
 function Marker({ up }: { up: boolean }) {
@@ -154,7 +154,7 @@ export function Reasons({ items, breakdown, limit = 5 }: { items: Evidence[]; br
             <Marker up={up} />
             <div className="min-w-0">
               <p className="text-text">
-                <Term info={e.via && `Llega por este factor: ${e.via}`}>{evidenceText(e)}</Term>
+                <Term info={e.via && `Llega por el factor ${e.via}`}>{evidenceText(e)}</Term>
               </p>
               {e.url ? (
                 <a href={e.url} target="_blank" rel="noreferrer" className="text-text-2 hover:text-text hover:underline">

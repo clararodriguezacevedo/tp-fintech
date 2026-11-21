@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { CloseTrade } from "@/components/close-trade";
 import { inBoth } from "@/components/position-detail";
-import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term } from "@/components/ui";
+import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term, Tooltip } from "@/components/ui";
 import { Amount, ByMode, UnitToggle } from "@/components/units";
 import { api, type Health, type Operation, type Trade } from "@/lib/api/client";
 import { dateTime, fromEntry, integer, money, pct, price } from "@/lib/format";
@@ -32,6 +32,35 @@ function Result({ value, usd, cost }: { value: number; usd: number | null; cost:
   return <Delta value={value}><ByMode abs={amount} pct={cost ? pct(value / cost) : amount} /></Delta>;
 }
 
+const TAG = "rounded border border-border px-1.5 py-0.5 text-sm text-text-2";
+
+/** What an operation was, beyond buy or sell: what the plan said, and whether it was from this site. */
+function Tags({ o }: { o: Operation }) {
+  const tags = [
+    o.followed_plan && {
+      label: "Según el plan",
+      info: "Ese día el plan decía comprar o vender este activo, o venderlo para pagar una compra del plan. Cuenta aunque la cantidad no sea la misma.",
+    },
+    o.source === "simulated" && { label: "Simulada", info: "Desde este sitio, con precios reales de IOL. No cambió tu cuenta." },
+    o.source === "site" && { label: "Desde El Parqué", info: "Una orden real que mandaste a IOL desde este sitio." },
+  ].filter((t) => !!t);
+  if (tags.length === 0) return null;
+  return (
+    <p className="mt-1.5 flex flex-wrap gap-1.5">
+      {tags.map((t) => (
+        <Tooltip key={t.label} content={t.info}>
+          <span className={TAG}>{t.label}</span>
+        </Tooltip>
+      ))}
+    </p>
+  );
+}
+
+function stateOf(o: Operation) {
+  if (o.status === "pending") return o.source === "simulated" ? STATUS.queued : "Orden pendiente";
+  return o.side === "sell" ? "Vendida" : "Comprada";
+}
+
 function RealOperations({ operations, names }: { operations: Operation[]; names: Record<string, string> }) {
   return (
     <>
@@ -50,12 +79,13 @@ function RealOperations({ operations, names }: { operations: Operation[]; names:
                 <Link href={`/ticker/${o.ticker}`} className="font-semibold hover:underline">{o.quantity > 0 && `${integer(o.quantity)} `}{o.ticker}</Link>
               </p>
               <p className="text-text-2">{nameOf(o.ticker, names[o.ticker])}, {dateTime(o.at)}</p>
+              <Tags o={o} />
             </div>
             <div className="num text-text-2">
               <p>{o.price > 0 ? <>A <Amount {...inBoth(o, o.price)} /></> : "A mercado"}</p>
               <p className="text-text-2">Total <Amount {...inBoth(o, o.amount)} /></p>
             </div>
-            <p className="text-text-2">{o.status === "pending" ? "Orden pendiente" : o.side === "sell" ? "Vendida" : "Comprada"}</p>
+            <p className="text-text-2">{stateOf(o)}</p>
             <p className="sm:text-right">
               {o.result != null ? <Result value={o.result} usd={o.rate ? o.result / o.rate : null} cost={o.cost ?? null} /> : <span className="text-text-2">-</span>}
             </p>
@@ -78,12 +108,14 @@ export default async function TradesPage() {
   const openCost = held.reduce((s, h) => s + h.value - h.gain_amount, 0);
   const mep = portfolio.ok ? portfolio.data.mep : null;
   // The total is the sum of its rows, each at the rate of its own day.
-  const sold = real.ok ? real.data.operations.filter((o) => o.result != null) : [];
+  // Only what changed the account: simulated ones have their own total below.
+  const sold = real.ok ? real.data.operations.filter((o) => o.result != null && o.source !== "simulated") : [];
   const soldCost = sold.reduce((s, o) => s + (o.cost ?? 0), 0);
   const soldUsd = sold.every((o) => o.rate) ? sold.reduce((s, o) => s + (o.result ?? 0) / (o.rate ?? 1), 0) : null;
 
   // Open buys are valued at the price now, the same quote the ticker page shows.
   const open = trades.filter((t) => t.side === "buy" && t.status === "filled");
+  const stillOpen = trades.filter((t) => t.side === "buy" && (t.status === "queued" || t.status === "filled"));
   const quotes = new Map(
     await Promise.all(
       [...new Set(open.map((t) => t.ticker))].map(async (t) => [t, await attempt(() => api.quote(t))] as const),
@@ -108,7 +140,7 @@ export default async function TradesPage() {
         {!real.ok ? (
           <ApiFailure error={real.error} />
         ) : real.data.operations.length === 0 ? (
-          <Notice>Todavía no hay operaciones en tu cuenta de IOL.</Notice>
+          <Notice>Todavía no hay operaciones.</Notice>
         ) : (
           <>
             <Stats
@@ -121,7 +153,7 @@ export default async function TradesPage() {
               ]}
             />
             <div className="mt-14">
-              <SectionTitle aside={<UnitToggle />}>En tu cuenta de IOL</SectionTitle>
+              <SectionTitle aside={<UnitToggle />} info="Las de tu cuenta de IOL y las simuladas desde este sitio.">Compras y ventas</SectionTitle>
               <RealOperations operations={real.data.operations} names={names} />
             </div>
           </>
@@ -130,7 +162,7 @@ export default async function TradesPage() {
 
       {trades.length > 0 && (
       <section>
-        <SectionTitle info={mode === "paper" ? "Con precios reales de IOL. No cambian tu cuenta." : undefined}>Simuladas</SectionTitle>
+        <SectionTitle info={mode === "paper" ? "Con precios reales de IOL. No cambian tu cuenta. Cada una también está en Compras y ventas." : undefined}>Simuladas</SectionTitle>
         <>
           <Stats
             className="mb-8"
@@ -140,6 +172,10 @@ export default async function TradesPage() {
             ]}
           />
 
+          {stillOpen.length === 0 ? (
+            <Notice>No tenés simuladas abiertas.</Notice>
+          ) : (
+          <>
           <div className={`${ROW} hidden border-b border-border pb-3 text-text-2 sm:grid`}>
             <span>Operación</span>
             <span>Precios</span>
@@ -148,7 +184,7 @@ export default async function TradesPage() {
             <span />
           </div>
           <ul className="divide-y divide-grid">
-            {trades.map((t) => {
+            {stillOpen.map((t) => {
               const result = resultOf(t);
               const isOpen = t.side === "buy" && (t.status === "queued" || t.status === "filled");
               return (
@@ -192,6 +228,8 @@ export default async function TradesPage() {
               );
             })}
           </ul>
+          </>
+          )}
         </>
       </section>
       )}

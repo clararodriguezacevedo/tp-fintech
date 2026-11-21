@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term } from "@/components/ui";
@@ -12,77 +13,161 @@ export const metadata = { title: "Resultados | El Parqué" };
 const bp = (x: number | null | undefined) => (x == null ? "-" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("es-AR", { maximumFractionDigits: 0 })} pb`);
 const share = (x: number) => `${Math.round(x * 100)}%`;
 
-/** The tests the papers run before believing a backtest. */
-function SignalCheck({ t }: { t: SignalTest }) {
-  const first = t.horizons[0];
-  const rows = [
+// The paragraph of each paper that a test comes from.
+const PAPER = {
+  lopezReaction: "https://arxiv.org/html/2304.07619#S6.SS1.p5",
+  lopezLegs: "https://arxiv.org/html/2304.07619#S6.SS1.p6",
+  lopezCosts: "https://arxiv.org/html/2304.07619#S6.SS2.p4",
+  lopezDays: "https://arxiv.org/html/2304.07619#S8.SS1.p2",
+  kirtacQuintiles: "https://arxiv.org/html/2609.23703#S6.SS3.p1",
+  kirtacPlacebos: "https://arxiv.org/html/2609.23703#S6.SS4.p1",
+  liveTradeDelay: "https://arxiv.org/html/2511.03628#S5.SS4.SSS0.Px1.p1",
+  alphaShortWindows: "https://arxiv.org/html/2605.16895#S2.SS4.p1",
+};
+
+function Source({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="text-text-2 underline decoration-border underline-offset-2 hover:text-text">
+      {children}
+    </a>
+  );
+}
+
+type Row = {
+  label: string;
+  value: (t: SignalTest) => string;
+  // Only on the first row of a group: what it measures, for how many rows, and where it comes from.
+  about?: { text: ReactNode; rows: number; sources: { label: string; href: string }[] };
+  sub?: boolean;
+};
+
+const horizon = (t: SignalTest, days: number) => t.horizons.find((h) => h.days === days);
+const net = (t: SignalTest) => {
+  const h = horizon(t, 1);
+  if (!h) return "-";
+  const [a, b, c] = ["5", "10", "20"].map((k) => bp(h.top_net_bp[k]).replace(" pb", ""));
+  return `${a}, ${b} y ${c} pb`;
+};
+
+function rows(cost: number): Row[] {
+  const days = [
+    { days: 1, label: "Ese día" },
+    { days: 2, label: "Al día siguiente" },
+    { days: 3, label: "Dos días después" },
+  ];
+  return [
+    ...days.map((d, i): Row => ({
+      label: i === 0 ? `Mejor 20% menos peor 20%, ${d.label.toLowerCase()}` : d.label,
+      sub: i > 0,
+      value: (t) => bp(horizon(t, d.days)?.spread_bp),
+      about: i === 0 ? {
+        rows: 3,
+        text: "Cuánto le ganaron los de puntaje alto a los de puntaje bajo de su clase. Positivo quiere decir que el orden sirve, y debería achicarse con los días.",
+        sources: [{ label: "Kirtac 6.3", href: PAPER.kirtacQuintiles }, { label: "Lopez-Lira y Tang 8.1", href: PAPER.lopezDays }],
+      } : undefined,
+    })),
+    ...days.map((d, i): Row => ({
+      label: i === 0 ? `Mejor 20%, ${d.label.toLowerCase()}` : d.label,
+      sub: i > 0,
+      value: (t) => bp(horizon(t, d.days)?.top_bp),
+      about: i === 0 ? {
+        rows: 3,
+        text: "Solo comprar los de arriba, contra su clase. Es lo único que se puede hacer, porque la app no vende en corto.",
+        sources: [{ label: "Lopez-Lira y Tang 6.1", href: PAPER.lopezLegs }],
+      } : undefined,
+    })),
     {
-      label: "Reacción a la apertura",
-      value: bp(t.reaction_bp),
-      note: "El mismo ranking sobre el salto del cierre a la apertura. Ese movimiento no se puede operar: que sea grande no dice nada de plata.",
+      label: "Mejor 20% con 5, 10 y 20 pb de costo",
+      value: net,
+      about: {
+        rows: 1,
+        text: `Ese día, después de comprar y vender. Tu costo en IOL es ${(cost * 1e4).toLocaleString("es-AR", { maximumFractionDigits: 1 })} pb, y en el paper la ganancia desaparece con 20.`,
+        sources: [{ label: "Lopez-Lira y Tang 6.2", href: PAPER.lopezCosts }],
+      },
     },
     {
-      label: "Placebo: puntajes mezclados entre activos",
-      value: t.placebo_tickers ? `${share(t.placebo_tickers.share_at_least_real)} igual o mejor` : "-",
-      note: "Cuántas veces el azar dio lo mismo o más. Si es alto, el resultado real no es señal.",
+      label: "Puntajes mezclados entre activos",
+      value: (t) => (t.placebo_tickers ? share(t.placebo_tickers.share_at_least_real) : "-"),
+      about: {
+        rows: 1,
+        text: "De 300 repartos al azar, cuántos dieron igual o más que la primera fila. Se pide menos de 5% para descartar la suerte.",
+        sources: [{ label: "Kirtac 6.4", href: PAPER.kirtacPlacebos }],
+      },
     },
     {
-      label: "Placebo: puntajes mezclados entre días",
-      value: t.placebo_dates ? `${share(t.placebo_dates.share_at_least_real)} igual o mejor` : "-",
-      note: "Lo mismo, cambiando de día el puntaje de cada activo.",
-    },
-    {
-      label: "Signos invertidos",
-      value: bp(t.inverted_bp),
-      note: "Dar vuelta el ranking tiene que dar el resultado al revés.",
+      label: "Puntajes mezclados entre días",
+      value: (t) => (t.placebo_dates ? share(t.placebo_dates.share_at_least_real) : "-"),
+      about: {
+        rows: 1,
+        text: "Lo mismo, pero cambiando el día de cada puntaje. Mide si importa cuándo llegó la noticia.",
+        sources: [{ label: "Kirtac 6.4", href: PAPER.kirtacPlacebos }],
+      },
     },
     {
       label: "Con el puntaje de la rueda anterior",
-      value: bp(t.delayed_bp),
-      note: `Compará con ${bp(first?.spread_bp)}. Si con un día de atraso da igual o mejor, el puntaje no está usando nada nuevo.`,
+      value: (t) => bp(t.delayed_bp),
+      about: {
+        rows: 1,
+        text: "La primera fila con el puntaje de ayer. Si da igual o más, el modelo no usa nada nuevo.",
+        sources: [{ label: "LiveTradeBench 5.4", href: PAPER.liveTradeDelay }],
+      },
+    },
+    {
+      label: "Reacción a la apertura",
+      value: (t) => bp(t.reaction_bp),
+      about: {
+        rows: 1,
+        text: "El mismo orden, del cierre anterior a la apertura. No se puede operar, pero muestra si Gemini lee bien para qué lado va cada noticia.",
+        sources: [{ label: "Lopez-Lira y Tang 6.1", href: PAPER.lopezReaction }],
+      },
     },
   ];
+}
+
+/** Every model's tests side by side, each row explained next to its numbers. */
+function RankingTable({ tests, cost }: { tests: SignalTest[]; cost: number }) {
+  const few = tests.some((t) => !t.enough);
   return (
-    <div>
-      <p className="mb-4 text-text-2">
-        Modelo {t.model_version}: {t.recommendations} recomendaciones en {t.sessions} {t.sessions === 1 ? "rueda" : "ruedas"}.{" "}
-        {t.enough ? "" : "Todavía son muy pocas para concluir algo."}
-      </p>
-      {t.horizons.length === 0 ? (
-        <Notice>Todavía no hay días con suficientes activos para armar un ranking.</Notice>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left">
-            <thead className="text-text-2">
-              <tr className="border-b border-border">
-                <th className="py-3 pr-4">Desde la apertura hasta</th>
-                <th className="py-3 text-right"><Term info="Lo que el mejor 20% le ganó al peor 20%, contra la mediana de su clase, antes de costos. La app no opera en corto: es la medida de si el orden dice algo.">Mejor − peor</Term></th>
-                <th className="py-3 text-right">Mejor 20%</th>
-                <th className="py-3 text-right"><Term info="Lo que le queda al mejor 20% después de pagar 5, 10 y 20 pb entre comprar y vender.">Con 5 / 10 / 20 pb</Term></th>
-              </tr>
-            </thead>
-            <tbody className="num divide-y divide-grid">
-              {t.horizons.map((h) => (
-                <tr key={h.days}>
-                  <td className="py-3 pr-4 font-sans">{h.days === 1 ? "El cierre de ese día" : h.days === 2 ? "El cierre del día siguiente" : "El cierre de dos días después"}</td>
-                  <td className="py-3 text-right">{bp(h.spread_bp)}</td>
-                  <td className="py-3 text-right">{bp(h.top_bp)}</td>
-                  <td className="py-3 text-right">{bp(h.top_net_bp["5"])} / {bp(h.top_net_bp["10"])} / {bp(h.top_net_bp["20"])}</td>
-                </tr>
+    <>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left">
+          <thead className="text-text-2">
+            <tr className="border-b border-border align-bottom">
+              <th className="py-3 pr-4 font-normal">Prueba</th>
+              {tests.map((t) => (
+                <th key={t.model_version} className="py-3 pr-4 text-right font-normal">
+                  <span className="block text-text">Modelo {t.model_version}</span>
+                  <span className="num block text-sm">{t.recommendations.toLocaleString("es-AR")} en {t.sessions} {t.sessions === 1 ? "rueda" : "ruedas"}</span>
+                </th>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <ul className="mt-6 divide-y divide-grid">
-        {rows.map((x) => (
-          <li key={x.label} className="flex flex-wrap items-center justify-between gap-3 py-3">
-            <span><Term info={x.note}>{x.label}</Term></span>
-            <span className="num">{x.value}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+              <th className="w-[24rem] py-3 pl-4 font-normal">Qué mide</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows(cost).map((r) => (
+              <tr key={r.label} className={r.sub ? "" : "border-t border-grid"}>
+                <td className={`py-2.5 pr-4 align-top ${r.sub ? "pl-4 text-text-2" : ""}`}>{r.label}</td>
+                {tests.map((t) => (
+                  <td key={t.model_version} className="num whitespace-nowrap py-2.5 pr-4 text-right align-top">{r.value(t)}</td>
+                ))}
+                {r.about && (
+                  <td rowSpan={r.about.rows} className="py-2.5 pl-4 align-top text-sm text-text-2">
+                    {r.about.text}{" "}
+                    {r.about.sources.map((x, i) => (
+                      <span key={x.href}>{i > 0 && ", "}<Source href={x.href}>{x.label}</Source></span>
+                    ))}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-4 max-w-3xl text-sm text-text-2">
+        1 pb es 0,01%. Cada activo se mide contra la mediana de su clase ese día, así una suba o una baja de todo el mercado no cuenta.
+        {few && <> Con tan pocas ruedas el azar todavía mueve mucho el resultado (<Source href={PAPER.alphaShortWindows}>The Alpha Illusion 2.4</Source>).</>}
+      </p>
+    </>
   );
 }
 
@@ -151,7 +236,7 @@ export default async function HistoryPage() {
         <div className="mt-14">
           <SectionTitle
             aside={<UnitToggle />}
-            info={`Todo arranca de tu cartera del primer día. Seguir el plan es una cartera aparte que se arrastra de un día a otro: se opera a la apertura, con los costos reales de IOL (${(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%), y cada compra sale si toca su stop loss o su take profit. Si los dos entran en el mismo día, cuenta el stop loss. Tus depósitos y retiros les llegan a todas como efectivo: están en los montos, pero no en los porcentajes, porque no son ganancia ni pérdida. Las líderes del Merval reemplazan al índice, que IOL no publica.`}
+            info={`Todo arranca de tu cartera del primer día. Seguir el plan es una cartera aparte que se arrastra de un día a otro. Se opera a la apertura, con los costos reales de IOL (${(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%), y cada compra sale si toca su stop loss o su take profit. Si los dos entran en el mismo día, cuenta el stop loss. Tus depósitos y retiros les llegan a todas como efectivo. Están en los montos, pero no en los porcentajes, porque no son ganancia ni pérdida. Las líderes del Merval reemplazan al índice, que IOL no publica.`}
           >
             Contra qué comparar
           </SectionTitle>
@@ -193,18 +278,17 @@ export default async function HistoryPage() {
 
       {evaluation.ok && evaluation.data.length > 0 && (
         <section>
-          <SectionTitle info="Antes de creerle a un resultado, los papers serios lo someten a estas pruebas. Si el ranking dice algo, el mejor 20% le gana al peor 20%, le gana a los puntajes mezclados, y se apaga en pocos días. En Cómo decide está el detalle.">
-            ¿El ranking dice algo?
-          </SectionTitle>
-          <div className="space-y-10">
-            {evaluation.data.map((t) => <SignalCheck key={t.model_version} t={t} />)}
-          </div>
+          <SectionTitle>¿El ranking dice algo?</SectionTitle>
+          <p className="mb-6 max-w-3xl text-text-2">
+            Las pruebas que hacen los papers antes de creerle a un ranking. Si el orden de los puntajes sirve, los de arriba rinden más que los de abajo, le ganan al azar y el efecto se apaga en pocos días.
+          </p>
+          <RankingTable tests={evaluation.data} cost={s.commission} />
         </section>
       )}
 
       <section>
         <SectionTitle
-          info="Arriba, cuánto ganó o perdió tu cartera ese día siguiendo el plan y con lo que hiciste. La diferencia es a favor del plan si es positiva. Cada activo se mide de apertura a cierre y siempre en porcentaje: el monto dependería de cuánto hubieras puesto. Comprar acierta si le ganó a la mediana de su clase, vender si perdió contra ella, y mantener no es una apuesta."
+          info="Arriba, cuánto ganó o perdió tu cartera ese día siguiendo el plan y con lo que hiciste. La diferencia es a favor del plan si es positiva. Cada activo se mide de apertura a cierre y siempre en porcentaje, porque el monto dependería de cuánto hubieras puesto. Comprar acierta si le ganó a la mediana de su clase, vender si perdió contra ella, y mantener no es una apuesta."
         >
           Día por día
         </SectionTitle>
@@ -219,15 +303,8 @@ export default async function HistoryPage() {
                   const base = d.base_change;
                   const points = (d.follow_return - d.base_return) * 100;
                   const pointsText = `${points >= 0 ? "+" : "−"}${Math.abs(points).toLocaleString("es-AR", { maximumFractionDigits: 2, minimumFractionDigits: 2 })} pts`;
-                  const moves = [
-                    { label: "compró", tickers: d.bought },
-                    { label: "vendió", tickers: d.sold },
-                    { label: "tocó el stop loss", tickers: d.stopped },
-                    { label: "tocó el take profit", tickers: d.took_profit },
-                  ].filter((m) => m.tickers.length > 0);
                   return (
-                    <>
-                      <Stats
+                    <Stats
                         className="mb-4"
                         items={[
                           { label: "Siguiendo el plan", value: <DayResult amount={follow} percent={pct(d.follow_return, 2)} inUsd={inUsd} /> },
@@ -235,12 +312,6 @@ export default async function HistoryPage() {
                           { label: "Diferencia", value: <DayResult amount={follow - base} percent={pointsText} inUsd={inUsd} /> },
                         ]}
                       />
-                      {moves.length > 0 && (
-                        <p className="mb-4 text-sm text-text-2">
-                          El plan: {moves.map((m) => `${m.label} ${m.tickers.join(", ")}`).join("; ")}.
-                        </p>
-                      )}
-                    </>
                   );
                 })()}
                 <ul className="divide-y divide-grid">
