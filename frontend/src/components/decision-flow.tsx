@@ -100,12 +100,12 @@ function Factors({ m }: { m: ModelInfo }) {
 export function DecisionFlow({ m }: { m: ModelInfo }) {
   return (
     <ol>
-      <Step n={1} title="Junta la información" summary="Cada 10 minutos, sin IA.">
+      <Step n={1} title="Junta la información" summary="Cada 2 horas, sin IA.">
         <p>Noticias generales (RSS y GDELT), noticias por empresa (Google News, de tu cartera, las líderes del Merval y los CEDEARs más comunes, por turnos), mercados de predicción (Polymarket y Kalshi), tu cartera y los precios (IOL), y riesgo país y dólar CCL (argentinadatos).</p>
       </Step>
 
       <Step n={2} ai title="Gemini lee cada noticia" summary="Una pregunta, de qué activo habla y si es bueno, malo o incierto para su precio en 1 a 3 días.">
-        <p>Cada media hora (y a las 10:15, antes de las recomendaciones del día). Se usa {m.tagger_model}, en lotes de hasta {m.tag_batch}, con temperatura 0. De tu cartera solo ve qué activos tenés, no cuánta plata. No da recomendaciones. Este es el prompt, tal cual se envía.</p>
+        <p>Cada 2 horas, después de juntar la información (y a las 10:15, antes de las recomendaciones del día). Se usa {m.tagger_model}, en lotes de hasta {m.tag_batch}, con temperatura 0. De tu cartera solo ve qué activos tenés, no cuánta plata. No da recomendaciones. Este es el prompt, tal cual se envía.</p>
         <Prompt>{m.news_prompt}</Prompt>
       </Step>
 

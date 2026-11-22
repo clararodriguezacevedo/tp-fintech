@@ -20,8 +20,9 @@ log = logging.getLogger(__name__)
 
 TAG_BATCH_SIZE = 20
 NEWS_BATCHES = 3  # per tagging run, so half an hour of Google News doesn't pile up
-# The collect cycle runs every 10 minutes but only tags every half hour: Gemini's free tier allows
-# 500 requests a day, and tagging every 10 minutes ran out of them around midnight.
+# Gemini's free tier allows 500 requests a day, and tagging every 10 minutes ran out of them around
+# midnight, so the collect cycle only tags on the hour and the half hour. It now runs every 2 hours,
+# on the hour (Vercel's CPU quota), so it tags every time.
 TAG_EVERY_MINUTES = 30
 
 
@@ -64,7 +65,7 @@ def collect_markets() -> None:
         db.table("prediction_markets").upsert(rows, on_conflict="source,external_id").execute().data,
     )
     # Only snapshot markets whose probability moved, so the free-tier database doesn't fill up
-    # with identical rows every 10 minutes.
+    # with identical rows every cycle.
     changed = [r for r in saved if _moved(previous.get((r.source, r.external_id)), r.probability)]
     if changed:
         db.table("market_snapshots").insert(

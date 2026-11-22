@@ -107,7 +107,7 @@ def _fetch_gdelt(client: httpx.Client, timespan: str) -> list[NewsRecord]:
 # The general feeds talk about the economy. This is what talks about each company.
 GOOGLE_NEWS = "https://news.google.com/rss/search"
 PER_COMPANY = 5  # the most recent of each search
-COMPANIES_PER_CYCLE = 8  # one request each; at one cycle every 10 minutes, all of them about hourly
+COMPANIES_PER_CYCLE = 8  # one request each, rotating through the list cycle by cycle
 
 
 def search_name(ticker: str, name: str, aliases: list[str] | None = None) -> str:

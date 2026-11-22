@@ -6,11 +6,12 @@ mercado argentino (acciones, CEDEARs, bonos).
 
 ## Flujo
 
-1. **Recolectar** cada 10 minutos: noticias (RSS, GDELT y Google News por empresa), mercados de
-   Polymarket y Kalshi, y el cambio de probabilidad de cada mercado (no solo su nivel).
-2. **Leer** cada media hora: Gemini Flash-Lite (free tier, temperatura 0) responde una sola pregunta
-   por noticia (de qué activo habla, y si es bueno, malo o incierto) y por mercado (qué empuja su
-   SÍ). Cada media hora y no cada 10 minutos porque el free tier permite 500 pedidos por día.
+1. **Recolectar** cada 2 horas: noticias (RSS, GDELT y Google News por empresa), mercados de
+   Polymarket y Kalshi, y el cambio de probabilidad de cada mercado (no solo su nivel). Cada 2
+   horas y no más seguido porque el free tier de Vercel permite 4 horas de CPU por mes.
+2. **Leer** en cada recolección: Gemini Flash-Lite (free tier, temperatura 0) responde una sola
+   pregunta por noticia (de qué activo habla, y si es bueno, malo o incierto) y por mercado (qué
+   empuja su SÍ). El free tier permite 500 pedidos por día.
 3. **Controlar** con reglas lo que respondió: el activo tiene que estar nombrado en el texto, y una
    apuesta sobre el precio de una acción se descarta.
 4. **Puntuar**: promedio ponderado de lo que se sabe de cada activo, entre -1 y +1.
@@ -144,11 +145,14 @@ Para redesplegar a mano: `cd backend && npx vercel deploy --prod`.
 
 Los jobs los dispara `pg_cron` adentro de Supabase, que llama a la API en Vercel con `pg_net`
 (migración `supabase/migrations/20261023010000_pg_cron_jobs.sql`). Primero se usó el cron de
-GitHub Actions, pero en la práctica corría cada ~5 horas en vez de cada 10 minutos.
+GitHub Actions, pero en la práctica corría cada ~5 horas en vez de cada 10 minutos. `collect`
+corría cada 10 minutos y pasó a cada 2 horas
+(`supabase/migrations/20261122000000_collect_every_two_hours.sql`) porque gastaba la CPU gratis de
+Vercel en unos 10 días.
 
 | Job | Cuándo (hora Argentina) | Endpoint | Qué hace |
 | --- | --- | --- | --- |
-| `collect` | cada 10 minutos | `POST /jobs/run` | cartera, mercados y noticias, etiquetado con Gemini (solo en las corridas de :00 y :30), y entre sesiones una vista previa del día siguiente |
+| `collect` | cada 2 horas, en punto | `POST /jobs/run` | cartera, mercados y noticias, etiquetado con Gemini, y entre sesiones una vista previa del día siguiente |
 | `before-open` | 10:15, días de mercado | `POST /jobs/before-open` | lo último de noticias y mercados, y las recomendaciones del día: las que se ven y las que se miden |
 | `trades` | cada 5 minutos, mientras BYMA está abierto | `POST /jobs/trades` | llena compras en cola y revisa stop loss / take profit |
 | `after-close` | 18:30, lunes a viernes | `POST /jobs/after-close` | baja dividendos y cupones, califica las recomendaciones del día y recalcula la simulación y las pruebas |
