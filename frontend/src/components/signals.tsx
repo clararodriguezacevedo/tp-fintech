@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { ActionMark, Term } from "@/components/ui";
 import type { Evidence, Impact, Recommendation } from "@/lib/api/client";
-import { dayShort, integer } from "@/lib/format";
+import { dayShort } from "@/lib/format";
 
 type Action = Recommendation["action"];
 
@@ -15,12 +15,12 @@ const ACTION: Record<Action, { label: string; color: string }> = {
 
 /** The action as a word, so it never depends on color alone. Only what asks for something stands
  * out: buying or selling gets a colored square and full contrast, keeping stays quiet. */
-export function ActionBadge({ action }: { action: Action }) {
+export function ActionBadge({ action, label }: { action: Action; label?: string }) {
   const a = ACTION[action];
   return (
     <span className={`inline-flex items-center gap-1.5 ${action === "keep" ? "text-text-2" : "text-text"}`}>
       {action !== "keep" && <ActionMark color={a.color} />}
-      {a.label}
+      {label ?? a.label}
     </span>
   );
 }
@@ -82,22 +82,6 @@ function marketReasons(b: Breakdown | undefined) {
       text: `Es de riesgo ${RISK_NAME[b.risk_level]} y tu perfil es ${b.profile}: no te la recomendamos comprar.`,
       note: "Solo te recomendamos lo que va con tu perfil.",
     });
-  }
-  if (Math.abs(b.macro ?? 0) >= 0.3 && b.macro_source && b.macro_change != null) {
-    const rising = b.macro_change > 0;
-    out.push(b.macro_source === "riesgo_pais"
-      ? {
-          up: !rising,
-          text: `El riesgo país ${rising ? "subió" : "bajó"} ${pctText(b.macro_change)} en la última semana${b.macro_level ? ` (${integer(b.macro_level)} puntos)` : ""}.`,
-          note: `${rising
-            ? "Cuando sube, los inversores piden más por el riesgo argentino, y suelen bajar los bonos y los bancos."
-            : "Cuando baja, los inversores confían más en Argentina, y suelen subir los bonos y los bancos."} Es contexto, no entra en el puntaje.`,
-        }
-      : {
-          up: rising,
-          text: `El dólar CCL ${rising ? "subió" : "bajó"} ${pctText(b.macro_change)} en la última semana${b.macro_level ? ` ($ ${integer(b.macro_level)})` : ""}.`,
-          note: "Los CEDEARs cotizan en pesos y siguen al dólar CCL. Si el dólar sube, suben con él. Es contexto, no entra en el puntaje.",
-        });
   }
   return out;
 }

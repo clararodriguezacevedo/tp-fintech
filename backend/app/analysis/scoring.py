@@ -25,7 +25,6 @@ counts once, looking only backwards), and market wrap-ups. A market only counts 
 a move above the noise and at least MIN_MARKET_DAYS left. Markets of the same event count once: the
 most traded one.
 
-Riesgo país and the CCL dollar (macro) are measured next to the score, but don't enter it.
 """
 
 import logging
@@ -47,7 +46,7 @@ from app.models.db import Action, Evidence, MarketRow, NewsRow, RecommendationRo
 from app.models.iol import DailyBar
 from app.portfolio import BOND_TYPES, EQUITY_TYPES, Holding, get_holdings
 from app.schemas import MarketCase
-from app.sources import corporate_events, macro
+from app.sources import corporate_events
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +72,6 @@ FACTOR_WEIGHT = 0.5  # a market reaching the ticker through a factor, versus one
 
 CONCENTRATION_LIMIT = 0.60  # of the portfolio in one risk group: buys stop there (app.analysis.risk)
 MAX_SCORED = 100  # tickers scored per cycle (the universe has ~600)
-BANKS = {"GGAL", "BMA", "SUPV", "BBAR", "VALO", "BYMA"}
 CEDEAR_TYPES = {"CEDEARS", "Cedears"}
 
 # What the first model (version 1) asked for, to replay its old recommendations in the simulation.
@@ -352,21 +350,6 @@ def is_sell_signal(r: RecommendationRow) -> bool:
     return r.score <= SELL_THRESHOLD_HELD
 
 
-def macro_for(ticker: str, group: str | None, signals: dict[str, macro.MacroSignal]) -> tuple[float, str | None]:
-    """(signal, source): riesgo país falling is good for bonds and banks (half for the other
-    local stocks); the CCL rising is good for CEDEARs, priced in pesos."""
-    if group == "us" and ticker not in ARGENTINE_CEDEARS:
-        s = signals.get("ccl")
-        return (s.signal, "ccl") if s else (0.0, None)
-    if group in ("bonds", "stocks") or ticker in ARGENTINE_CEDEARS:
-        s = signals.get("riesgo_pais")
-        if not s:
-            return 0.0, None
-        weight = 1.0 if group == "bonds" or ticker in BANKS else 0.5
-        return -s.signal * weight, "riesgo_pais"
-    return 0.0, None
-
-
 # Argentine companies listed abroad: their CEDEARs carry Argentine risk, not foreign.
 ARGENTINE_CEDEARS = {"VIST"}
 
@@ -403,10 +386,6 @@ class _Inputs:
     asset_class: str | None = None
     change_3m: float | None = None
     from_high: float | None = None
-    macro: float = 0.0
-    macro_source: str | None = None
-    macro_level: float | None = None
-    macro_change: float | None = None
     event: corporate_events.CorporateEvent | None = None
     risk: suitability.RiskLevel | None = None
     profile: suitability.Profile = "conservador"
@@ -424,9 +403,6 @@ def _combine(i: _Inputs) -> Recommendation:
             news=round(news, 4), markets=round(markets, 4), asset_class=i.asset_class,  # type: ignore[arg-type]
             change_3m=round(i.change_3m, 4) if i.change_3m is not None else None,
             from_high=round(i.from_high, 4) if i.from_high is not None else None,
-            macro=round(i.macro, 4), macro_source=i.macro_source,  # type: ignore[arg-type]
-            macro_level=i.macro_level,
-            macro_change=round(i.macro_change, 4) if i.macro_change is not None else None,
             event_kind=i.event.kind if i.event else None,  # type: ignore[arg-type]
             event_date=i.event.ex_date if i.event else None,
             event_yield=round(i.event.yield_, 5) if i.event and i.event.yield_ is not None else None,
@@ -481,11 +457,6 @@ def compute(now: datetime | None = None) -> list[Recommendation]:
         log.exception("no asset types; every asset counts as high risk")
         kinds = {}
     try:
-        macro_signals = macro.fetch()
-    except Exception:
-        log.exception("macro data failed; left at 0")
-        macro_signals = {}
-    try:
         events = corporate_events.upcoming(market_hours.now_art().date())
     except Exception:
         log.exception("could not load corporate events")
@@ -513,14 +484,10 @@ def compute(now: datetime | None = None) -> list[Recommendation]:
                 log.warning("no live price for %s; using the last close", ticker)
         if not price and bars:
             price = bars[-1].close
-        macro_value, macro_source = macro_for(ticker, group, macro_signals)
-        ms = macro_signals.get(macro_source) if macro_source else None
         change_3m, from_high = three_month_context(bars, price) if price else (None, None)
         inputs.append(_Inputs(
             ticker=ticker, held=ticker in holdings, price=price, evidence=signals.get(ticker, []),
             asset_class=group, change_3m=change_3m, from_high=from_high,
-            macro=macro_value, macro_source=macro_source,
-            macro_level=ms.level if ms else None, macro_change=ms.change if ms else None,
             event=events.get(ticker),
             risk=suitability.risk_level(ticker, kinds.get(ticker), bars), profile=profile,
         ))

@@ -7,7 +7,7 @@ import { PositionDetail, loadOperations } from "@/components/position-detail";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term, WarningMark } from "@/components/ui";
 import { Amount, ByMode, UnitToggle } from "@/components/units";
-import { api, type Holding, type Recommendation } from "@/lib/api/client";
+import { api, type Holding, type PortfolioPlan, type Recommendation } from "@/lib/api/client";
 import { integer, money, pctPoints, roundToTotal } from "@/lib/format";
 import { cedearTickers, nameOf } from "@/lib/names";
 
@@ -17,6 +17,22 @@ const time = (d: string) =>
   new Date(d).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Argentina/Buenos_Aires" });
 const usd = (x: number) => `US$ ${x.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const dayART = (d: string | Date) => new Date(d).toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+
+type PlanSell = { quantity: number; pairs: string[] };
+
+/** What today's plan (the same one Hoy shows) sells of each position: recommended sells, and the
+ * part sold to pay for a better buy. */
+function planSells(plan: PortfolioPlan | null) {
+  const out = new Map<string, PlanSell>();
+  for (const s of plan?.steps ?? []) {
+    if (s.action !== "sell") continue;
+    const prev = out.get(s.ticker) ?? { quantity: 0, pairs: [] };
+    out.set(s.ticker, { quantity: prev.quantity + s.quantity, pairs: s.pair ? [...prev.pairs, s.pair] : prev.pairs });
+  }
+  return out;
+}
+
+const joined = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} y ${xs.at(-1)}` : xs[0] ?? "");
 
 /** One plain sentence when a single position is too big a share of the portfolio. */
 function concentration(holdings: Holding[], total: number) {
@@ -28,9 +44,10 @@ function concentration(holdings: Holding[], total: number) {
 export default async function PortfolioPage() {
   const dollar = loadDollar();
   const operations = loadOperations();
-  const [portfolio, advice, history, transfers, cedears] = await Promise.all([
+  const [portfolio, advice, plan, history, transfers, cedears] = await Promise.all([
     attempt(api.portfolio),
     attempt(api.portfolioAdvice),
+    attempt(api.portfolioPlan),
     attempt(() => api.portfolioHistory(90)),
     attempt(() => api.transfers(90)),
     cedearTickers(),
@@ -73,7 +90,17 @@ export default async function PortfolioPage() {
     return i < 0 ? [] : [{ i, delta: m.amount, label: `${m.amount >= 0 ? "Depositaste" : "Retiraste"} ${money(Math.abs(m.amount))}` }];
   });
   const adviceBy = new Map<string, Recommendation>(advice.ok ? advice.data.map((r) => [r.ticker, r]) : []);
-  const sells = all.filter((h) => adviceBy.get(h.ticker)?.action === "sell");
+  // Hoy's plan decides what to sell, so both pages say the same. Without it, the recommendations.
+  const fromPlan = plan.ok ? planSells(plan.data) : null;
+  const sellOf = (h: Holding) => {
+    const p = fromPlan?.get(h.ticker);
+    if (fromPlan) return p ? { quantity: p.quantity, pairs: p.pairs, part: p.quantity < h.quantity } : null;
+    return adviceBy.get(h.ticker)?.action === "sell" ? { quantity: h.quantity, pairs: [], part: false } : null;
+  };
+  const sells = all.flatMap((h) => {
+    const s = sellOf(h);
+    return s ? [{ h, ...s }] : [];
+  });
   const warning = concentration(ars, total);
   const usdMep = p.mep ? total / p.mep : null;
   // For the table's buttons: both currencies of an amount, at the same MEP rate as the total.
@@ -114,10 +141,12 @@ export default async function PortfolioPage() {
           {sells.length > 0 ? (
             <Notice>
               Conviene vender{" "}
-              {sells.map((h, i) => (
+              {sells.map(({ h, quantity, pairs, part }, i) => (
                 <span key={h.ticker}>
                   {i > 0 && (i === sells.length - 1 ? " y " : ", ")}
+                  {part && `${integer(quantity)} de `}
                   <Link href={`/ticker/${h.ticker}#vender`} className="text-text underline">{h.ticker}</Link>
+                  {pairs.length > 0 && ` para comprar ${joined(pairs)}`}
                 </span>
               ))}
               .
@@ -147,6 +176,7 @@ export default async function PortfolioPage() {
             <tbody className="divide-y divide-grid">
               {all.map((h) => {
                 const r = adviceBy.get(h.ticker);
+                const sell = sellOf(h);
                 const dayAmount = h.value - h.value / (1 + h.day_change_pct / 100);
                 const hoy = <Delta value={h.day_change_pct}><ByMode abs={<Amount {...pair(h, Math.abs(dayAmount))} />} pct={pctPoints(h.day_change_pct)} /></Delta>;
                 return (
@@ -176,7 +206,20 @@ export default async function PortfolioPage() {
                           <Delta value={h.gain_amount}><ByMode abs={<Amount {...pair(h, Math.abs(h.gain_amount))} />} pct={pctPoints(h.gain_pct)} /></Delta>
                         </td>
                         <td className="py-4 text-right">
-                          {r ? <ActionBadge action={r.action} /> : <span className="text-text-2">-</span>}
+                          {sell?.pairs.length ? (
+                            <Term
+                              info={`Tu plan de hoy vende ${integer(sell.quantity)} para comprar ${joined(sell.pairs)}, que puntúa bastante mejor.`}
+                              place="right-full top-1/2 mr-2 -translate-y-1/2"
+                            >
+                              <ActionBadge action="sell" label={sell.part ? "Vender parte" : "Vender"} />
+                            </Term>
+                          ) : sell ? (
+                            <ActionBadge action="sell" />
+                          ) : r ? (
+                            <ActionBadge action={r.action} />
+                          ) : (
+                            <span className="text-text-2">-</span>
+                          )}
                         </td>
                         {/* Its own column, so the badges stay lined up with or without it. */}
                         <td className="py-4 text-right">

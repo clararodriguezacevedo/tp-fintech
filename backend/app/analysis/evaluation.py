@@ -1,14 +1,11 @@
-"""Whether the ranking says anything, tested the way the papers do before believing a backtest.
+"""Whether the ranking says anything. Each day, from the open to the close, in excess of the median
+of each asset's class:
 
-Each day, the top 20% of recommendations by score against the bottom 20%, in excess of the median
-of their asset class, from that day's open:
-
-  horizons  to the close of that day, the next and the one after. The signal should fade, not grow.
-  costs     the top 20% alone (there's no short selling here), minus a round trip of 5, 10 and 20 bp
-  reaction  the same ranking on the gap from the previous close to the open, which can't be traded
-  placebos  scores shuffled between tickers of a day, and between days of a ticker: if the real
-            result doesn't beat them, it's not the signal. Reversing the signs has to flip it.
-  delay     the score of the session before: if it does as well, the score isn't using anything new
+  spread   the top 20% of recommendations by score against the bottom 20%
+  top      the top 20% alone, which is all the app can do (there's no short selling). The page takes
+           the account's real trading costs off it.
+  placebo  scores shuffled between the tickers of each day: if the real spread doesn't beat that,
+           it's luck, not the signal
 """
 
 import random
@@ -26,18 +23,8 @@ from app.models.iol import DailyBar
 
 SHARE = 0.2
 MIN_PER_DAY = 10  # fewer than this on a day doesn't make a ranking
-HORIZONS = (1, 2, 3)
-COSTS_BP = (5, 10, 20)
 PLACEBO_RUNS = 300
 MIN_SESSIONS = 20  # below this, the page says it's too early to conclude
-
-
-class HorizonResult(BaseModel):
-    days: int  # 1: that day's close
-    sessions: int
-    spread_bp: float  # top minus bottom, before costs
-    top_bp: float  # the top alone, before costs
-    top_net_bp: dict[str, float]  # after a round trip of that many bp
 
 
 class Placebo(BaseModel):
@@ -50,12 +37,9 @@ class SignalTest(BaseModel):
     sessions: int
     recommendations: int
     enough: bool  # sessions >= MIN_SESSIONS
-    horizons: list[HorizonResult]
-    reaction_bp: float | None  # same ranking on the overnight gap: can't be traded
-    placebo_tickers: Placebo | None
-    placebo_dates: Placebo | None
-    inverted_bp: float | None
-    delayed_bp: float | None  # yesterday's score on today's move
+    spread_bp: float | None  # top minus bottom, before costs
+    top_bp: float | None  # the top alone, before costs
+    placebo: Placebo | None  # scores shuffled between the tickers of each day
 
 
 Scores = dict[str, float]
@@ -109,14 +93,6 @@ def forward_returns(rows: list[RecommendationRow], bars_of: Callable[[str], list
     return out
 
 
-def overnight_returns(rows: list[RecommendationRow]) -> dict[str, float]:
-    """The gap to the open: close -> close over open -> close."""
-    return {
-        r.id: (1 + r.close_return) / (1 + r.realized_return) - 1
-        for r in rows if r.close_return is not None and r.realized_return is not None and r.realized_return > -1
-    }
-
-
 def _shuffled(rows: list[RecommendationRow], key: Callable[[RecommendationRow], object], rng: random.Random) -> Scores:
     groups: dict[object, list[RecommendationRow]] = defaultdict(list)
     for r in rows:
@@ -139,52 +115,23 @@ def _placebo(rows, returns, key, real: float, rng: random.Random, runs: int) -> 
     )
 
 
-def _previous_scores(rows: list[RecommendationRow]) -> Scores:
-    per_ticker: dict[str, list[RecommendationRow]] = defaultdict(list)
-    for r in rows:
-        per_ticker[r.ticker].append(r)
-    out: Scores = {}
-    for rs in per_ticker.values():
-        rs.sort(key=lambda r: r.target_date)
-        out.update({b.id: a.score for a, b in zip(rs, rs[1:])})
-    return out
-
-
 def check_signal(
     rows: list[RecommendationRow], bars_of: Callable[[str], list[DailyBar]], version: int, runs: int = PLACEBO_RUNS,
 ) -> SignalTest:
     scores = {r.id: r.score for r in rows}
-    horizons = []
-    first: dict[str, float] = {}
-    for days in HORIZONS:
-        returns = in_excess(rows, forward_returns(rows, bars_of, days))
-        if days == 1:
-            first = returns
-        s = spread(rows, returns, scores)
-        if s:
-            horizons.append(HorizonResult(
-                days=days, sessions=s[2], spread_bp=round(s[0] * 1e4, 1), top_bp=round(s[1] * 1e4, 1),
-                top_net_bp={str(c): round(s[1] * 1e4 - c, 1) for c in COSTS_BP},
-            ))
+    returns = in_excess(rows, forward_returns(rows, bars_of, 1))
     sessions = len({r.target_date for r in rows})
-    real = spread(rows, first, scores)
+    real = spread(rows, returns, scores)
     if real is None:
         return SignalTest(
-            model_version=version, sessions=sessions, recommendations=len(rows), enough=False, horizons=horizons,
-            reaction_bp=None, placebo_tickers=None, placebo_dates=None, inverted_bp=None, delayed_bp=None,
+            model_version=version, sessions=sessions, recommendations=len(rows), enough=False,
+            spread_bp=None, top_bp=None, placebo=None,
         )
     rng = random.Random(0)  # the same numbers each time, for the same data
-    reaction = spread(rows, in_excess(rows, overnight_returns(rows)), scores)
-    delayed = spread(rows, first, _previous_scores(rows))
-    inverted = spread(rows, first, {k: -v for k, v in scores.items()})
     return SignalTest(
         model_version=version, sessions=sessions, recommendations=len(rows), enough=sessions >= MIN_SESSIONS,
-        horizons=horizons,
-        reaction_bp=round(reaction[0] * 1e4, 1) if reaction else None,
-        placebo_tickers=_placebo(rows, first, lambda r: r.target_date, real[0], rng, runs),
-        placebo_dates=_placebo(rows, first, lambda r: r.ticker, real[0], rng, runs),
-        inverted_bp=round(inverted[0] * 1e4, 1) if inverted else None,
-        delayed_bp=round(delayed[0] * 1e4, 1) if delayed else None,
+        spread_bp=round(real[0] * 1e4, 1), top_bp=round(real[1] * 1e4, 1),
+        placebo=_placebo(rows, returns, lambda r: r.target_date, real[0], rng, runs),
     )
 
 

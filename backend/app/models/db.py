@@ -97,10 +97,6 @@ class SignalBreakdown(BaseModel):
     concentration: float = 0.0  # first model only: penalty in the score
     change_3m: float | None = None  # price change over the last 3 months (shown, not scored)
     from_high: float | None = None  # distance from the 3-month high, <= 0 (shown, not scored)
-    macro: float = 0.0  # riesgo país or CCL dollar moving its way: measured, not in the score
-    macro_source: Literal["riesgo_pais", "ccl"] | None = None
-    macro_level: float | None = None  # riesgo país points or CCL pesos
-    macro_change: float | None = None  # its change over 5 trading days
     event_kind: Literal["dividend", "coupon"] | None = None  # next payment detaching soon
     event_date: date | None = None
     event_yield: float | None = None

@@ -101,7 +101,7 @@ export function DecisionFlow({ m }: { m: ModelInfo }) {
   return (
     <ol>
       <Step n={1} title="Junta la información" summary="Cada 2 horas, sin IA.">
-        <p>Noticias generales (RSS y GDELT), noticias por empresa (Google News, de tu cartera, las líderes del Merval y los CEDEARs más comunes, por turnos), mercados de predicción (Polymarket y Kalshi), tu cartera y los precios (IOL), y riesgo país y dólar CCL (argentinadatos).</p>
+        <p>Noticias generales (RSS y GDELT), noticias por empresa (Google News, de tu cartera, las líderes del Merval y los CEDEARs más comunes, por turnos), mercados de predicción (Polymarket y Kalshi), y tu cartera y los precios (IOL).</p>
       </Step>
 
       <Step n={2} ai title="Gemini lee cada noticia" summary="Una pregunta, de qué activo habla y si es bueno, malo o incierto para su precio en 1 a 3 días.">

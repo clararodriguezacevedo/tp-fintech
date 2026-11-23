@@ -111,13 +111,8 @@ function Example({ r, m, name }: { r: Recommendation; m: ModelInfo; name: string
 }
 
 const PAPERS = [
-  { name: "StockBench", url: "https://arxiv.org/abs/2510.02209", took: "Medir como cartera, con retorno, caída máxima y Sortino, durante meses, contra quedarse quieto. Saber de finanzas no alcanza para invertir bien." },
-  { name: "Lopez-Lira y Tang", url: "https://arxiv.org/abs/2304.07619", took: "Una sola pregunta por noticia, sobre esa empresa y el corto plazo, con \"incierto\" como respuesta válida. Separar la reacción, que no se puede operar, del movimiento posterior." },
-  { name: "Kirtac", url: "https://arxiv.org/abs/2609.23703", took: "Filtro de novedad mirando solo hacia atrás, promedio por activo, retorno contra el mercado, ranking y placebos. Su número de similitud no se traslada, como se explica abajo." },
-  { name: "Glasserman y Lin", url: "https://arxiv.org/abs/2309.17322", took: "Saber quién es la empresa puede volver confiado de más al modelo. Por ahora solo se mide, con scripts/tagger_check." },
-  { name: "LiveTradeBench", url: "https://arxiv.org/abs/2511.03628", took: "Buscar noticias por empresa, y la prueba del atraso. Si el puntaje de ayer funciona igual, el modelo no usa nada nuevo." },
-  { name: "Agent Market Arena", url: "https://arxiv.org/abs/2510.11695", took: "Lo que no hacemos, que es dejar que varios agentes debatan y decidan todo. Son dos meses de datos, sin costos." },
-  { name: "The Alpha Illusion", url: "https://arxiv.org/abs/2605.16895", took: "Con pocas ruedas el azar mueve mucho el resultado, así que no se saca ninguna conclusión antes de tener más historia." },
+  { name: "StockBench", url: "https://arxiv.org/abs/2510.02209", took: "Medir como cartera durante meses, con retorno, caída máxima y Sortino, contra quedarse quieto. Saber de finanzas no alcanza para invertir bien." },
+  { name: "Lopez-Lira y Tang", url: "https://arxiv.org/abs/2304.07619", took: "Una sola pregunta por noticia, sobre esa empresa y el corto plazo, con \"incierto\" como respuesta válida. Comparar los de puntaje alto con los de puntaje bajo, y restar los costos de operar." },
 ];
 
 export default async function HowItDecides() {
@@ -134,19 +129,17 @@ export default async function HowItDecides() {
     <div className="space-y-14">
       <section>
         <PageTitle>Cómo decide</PageTitle>
-        <p className="max-w-3xl text-text-2">
-          Gemini lee cada noticia y cada mercado de predicción, y responde una sola pregunta. Una regla simple hace el resto. Promedia lo que se sabe de cada activo, lo compara con los de su clase y solo sugiere comprar los mejores. Antes de cada apertura sale la recomendación del día, y esa misma es la que ves, la que seguís y la que se mide.
-        </p>
-      </section>
-
-      <section>
-        <SectionTitle>La regla en cuatro líneas</SectionTitle>
-        <ol className="max-w-3xl list-decimal space-y-2 pl-5">
-          <li>Cada noticia vale +1, −1 o 0, y cada mercado vale según cuánto se movió su probabilidad.</li>
-          <li>El puntaje de un activo es el promedio ponderado, con un voto neutro, y queda entre −1 y +1.</li>
-          <li>Comprar, si no lo tenés, está en el {pctOf(m.top_share)} mejor de su clase y tiene {score(m.buy_threshold)} o más.</li>
-          <li>Vender, si lo tenés y tiene {score(m.sell_threshold_held)} o menos. Todo lo demás es mantener.</li>
-        </ol>
+        <div className="max-w-3xl space-y-2 text-text-2">
+          <p>
+            Gemini lee cada noticia y cada mercado de predicción, y responde una sola pregunta: de qué activo habla y si es bueno o malo para su precio. Con esas respuestas cada activo recibe un puntaje entre −1 y +1, y se compara con los de su clase: acciones argentinas, CEDEARs o bonos.
+          </p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>Comprar: no lo tenés, está en el {pctOf(m.top_share)} de mejor puntaje de su clase y tiene {score(m.buy_threshold)} o más.</li>
+            <li>Vender: lo tenés y tiene {score(m.sell_threshold_held)} o menos.</li>
+            <li>Mantener: todo lo demás.</li>
+          </ul>
+          <p>La recomendación sale antes de cada apertura, y es la misma que ves, la que seguís y la que se mide.</p>
+        </div>
       </section>
 
       {example && (
@@ -167,7 +160,6 @@ export default async function HowItDecides() {
           {[
             { key: "news", name: "Noticias", text: `Lo que Gemini dice de las noticias que nombran al activo. Una noticia pesa 1 hasta que una apertura pudo operarla, la mitad después de una apertura y nada después de ${m.news_max_opens}. Las noches, los fines de semana y los feriados no la envejecen.` },
             { key: "markets", name: "Mercados de predicción", text: `Polymarket y Kalshi. Cuenta cuánto se movió la probabilidad, no qué tan alta está. Un movimiento de ${num(m.market_move_unit * 100)} puntos vale 1 entero. Es la expectativa que la gente respalda con plata.` },
-            { key: "macro", name: "Riesgo país y dólar CCL", text: "Se mide, pero no entra en el puntaje. Es la que mejor dio con el modelo anterior, aunque en muy pocos días y comparando varias señales. Si con más historia sigue funcionando, se va a sumar." },
           ].map((x) => {
             const stat = signals.ok ? signals.data.find((s) => s.signal === x.key && s.n > 0) : undefined;
             return (
@@ -235,7 +227,7 @@ export default async function HowItDecides() {
               Cada recomendación se mide desde la apertura hasta el cierre, contra la mediana de su clase ese día. Si todo cae, comprar lo que cayó menos fue un acierto. Comprar acierta si le gana a su clase, vender si pierde contra ella. Mantener no es una apuesta, así que no suma ni resta aciertos.
             </p>
             <p>
-              En <Link href="/historial" className="underline">Resultados</Link> está la cartera que sigue el plan, con sus stops, contra lo que hiciste, quedarte quieto y las líderes del Merval. También las pruebas que hacen los papers antes de creerle al ranking, con la compra mantenida hasta uno, dos o tres cierres, costos de 5, 10 y 20 pb, los puntajes mezclados entre activos y entre días, el puntaje de la rueda anterior y la reacción a la apertura. Cada una explica ahí qué mide y de qué paper sale.
+              En <Link href="/historial" className="underline">Resultados</Link> está la cartera que sigue el plan, con sus stops, contra lo que hiciste, quedarte quieto y las líderes del Merval. También si el puntaje ordena bien: si los de puntaje alto le ganan a los de puntaje bajo, si queda ganancia después de tus costos en IOL, y si un orden al azar daría lo mismo.
             </p>
             <p>Cada recomendación guarda la versión del modelo que la hizo (hoy, la {m.version}), así los resultados de un modelo no se mezclan con los de otro.</p>
           </Block>
@@ -259,14 +251,14 @@ export default async function HowItDecides() {
         </ul>
         <div className="mt-8 max-w-3xl space-y-2 text-text-2">
           <p className="font-semibold text-text">Lo que probamos con tus datos antes de cambiar</p>
-          <p>Con 389 recomendaciones de 8 ruedas, el modelo anterior no se distinguía del azar. El mejor 20% le ganaba al peor 20% por 20 pb antes de costos, y mezclar los puntajes daba eso o más en 26% a 32% de los casos.</p>
+          <p>Con 389 recomendaciones de 8 ruedas, el modelo anterior no se distinguía del azar. El mejor 20% le ganaba al peor 20% por 0,2% antes de costos, y repartir los puntajes al azar daba eso o más en 26% a 32% de los casos.</p>
           <p>Solo 25% de las etiquetas &quot;propias&quot; nombraban al activo. De 312 mercados que se movieron 2 puntos o más, 4 operaban más de US$ 1.000 entre los de volumen conocido, y el volumen de Polymarket estaba en cero por un error de lectura. Muchas etiquetas eran apuestas sobre el propio precio, y casi todas decían &quot;sube&quot;.</p>
           <p>58% de las noticias llegaba entre las 17:30 y la apertura, y la recomendación que se medía no las veía.</p>
         </div>
         <div className="mt-8 max-w-3xl space-y-2 text-text-2">
           <p className="font-semibold text-text">Lo que todavía no sabemos</p>
-          <p>Unas pocas ruedas no alcanzan para decir que un modelo sirve o no sirve. Este modelo es más simple y más fácil de medir, pero no se demostró que gane más. En <Link href="/historial" className="underline">Resultados</Link> está cuántas ruedas lleva.</p>
-          <p>El {num(m.novelty_similarity)} de similitud para detectar repetidos está calibrado a mano sobre tus noticias, comparando palabras, porque el 0,80 de Kirtac usa otra medida y acá no encontraba nada. También son decisiones nuestras el {pctOf(m.top_share)} del ranking, los umbrales de compra y venta y el peso de {num(m.factor_weight)} de los factores.</p>
+          <p>Unas pocas ruedas no alcanzan para decir que un modelo sirve o no sirve. Este modelo tiene menos piezas que el anterior, pero no se demostró que gane más. En <Link href="/historial" className="underline">Resultados</Link> está cuántas ruedas lleva.</p>
+          <p>El {num(m.novelty_similarity)} de similitud para detectar repetidos está calibrado a mano sobre tus noticias, comparando palabras. También son decisiones nuestras el {pctOf(m.top_share)} del ranking, los umbrales de compra y venta y el peso de {num(m.factor_weight)} de los factores.</p>
           <p>Los papers miran acciones de EE.UU. con datos pagos, y hasta ahí el resultado se fue achicando con el tiempo. No hay por qué esperar algo mejor con noticias gratuitas y activos argentinos.</p>
         </div>
       </section>

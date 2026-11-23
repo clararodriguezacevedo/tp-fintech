@@ -165,6 +165,9 @@ def list_news(limit: int = Query(50, ge=1, le=500)) -> list[NewsOut]:
     return [NewsOut(**r.model_dump(), impacts=impacts.get(r.id, [])) for r in rows]
 
 
+MARKET_STALE_AFTER = timedelta(hours=6)  # collect refreshes open markets every 2 hours
+
+
 @app.get("/markets", response_model=list[MarketOut])
 def list_markets(
     source: Literal["polymarket", "kalshi"] | None = None,
@@ -183,7 +186,12 @@ def list_markets(
         }
         if not linked:
             return []
-        q = q.in_("id", sorted(linked)[:300])
+        # Only markets the model can still use: open (a closed one stops updating, frozen near 0% or
+        # 100%) and not about to resolve.
+        now = datetime.now(timezone.utc)
+        fresh = (now - MARKET_STALE_AFTER).strftime("%Y-%m-%dT%H:%M:%SZ")
+        far = (now + timedelta(days=scoring.MIN_MARKET_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        q = q.in_("id", sorted(linked)[:300]).gte("updated_at", fresh).or_(f"end_date.is.null,end_date.gte.{far}")
     rows = rows_as(MarketRow, q.order("volume_24h", desc=True).limit(limit).execute().data)
     impacts = _impacts_for("market", [r.id for r in rows])
     return [MarketOut(**r.model_dump(), impacts=impacts.get(r.id, [])) for r in rows]
@@ -522,7 +530,7 @@ def portfolio_advice() -> list[RecommendationRow]:
 
 @app.get("/track-record/signals", response_model=list[SignalStats])
 def track_record_signals() -> list[SignalStats]:
-    """How often each signal (news, markets, and macro, which isn't in the score) was right."""
+    """How often each signal (news and markets) was right."""
     return track_record.signal_stats()
 
 

@@ -36,12 +36,10 @@ def test_a_class_too_small_has_no_excess():
     assert track_record.excess_returns([row("A", D1, 0.01), row("B", D1, 0.02)]) == {}
 
 
-def test_signals_are_measured_against_the_class_and_macro_is_marked_as_not_scored():
+def test_signals_are_measured_against_the_class():
     rows = [row("A", D1, -0.01, news=0.5, excess=0.02), row("B", D1, -0.03, news=-0.5, excess=-0.02), row("C", D1, 0.0, news=0.5, excess=-0.01), row("D", D2, 0.0, news=0.0, excess=0.01)]
     stats = {s.signal: s for s in track_record.signal_stats(rows)}
     assert (stats["news"].n, stats["news"].hits, stats["news"].days) == (3, 2, 1)
-    assert stats["news"].in_score and not stats["macro"].in_score
-    assert stats["macro"].rate is None
 
 
 # Evaluation
@@ -63,28 +61,20 @@ def bars_for(rows):
 def test_a_signal_that_works_beats_its_placebos():
     rows = [r for k in range(6) for r in ranked_day(D1 + timedelta(days=k))]
     t = evaluation.check_signal(rows, bars_for(rows), 2, runs=50)
-    h1 = t.horizons[0]
-    assert h1.days == 1 and h1.spread_bp == pytest.approx(800)
-    assert h1.top_net_bp["20"] == pytest.approx(h1.top_bp - 20)
-    assert t.inverted_bp == pytest.approx(-800)
-    assert t.placebo_tickers is not None and t.placebo_tickers.share_at_least_real < 0.1
+    assert t.spread_bp == pytest.approx(800)
+    assert t.placebo is not None and t.placebo.share_at_least_real < 0.1
     assert t.sessions == 6 and not t.enough
 
 
 def test_too_few_per_day_isnt_a_ranking():
     rows = [row("A", D1, 0.01, score=0.5), row("B", D1, -0.01, score=-0.5), row("C", D1, 0.0)]
     t = evaluation.check_signal(rows, bars_for(rows), 2, runs=5)
-    assert t.horizons == [] and t.placebo_tickers is None
+    assert t.spread_bp is None and t.placebo is None
 
 
 def test_an_open_outside_the_candle_isnt_used():
     r = row("A", D1, 0.0)
     assert evaluation.forward_returns([r], lambda _: [DailyBar(day=D1, open=120, high=110, low=95, close=105)], 1) == {}
-
-
-def test_overnight_is_what_close_to_close_has_beyond_open_to_close():
-    r = row("A", D1, 0.01, close=0.0302)
-    assert evaluation.overnight_returns([r])[r.id] == pytest.approx(0.02)
 
 
 # The rules the simulation replays

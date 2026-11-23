@@ -18,7 +18,7 @@ mercado argentino (acciones, CEDEARs, bonos).
 5. **Rankear** dentro de cada clase (acciones, CEDEARs, bonos): solo se compra el 20% mejor.
 6. **Antes de abrir** (10:15) sale la recomendación del día: la que se ve, se sigue y se mide.
 7. **Medir** después del cierre contra la mediana de su clase, con una cartera simulada continua y
-   las pruebas de los papers (costos, placebos, atraso).
+   pruebas de si el puntaje ordena bien (después de costos y contra el azar).
 
 ## Funcionalidades
 
@@ -223,9 +223,6 @@ nunca sale comprar.
 menos de US$ 1.000 operados en el día, con un movimiento de menos de 2 puntos o a menos de 3 días de
 resolverse. Varios mercados de un evento cuentan una vez: el más operado.
 
-**Riesgo país y dólar CCL** se miden al lado del puntaje, pero no entran. Se sumarán si con más
-historia siguen funcionando.
-
 **Dividendos y cupones**: el calendario de ex-dividendos de Nasdaq (gratis, sin key) cubre las
 acciones de EE.UU. de los CEDEARs y los ADRs de las empresas argentinas; los Bonares y Globales
 pagan el 9 de enero y el 9 de julio. Se guardan en `corporate_events` después de cada cierre. No
@@ -251,10 +248,10 @@ apuesta. Cada fila guarda `model_version`, para no mezclar modelos.
   comparado con lo que hiciste, con quedarte quieto con la cartera del primer día y con comprar
   las 20 líderes del Merval en partes iguales (IOL no publica el índice). Con retorno, caída máxima y
   Sortino.
-- `GET /track-record/evaluation` (`backend/app/analysis/evaluation.py`): si el ranking dice algo. El
-  mejor 20% contra el peor 20% a 1, 2 y 3 días, con costos de 5, 10 y 20 pb, la reacción a la apertura
-  (que no se puede operar), placebos, signos invertidos y atraso. Antes de 20 ruedas la página avisa
-  que no alcanza para concluir.
+- `GET /track-record/evaluation` (`backend/app/analysis/evaluation.py`): si el puntaje sirve para
+  elegir. De la apertura al cierre, el mejor 20% de cada clase contra el peor 20%, el mejor 20% solo
+  (la página le resta el costo real de comprar y vender en IOL), y cuántas de 300 veces repartir los
+  puntajes al azar da lo mismo o más. Antes de 20 ruedas la página avisa que no alcanza para concluir.
 - `GET /track-record/signals`: cuántas veces acertó cada señal por separado.
 
 ### Pasar al modelo 2

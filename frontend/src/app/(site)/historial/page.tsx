@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term } from "@/components/ui";
@@ -10,116 +9,32 @@ import { assetNames, nameOf } from "@/lib/names";
 
 export const metadata = { title: "Resultados | El Parqué" };
 
-const bp = (x: number | null | undefined) => (x == null ? "-" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("es-AR", { maximumFractionDigits: 0 })} pb`);
 const share = (x: number) => `${Math.round(x * 100)}%`;
+/** A return as a signed percentage with two decimals: 0,0035 -> "+0,35%". */
+const signedPct = (x: number | null | undefined) =>
+  x == null ? "-" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x * 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+const fromBp = (x: number | null | undefined) => (x == null ? null : x / 1e4);
 
-// The paragraph of each paper that a test comes from.
-const PAPER = {
-  lopezReaction: "https://arxiv.org/html/2304.07619#S6.SS1.p5",
-  lopezLegs: "https://arxiv.org/html/2304.07619#S6.SS1.p6",
-  lopezCosts: "https://arxiv.org/html/2304.07619#S6.SS2.p4",
-  lopezDays: "https://arxiv.org/html/2304.07619#S8.SS1.p2",
-  kirtacQuintiles: "https://arxiv.org/html/2609.23703#S6.SS3.p1",
-  kirtacPlacebos: "https://arxiv.org/html/2609.23703#S6.SS4.p1",
-  liveTradeDelay: "https://arxiv.org/html/2511.03628#S5.SS4.SSS0.Px1.p1",
-  alphaShortWindows: "https://arxiv.org/html/2605.16895#S2.SS4.p1",
-};
+type Row = { label: string; value: (t: SignalTest) => string; about: string };
 
-function Source({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <a href={href} target="_blank" rel="noreferrer" className="text-text-2 underline decoration-border underline-offset-2 hover:text-text">
-      {children}
-    </a>
-  );
-}
-
-type Row = {
-  label: string;
-  value: (t: SignalTest) => string;
-  // Only on the first row of a group: what it measures, for how many rows, and where it comes from.
-  about?: { text: ReactNode; rows: number; sources: { label: string; href: string }[] };
-  sub?: boolean;
-};
-
-const horizon = (t: SignalTest, days: number) => t.horizons.find((h) => h.days === days);
-const net = (t: SignalTest) => {
-  const h = horizon(t, 1);
-  if (!h) return "-";
-  const [a, b, c] = ["5", "10", "20"].map((k) => bp(h.top_net_bp[k]).replace(" pb", ""));
-  return `${a}, ${b} y ${c} pb`;
-};
-
+/** `cost`: the account's cost of one operation, as a share of the amount. */
 function rows(cost: number): Row[] {
-  const days = [
-    { days: 1, label: "Ese día" },
-    { days: 2, label: "Al día siguiente" },
-    { days: 3, label: "Dos días después" },
-  ];
+  const costText = (cost * 2 * 100).toLocaleString("es-AR", { maximumFractionDigits: 2 });
   return [
-    ...days.map((d, i): Row => ({
-      label: i === 0 ? `Mejor 20% menos peor 20%, ${d.label.toLowerCase()}` : d.label,
-      sub: i > 0,
-      value: (t) => bp(horizon(t, d.days)?.spread_bp),
-      about: i === 0 ? {
-        rows: 3,
-        text: "Cuánto le ganaron los de puntaje alto a los de puntaje bajo de su clase. Positivo quiere decir que el orden sirve, y debería achicarse con los días.",
-        sources: [{ label: "Kirtac 6.3", href: PAPER.kirtacQuintiles }, { label: "Lopez-Lira y Tang 8.1", href: PAPER.lopezDays }],
-      } : undefined,
-    })),
-    ...days.map((d, i): Row => ({
-      label: i === 0 ? `Mejor 20%, ${d.label.toLowerCase()}` : d.label,
-      sub: i > 0,
-      value: (t) => bp(horizon(t, d.days)?.top_bp),
-      about: i === 0 ? {
-        rows: 3,
-        text: "Solo comprar los de arriba, contra su clase. Es lo único que se puede hacer, porque la app no vende en corto.",
-        sources: [{ label: "Lopez-Lira y Tang 6.1", href: PAPER.lopezLegs }],
-      } : undefined,
-    })),
     {
-      label: "Mejor 20% con 5, 10 y 20 pb de costo",
-      value: net,
-      about: {
-        rows: 1,
-        text: `Ese día, después de comprar y vender. Tu costo en IOL es ${(cost * 1e4).toLocaleString("es-AR", { maximumFractionDigits: 1 })} pb, y en el paper la ganancia desaparece con 20.`,
-        sources: [{ label: "Lopez-Lira y Tang 6.2", href: PAPER.lopezCosts }],
-      },
+      label: "Puntaje alto contra puntaje bajo",
+      value: (t) => signedPct(fromBp(t.spread_bp)),
+      about: "Cuánto rindió en el día el 20% de mejor puntaje de cada clase, menos lo que rindió el 20% de peor puntaje. Positivo quiere decir que el puntaje ordena bien.",
     },
     {
-      label: "Puntajes mezclados entre activos",
-      value: (t) => (t.placebo_tickers ? share(t.placebo_tickers.share_at_least_real) : "-"),
-      about: {
-        rows: 1,
-        text: "De 300 repartos al azar, cuántos dieron igual o más que la primera fila. Se pide menos de 5% para descartar la suerte.",
-        sources: [{ label: "Kirtac 6.4", href: PAPER.kirtacPlacebos }],
-      },
+      label: "Comprar los de puntaje alto, con costos",
+      value: (t) => signedPct(t.top_bp == null ? null : t.top_bp / 1e4 - cost * 2),
+      about: `Lo que quedaba por comprar el 20% de mejor puntaje a la apertura y venderlo al cierre, contra la mediana de su clase, después de pagar comprar y vender en IOL (${costText}%). Es lo único que la app puede hacer, porque no vende en corto.`,
     },
     {
-      label: "Puntajes mezclados entre días",
-      value: (t) => (t.placebo_dates ? share(t.placebo_dates.share_at_least_real) : "-"),
-      about: {
-        rows: 1,
-        text: "Lo mismo, pero cambiando el día de cada puntaje. Mide si importa cuándo llegó la noticia.",
-        sources: [{ label: "Kirtac 6.4", href: PAPER.kirtacPlacebos }],
-      },
-    },
-    {
-      label: "Con el puntaje de la rueda anterior",
-      value: (t) => bp(t.delayed_bp),
-      about: {
-        rows: 1,
-        text: "La primera fila con el puntaje de ayer. Si da igual o más, el modelo no usa nada nuevo.",
-        sources: [{ label: "LiveTradeBench 5.4", href: PAPER.liveTradeDelay }],
-      },
-    },
-    {
-      label: "Reacción a la apertura",
-      value: (t) => bp(t.reaction_bp),
-      about: {
-        rows: 1,
-        text: "El mismo orden, del cierre anterior a la apertura. No se puede operar, pero muestra si Gemini lee bien para qué lado va cada noticia.",
-        sources: [{ label: "Lopez-Lira y Tang 6.1", href: PAPER.lopezReaction }],
-      },
+      label: "Puntajes al azar que dan lo mismo",
+      value: (t) => (t.placebo ? share(t.placebo.share_at_least_real) : "-"),
+      about: "Se repartieron los puntajes al azar 300 veces. Es cuántas de esas veces la primera fila dio igual o más. Menos de 5% quiere decir que la primera fila no es suerte.",
     },
   ];
 }
@@ -145,31 +60,29 @@ function RankingTable({ tests, cost }: { tests: SignalTest[]; cost: number }) {
           </thead>
           <tbody>
             {rows(cost).map((r) => (
-              <tr key={r.label} className={r.sub ? "" : "border-t border-grid"}>
-                <td className={`py-2.5 pr-4 align-top ${r.sub ? "pl-4 text-text-2" : ""}`}>{r.label}</td>
+              <tr key={r.label} className="border-t border-grid">
+                <td className="py-2.5 pr-4 align-top">{r.label}</td>
                 {tests.map((t) => (
                   <td key={t.model_version} className="num whitespace-nowrap py-2.5 pr-4 text-right align-top">{r.value(t)}</td>
                 ))}
-                {r.about && (
-                  <td rowSpan={r.about.rows} className="py-2.5 pl-4 align-top text-sm text-text-2">
-                    {r.about.text}{" "}
-                    {r.about.sources.map((x, i) => (
-                      <span key={x.href}>{i > 0 && ", "}<Source href={x.href}>{x.label}</Source></span>
-                    ))}
-                  </td>
-                )}
+                <td className="py-2.5 pl-4 align-top text-sm text-text-2">{r.about}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <p className="mt-4 max-w-3xl text-sm text-text-2">
-        1 pb es 0,01%. Cada activo se mide contra la mediana de su clase ese día, así una suba o una baja de todo el mercado no cuenta.
-        {few && <> Con tan pocas ruedas el azar todavía mueve mucho el resultado (<Source href={PAPER.alphaShortWindows}>The Alpha Illusion 2.4</Source>).</>}
+        Cada activo se mide contra la mediana de su clase ese día, así una suba o una baja de todo el mercado no cuenta.
+        {few && " Con menos de 20 ruedas el azar todavía mueve mucho estos números, así que no alcanzan para concluir."}
       </p>
     </>
   );
 }
+
+const DRAWDOWN_INFO =
+  "La peor baja del período: desde el valor más alto que tuvo hasta el más bajo que vino después, antes de recuperarse. −8% quiere decir que en algún momento valió 8% menos que en su mejor día anterior.";
+const SORTINO_INFO =
+  "Cuánto ganó por cada unidad de riesgo de perder. Es el rendimiento diario promedio dividido por cuánto se alejaron de cero los días de pérdida. Negativo quiere decir que en promedio perdió. Sirve para comparar las cuatro: más alto es mejor.";
 
 /** Only what touched the user: suggested buys and their own positions. */
 const relevant = (r: Recommendation) => r.held || r.action !== "keep";
@@ -222,7 +135,7 @@ export default async function HistoryPage() {
     <div className="space-y-14">
       <section>
         <PageTitle>Resultados</PageTitle>
-        <p className="text-text-2">Si hubieras seguido el plan de cada día desde el {s.start_day && dayNumeric(asDay(s.start_day))}, al cierre del {dayNumeric(asDay(s.days[s.days.length - 1].day))} tu cartera valdría</p>
+        <p className="text-text-2">Si hubieras seguido el plan de cada día, tu cartera valdría</p>
         <p className="num mt-1 text-3xl font-semibold">{money(s.follow_value)}</p>
         <Stats
           className="mt-6"
@@ -263,7 +176,8 @@ export default async function HistoryPage() {
                   <Term info={x.note}>{x.label}</Term>
                   {stats && (
                     <span className="num block text-text-2">
-                      Caída máxima {pct(stats.max_drawdown, 1)}{stats.sortino != null && `, Sortino ${stats.sortino.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`}
+                      <Term info={DRAWDOWN_INFO}>Caída máxima</Term> {pct(stats.max_drawdown, 1)}
+                      {stats.sortino != null && <>, <Term info={SORTINO_INFO}>Sortino</Term> {stats.sortino.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</>}
                     </span>
                   )}
                 </span>
@@ -278,9 +192,9 @@ export default async function HistoryPage() {
 
       {evaluation.ok && evaluation.data.length > 0 && (
         <section>
-          <SectionTitle>¿El ranking dice algo?</SectionTitle>
+          <SectionTitle>¿El puntaje sirve para elegir?</SectionTitle>
           <p className="mb-6 max-w-3xl text-text-2">
-            Las pruebas que hacen los papers antes de creerle a un ranking. Si el orden de los puntajes sirve, los de arriba rinden más que los de abajo, le ganan al azar y el efecto se apaga en pocos días.
+            Cada día se ordenan los activos de cada clase por puntaje, y se mira cuánto rindió cada uno de la apertura al cierre.
           </p>
           <RankingTable tests={evaluation.data} cost={s.commission} />
         </section>

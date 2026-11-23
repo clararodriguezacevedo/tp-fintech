@@ -6,7 +6,7 @@ import pytest
 from app.analysis import risk, track_record
 from app.models.db import RecommendationRow, SignalBreakdown
 from app.models.iol import DailyBar
-from app.sources import corporate_events, macro
+from app.sources import corporate_events
 from app.sources.corporate_events import CorporateEvent
 
 
@@ -80,7 +80,7 @@ def test_coupon_of_unknown_size_drops_the_overnight_gap():
     assert g["close_return"] == g["realized_return"]
 
 
-# Corporate events and macro
+# Corporate events
 
 def test_coupon_dates_skip_weekends():
     # 9 Jan 2027 is a Saturday: paid Monday the 11th, so the ex-date is Friday the 8th.
@@ -93,16 +93,6 @@ def test_us_symbols_map_to_local_tickers():
     assert corporate_events._local_ticker("GGAL", tradable) == "GGAL"
     assert corporate_events._local_ticker("BRK/B", tradable) == "BRKB"
     assert corporate_events._local_ticker("KO", tradable) is None
-
-
-def test_macro_signal_sign_and_size():
-    calm = [100 + (i % 2) for i in range(60)]
-    jump = calm[:-1] + [120.0]
-    s = macro.change_signal(jump)
-    assert s is not None and s.signal > 0.9 and s.level == 120
-    fall = macro.change_signal(calm[:-1] + [80.0])
-    assert fall is not None and fall.signal < -0.9
-    assert macro.change_signal([100.0] * 10) is None
 
 
 # Splits

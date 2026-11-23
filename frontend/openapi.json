@@ -1820,7 +1820,7 @@
     "/track-record/signals": {
       "get": {
         "summary": "Track Record Signals",
-        "description": "How often each signal (news, markets, and macro, which isn't in the score) was right.",
+        "description": "How often each signal (news and markets) was right.",
         "operationId": "track_record_signals",
         "parameters": [
           {
@@ -2598,42 +2598,6 @@
           "day_change_pct"
         ],
         "title": "HoldingOut"
-      },
-      "HorizonResult": {
-        "properties": {
-          "days": {
-            "type": "integer",
-            "title": "Days"
-          },
-          "sessions": {
-            "type": "integer",
-            "title": "Sessions"
-          },
-          "spread_bp": {
-            "type": "number",
-            "title": "Spread Bp"
-          },
-          "top_bp": {
-            "type": "number",
-            "title": "Top Bp"
-          },
-          "top_net_bp": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Top Net Bp"
-          }
-        },
-        "type": "object",
-        "required": [
-          "days",
-          "sessions",
-          "spread_bp",
-          "top_bp",
-          "top_net_bp"
-        ],
-        "title": "HorizonResult"
       },
       "Impact": {
         "properties": {
@@ -3926,48 +3890,6 @@
             ],
             "title": "From High"
           },
-          "macro": {
-            "type": "number",
-            "title": "Macro",
-            "default": 0.0
-          },
-          "macro_source": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "riesgo_pais",
-                  "ccl"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Macro Source"
-          },
-          "macro_level": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Macro Level"
-          },
-          "macro_change": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Macro Change"
-          },
           "event_kind": {
             "anyOf": [
               {
@@ -4063,14 +3985,9 @@
             "type": "string",
             "enum": [
               "news",
-              "markets",
-              "macro"
+              "markets"
             ],
             "title": "Signal"
-          },
-          "in_score": {
-            "type": "boolean",
-            "title": "In Score"
           },
           "n": {
             "type": "integer",
@@ -4099,7 +4016,6 @@
         "type": "object",
         "required": [
           "signal",
-          "in_score",
           "n",
           "hits",
           "rate",
@@ -4125,14 +4041,7 @@
             "type": "boolean",
             "title": "Enough"
           },
-          "horizons": {
-            "items": {
-              "$ref": "#/components/schemas/HorizonResult"
-            },
-            "type": "array",
-            "title": "Horizons"
-          },
-          "reaction_bp": {
+          "spread_bp": {
             "anyOf": [
               {
                 "type": "number"
@@ -4141,9 +4050,20 @@
                 "type": "null"
               }
             ],
-            "title": "Reaction Bp"
+            "title": "Spread Bp"
           },
-          "placebo_tickers": {
+          "top_bp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Bp"
+          },
+          "placebo": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Placebo"
@@ -4152,38 +4072,6 @@
                 "type": "null"
               }
             ]
-          },
-          "placebo_dates": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Placebo"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "inverted_bp": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Inverted Bp"
-          },
-          "delayed_bp": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delayed Bp"
           }
         },
         "type": "object",
@@ -4192,12 +4080,9 @@
           "sessions",
           "recommendations",
           "enough",
-          "horizons",
-          "reaction_bp",
-          "placebo_tickers",
-          "placebo_dates",
-          "inverted_bp",
-          "delayed_bp"
+          "spread_bp",
+          "top_bp",
+          "placebo"
         ],
         "title": "SignalTest"
       },

@@ -224,8 +224,7 @@ class Quote(BaseModel):
 
 
 class SignalStats(BaseModel):
-    signal: Literal["news", "markets", "macro"]
-    in_score: bool  # macro is measured, but doesn't decide
+    signal: Literal["news", "markets"]
     n: int  # graded recommendations where this signal pointed somewhere
     hits: int  # ... and the asset did better or worse than its class's median as it said
     rate: float | None

@@ -326,12 +326,6 @@ const SignalBreakdown = z
     concentration: z.number().optional().default(0),
     change_3m: z.union([z.number(), z.null()]).optional(),
     from_high: z.union([z.number(), z.null()]).optional(),
-    macro: z.number().optional().default(0),
-    macro_source: z
-      .union([z.enum(["riesgo_pais", "ccl"]), z.null()])
-      .optional(),
-    macro_level: z.union([z.number(), z.null()]).optional(),
-    macro_change: z.union([z.number(), z.null()]).optional(),
     event_kind: z.union([z.enum(["dividend", "coupon"]), z.null()]).optional(),
     event_date: z.union([z.string(), z.null()]).optional(),
     event_yield: z.union([z.number(), z.null()]).optional(),
@@ -425,8 +419,7 @@ const PortfolioPlan = z
   .passthrough();
 const SignalStats = z
   .object({
-    signal: z.enum(["news", "markets", "macro"]),
-    in_score: z.boolean(),
+    signal: z.enum(["news", "markets"]),
     n: z.number().int(),
     hits: z.number().int(),
     rate: z.union([z.number(), z.null()]),
@@ -522,15 +515,6 @@ const Simulation = z
     stats: z.record(SeriesStats).optional().default({}),
   })
   .passthrough();
-const HorizonResult = z
-  .object({
-    days: z.number().int(),
-    sessions: z.number().int(),
-    spread_bp: z.number(),
-    top_bp: z.number(),
-    top_net_bp: z.record(z.number()),
-  })
-  .passthrough();
 const Placebo = z
   .object({ mean_bp: z.number(), share_at_least_real: z.number() })
   .passthrough();
@@ -540,12 +524,9 @@ const SignalTest = z
     sessions: z.number().int(),
     recommendations: z.number().int(),
     enough: z.boolean(),
-    horizons: z.array(HorizonResult),
-    reaction_bp: z.union([z.number(), z.null()]),
-    placebo_tickers: z.union([Placebo, z.null()]),
-    placebo_dates: z.union([Placebo, z.null()]),
-    inverted_bp: z.union([z.number(), z.null()]),
-    delayed_bp: z.union([z.number(), z.null()]),
+    spread_bp: z.union([z.number(), z.null()]),
+    top_bp: z.union([z.number(), z.null()]),
+    placebo: z.union([Placebo, z.null()]),
   })
   .passthrough();
 
@@ -597,7 +578,6 @@ export const schemas = {
   SimDay,
   SeriesStats,
   Simulation,
-  HorizonResult,
   Placebo,
   SignalTest,
 };

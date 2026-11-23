@@ -17,9 +17,10 @@ export function inBoth(o: Operation, x: number) {
   return { ars: x, usd: o.rate ? x / o.rate : null };
 }
 
-/** Newest first: what was traded since the position last went to zero, so what makes it up now. */
+/** Newest first: what was traded since the position last went to zero, so what makes it up now.
+ * Only real operations: simulated ones never touched the account, so they aren't in the position or its PPC. */
 function currentPosition(operations: Operation[], ticker: string) {
-  const done = operations.filter((o) => o.ticker === ticker && o.status === "completed").reverse();
+  const done = operations.filter((o) => o.ticker === ticker && o.status === "completed" && o.source !== "simulated").reverse();
   let held = 0;
   let start = 0;
   done.forEach((o, i) => {

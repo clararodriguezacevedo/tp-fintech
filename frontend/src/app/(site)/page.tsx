@@ -39,6 +39,7 @@ export default async function Home() {
   if (!recs.ok) return <ApiFailure error={recs.error} />;
 
   const buys = recs.data.filter((r) => r.action === "buy").sort((a, b) => b.score - a.score);
+  const planIsEmpty = plan.ok && plan.data.steps.length === 0 && plan.data.unfunded.length === 0;
   const updated = recs.data.reduce<string | null>((m, r) => (!m || r.updated_at > m ? r.updated_at : m), null);
 
   return (
@@ -49,7 +50,8 @@ export default async function Home() {
         </PageTitle>
         <SectionTitle>Tu plan de hoy</SectionTitle>
         {plan.ok ? <PlanView plan={plan.data} /> : <ApiFailure error={plan.error} />}
-        {buys.length === 0 && <p className="mt-1 text-text-2">Hoy no hay compras recomendadas para tu perfil.</p>}
+        {/* An empty plan already says there's nothing to do. */}
+        {buys.length === 0 && !planIsEmpty && <p className="mt-1 text-text-2">Hoy no hay compras recomendadas para tu perfil.</p>}
       </section>
 
       <NewsSection />

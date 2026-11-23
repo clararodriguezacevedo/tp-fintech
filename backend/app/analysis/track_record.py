@@ -184,8 +184,7 @@ def evaluate_pending(
     return graded
 
 
-SIGNALS = ("news", "markets", "macro")
-IN_SCORE = {"news", "markets"}
+SIGNALS = ("news", "markets")
 SIGNAL_MIN = 0.05  # smaller than this didn't really point anywhere
 
 
@@ -210,7 +209,7 @@ def signal_stats(rows: list[RecommendationRow] | None = None) -> list[SignalStat
             hits += (value > 0) == (r.excess_return > 0)
             days.add(r.target_date)
         out.append(SignalStats(
-            signal=name, in_score=name in IN_SCORE, n=n, hits=hits,  # type: ignore[arg-type]
+            signal=name, n=n, hits=hits,  # type: ignore[arg-type]
             rate=round(hits / n, 3) if n else None, days=len(days),
         ))
     return out

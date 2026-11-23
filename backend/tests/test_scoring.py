@@ -8,7 +8,6 @@ from app.analysis.scoring import _Inputs, decide, drop_repeats, recommend, score
 from app.analysis.tagger import TickerImpact, check_market_impact, is_price_bet, names_asset
 from app.models.db import Evidence, MarketRow, NewsRow, TickerImpactRow
 from app.models.iol import DailyBar
-from app.sources.macro import MacroSignal
 
 ART = market_hours.ART
 
@@ -469,25 +468,6 @@ def test_a_market_naming_the_asset_beats_a_factor_of_the_same_event(monkeypatch)
                        {"oil": mk("oil", "e", 90000, 0.1), "oil2": mk("oil2", "e", 2000, 0.1)})
     assert [e.item_id for e in got["XOM"]] == ["oil2"]
     assert got["XOM"][0].weight == 1
-
-
-# Macro: measured, not scored
-
-def test_macro_signal_routes_by_group():
-    signals = {"riesgo_pais": MacroSignal(level=700, change=0.1, signal=0.6),
-               "ccl": MacroSignal(level=1600, change=0.02, signal=0.5)}
-    assert scoring.macro_for("AL30", "bonds", signals) == (-0.6, "riesgo_pais")
-    assert scoring.macro_for("GGAL", "stocks", signals) == (-0.6, "riesgo_pais")
-    assert scoring.macro_for("TXAR", "stocks", signals) == (-0.3, "riesgo_pais")
-    assert scoring.macro_for("VIST", "us", signals) == (-0.3, "riesgo_pais")
-    assert scoring.macro_for("KO", "us", signals) == (0.5, "ccl")
-    assert scoring.macro_for("KO", "us", {}) == (0.0, None)
-
-
-def test_macro_doesnt_move_the_score():
-    a = recommend([_Inputs(ticker="A", held=False, price=1.0, evidence=[ev("a", 1)], macro=0.0)])[0]
-    b = recommend([_Inputs(ticker="A", held=False, price=1.0, evidence=[ev("a", 1)], macro=0.9, macro_source="ccl")])[0]
-    assert a.score == b.score and b.breakdown.macro == 0.9
 
 
 # Three-month context
