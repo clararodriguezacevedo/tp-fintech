@@ -4,7 +4,7 @@ import { Suspense } from "react";
 
 import { NewsList } from "@/components/news-list";
 import { ImpactList } from "@/components/signals";
-import { ApiFailure, attempt, SectionTitle, Skeleton, Term } from "@/components/ui";
+import { ApiFailure, attempt, SectionTitle, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { prob } from "@/lib/format";
 
@@ -23,14 +23,10 @@ async function Markets() {
           <div className="flex items-start justify-between gap-4">
             <a href={m.url ?? undefined} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{m.title}</a>
             <span className="shrink-0 text-right">
-              <span className="num block text-xl font-semibold">
-                <Term info="La probabilidad de que pase el SÍ, según lo que la gente paga hoy en el mercado." place="right-0 top-full mt-1">{prob(m.probability)}</Term>
-              </span>
+              <span className="num block text-xl font-semibold">{prob(m.probability)}</span>
               {m.change_24h != null && m.change_24h !== 0 && (
                 <span className="num block text-text-2">
-                  <Term info="Cuántos puntos se movió la probabilidad en las últimas 24 horas. Es lo que cuenta para el puntaje." place="right-0 top-full mt-1">
-                    {m.change_24h > 0 ? "+" : "−"}{Math.abs(m.change_24h * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })} pts
-                  </Term>
+                  {m.change_24h > 0 ? "+" : "−"}{Math.abs(m.change_24h * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })} pts
                 </span>
               )}
             </span>
@@ -58,7 +54,7 @@ export function NewsSection() {
         <Suspense fallback={loading}><News /></Suspense>
       </section>
       <section>
-        <SectionTitle>Qué esperan los mercados de predicción</SectionTitle>
+        <SectionTitle info="El porcentaje es la probabilidad de que pase el SÍ, según lo que la gente paga hoy. Abajo, cuántos puntos se movió en 24 horas: eso es lo que cuenta para el puntaje.">Qué esperan los mercados de predicción</SectionTitle>
         <Suspense fallback={loading}><Markets /></Suspense>
       </section>
     </div>

@@ -76,37 +76,28 @@ export default async function HistoryPage() {
         />
 
         <div className="mt-14">
-          <SectionTitle
-            aside={<UnitToggle />}
-            info={`Todo arranca de tu cartera del primer día. Seguir el plan es una cartera aparte que se arrastra de un día a otro. Se opera a la apertura, con los costos reales de IOL (${(s.commission * 100).toLocaleString("es-AR", { maximumFractionDigits: 3 })}%), y cada compra sale si toca su stop loss o su take profit. Si los dos entran en el mismo día, cuenta el stop loss. Tus depósitos y retiros les llegan a todas como efectivo. Están en los montos, pero no en los porcentajes, porque no son ganancia ni pérdida. Las líderes del Merval reemplazan al índice, que IOL no publica.`}
-          >
+          <SectionTitle aside={<UnitToggle />}>
             Contra qué comparar
           </SectionTitle>
         </div>
         <ul className="divide-y divide-grid">
           {[
-            { key: "follow", label: "Siguiendo el plan de cada día", value: s.follow_value, note: "" },
-            {
-              key: "base",
-              label: "Lo que hiciste",
-              value: s.base_value,
-              note: s.anchored
-                ? `Tu cuenta real, la misma que en Mi cartera.${s.transfers ? ` Incluye ${s.transfers < 0 ? "lo que retiraste" : "lo que depositaste"} (${money(Math.abs(s.transfers))}), que no cuenta en el porcentaje.` : ""}`
-                : "tu cartera real de cada día",
-            },
-            { key: "hold", label: "Quedarte quieto", value: s.hold_value, note: "" },
-            { key: "merval", label: "Comprar las líderes del Merval", value: s.merval_value, note: "" },
-          ].map((x) => {
+            { key: "follow", label: "Siguiendo el plan de cada día", value: s.follow_value },
+            { key: "base", label: "Lo que hiciste", value: s.base_value },
+            { key: "hold", label: "Quedarte quieto", value: s.hold_value },
+            { key: "merval", label: "Comprar las líderes del Merval", value: s.merval_value },
+          ].map((x, i) => {
             const c = change(x.value, s.start_value, s.transfers);
             const stats = s.stats?.[x.key];
             return (
               <li key={x.label} className="flex flex-wrap items-center justify-between gap-3 py-4">
                 <span>
-                  <Term info={x.note}>{x.label}</Term>
+                  {x.label}
+                  {/* Explained once, on the first row. */}
                   {stats && (
                     <span className="num block text-text-2">
-                      <Term info={DRAWDOWN_INFO}>Caída máxima</Term> {pct(stats.max_drawdown, 1)}
-                      {stats.sortino != null && <>, <Term info={SORTINO_INFO}>Sortino</Term> {stats.sortino.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</>}
+                      <Term info={i === 0 ? DRAWDOWN_INFO : undefined}>Caída máxima</Term> {pct(stats.max_drawdown, 1)}
+                      {stats.sortino != null && <>, <Term info={i === 0 ? SORTINO_INFO : undefined}>Sortino</Term> {stats.sortino.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</>}
                     </span>
                   )}
                 </span>

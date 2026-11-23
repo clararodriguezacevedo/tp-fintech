@@ -80,7 +80,7 @@ function marketReasons(b: Breakdown | undefined) {
     out.push({
       up: false,
       text: `Es de riesgo ${RISK_NAME[b.risk_level]} y tu perfil es ${b.profile}: no te la recomendamos comprar.`,
-      note: "Solo te recomendamos lo que va con tu perfil.",
+      note: "",
     });
   }
   return out;

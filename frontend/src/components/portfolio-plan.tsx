@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { ActionMark, Term } from "@/components/ui";
 import type { PortfolioPlan } from "@/lib/api/client";
-import { dateTime, dayShort, integer, money } from "@/lib/format";
+import { integer, money } from "@/lib/format";
 
 type Step = PortfolioPlan["steps"][number];
 
@@ -30,10 +30,8 @@ function Line({ marker, children, note, quiet = false }: { marker: "sell" | "buy
 /** What's left after the plan, lent at the shortest term. Only a suggestion: it's done in IOL. */
 function Caucion({ c }: { c: NonNullable<PortfolioPlan["caucion"]> }) {
   const rate = (c.rate * 100).toLocaleString("es-AR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-  const costs = c.costs != null ? `Ya descontados ${money(c.costs)} de costos.` : "Antes de costos.";
-  const when = c.live ? "" : ` Tasa de ${dateTime(c.rate_at)}, con el mercado cerrado no hay una nueva.`;
   return (
-    <Line marker="swap" quiet note={`${costs} Vuelve el ${dayShort(`${c.due_date}T12:00:00`)}. Se hace en IOL.${when}`}>
+    <Line marker="swap" quiet>
       Lo que queda ({money(c.amount)}) en caución a {c.term_days === 1 ? "1 día" : `${c.term_days} días`}, al {rate}% anual, gana {money(c.gain - (c.costs ?? 0))}.
     </Line>
   );
@@ -73,7 +71,7 @@ export function PlanView({ plan }: { plan: PortfolioPlan }) {
             );
           }
           return buy ? (
-            <Line key={buy.group} marker="buy" note="Con tu plata disponible.">
+            <Line key={buy.group} marker="buy">
               Comprá {integer(buy.quantity)} <Ticker t={buy.ticker} /> ({money(buy.amount)}).
             </Line>
           ) : null;

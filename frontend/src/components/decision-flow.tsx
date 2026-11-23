@@ -1,11 +1,14 @@
-// The whole decision, step by step. Every number and the prompts come from the backend (/model), so
-// this can't say something different from what the code does.
+// The whole decision, step by step: the one place on "Cómo decide" that says how it works. Every
+// number and the prompts come from the backend (/model), so this can't say something different from
+// what the code does.
 import type { ReactNode } from "react";
 
 import type { ModelInfo } from "@/lib/api/client";
 import { score } from "@/lib/format";
 
 const pctOf = (x: number) => `${Math.round(x * 100)}%`;
+
+export const MEDIAN = "Contra la mediana de su clase quiere decir contra el activo del medio: el que ese día tiene la mitad de su clase arriba y la mitad abajo. Si todos los CEDEARs bajaron 3% porque bajó el dólar y uno bajó 1%, ese cuenta como +2%. Así, un día en que sube o baja todo el mercado no cuenta como acierto ni como error.";
 const num = (x: number) => x.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 const points = (x: number) => `${x > 0 ? "sube" : "baja"} ${num(Math.abs(x * 100))} pts`;
 
@@ -122,12 +125,14 @@ export function DecisionFlow({ m }: { m: ModelInfo }) {
           <li>En una apuesta sobre el petróleo, el oro o bitcoin, la dirección sale del título. Un mínimo empuja para abajo, responda lo que responda.</li>
           <li>Un rango (&quot;entre 400 y 425&quot;) no dice para qué lado va, así que queda como incierto.</li>
           <li>Un activo que no existe, un factor inventado o un texto roto también se descartan.</li>
+          <li>Los dividendos y los cupones no son señal. El día que se pagan el precio baja, pero no es una pérdida. Se avisan en cada recomendación y se descuentan al medir.</li>
         </ul>
       </Step>
 
       <Step n={5} title="Cada noticia pasa a un número" summary="Vale +1, −1 o 0, y pesa según cuántas aperturas pudieron operarla.">
         <Rule>valor = +1 si sube, −1 si baja, 0 si es incierto. peso = 1 sin aperturas, la mitad con una, 0 con {m.news_max_opens}</Rule>
-        <p>Una noticia incierta no suma para ningún lado, pero pesa, así que acerca el promedio a cero. Lo que repite algo de los últimos {m.novelty_days} días no cuenta, y las notas de cierre tampoco.</p>
+        <p>Una noticia incierta no suma para ningún lado, pero pesa, así que acerca el promedio a cero. Las noches, los fines de semana y los feriados no la envejecen.</p>
+        <p>Lo que se parece a algo publicado en los últimos {m.novelty_days} días sobre el mismo activo no es nuevo: cuenta una vez, aunque lo publiquen varios medios. Las notas de cierre (&quot;así cerró el mercado&quot;) tampoco cuentan, porque solo describen lo que ya pasó.</p>
       </Step>
 
       <Step n={6} title="Cada mercado pasa a un número" summary="Cuenta cuánto se movió la probabilidad, no qué tan alta está.">
@@ -151,8 +156,11 @@ export function DecisionFlow({ m }: { m: ModelInfo }) {
         <ul className="list-disc space-y-1 pl-5">
           <li>Si no lo tenés, se compra si está en el {pctOf(m.top_share)} mejor de su clase y tiene {score(m.buy_threshold)} o más. Los puntajes iguales comparten el puesto, y un solo mercado por factor no llega a ese puntaje. Hacen falta dos, o una noticia sobre el activo.</li>
           <li>Si lo tenés, se vende con {score(m.sell_threshold_held)} o menos. Una sola mala noticia ({score(-1 / (1 + m.prior_weight))}) no alcanza, porque vender desarma una posición que elegiste.</li>
-          <li>Lo que está por encima de tu perfil ({m.profile}) nunca sale comprar, aunque tenga buen puntaje.</li>
+          <li>Lo que está por encima de tu perfil nunca sale comprar, aunque tenga buen puntaje, por las reglas de la CNV.</li>
         </ul>
+        <p>
+          Tu perfil es {m.profile}, así que llega hasta riesgo medio. Riesgo bajo son los bonos y obligaciones negociables que se mueven hasta {pctOf(m.bond_low_vol)} al año. Medio son el resto de los bonos, y las acciones, CEDEARs y ETFs que se mueven hasta {pctOf(m.equity_mid_vol)} al año. Alto son los que se mueven más, y cualquier activo sin historial suficiente.
+        </p>
       </Step>
 
       <Step n={9} title="Antes de abrir, sale la del día" summary="A las 10:15, en días de mercado, antes de la subasta de apertura. Lo que ves es lo que se mide.">
@@ -160,11 +168,22 @@ export function DecisionFlow({ m }: { m: ModelInfo }) {
       </Step>
 
       <Step n={10} title="Las recomendaciones se vuelven tu plan" summary="Qué hacer hoy, con la plata que tenés.">
-        <p>Primero se vende lo que dice vender. Después cada compra, de la mejor a la peor, se paga con tu plata disponible. Si no alcanza, propone rotar desde algo bastante peor. Si sobra suficiente, sugiere caución. En <span className="text-text">Operaciones</span> se marca lo que hiciste según ese plan.</p>
+        <p>Primero se vende lo que dice vender. Después cada compra, de la mejor a la peor, se paga con tu plata disponible. Si no alcanza, propone rotar: vender parte de algo que tenés y comprar con esa plata, solo si la compra puntúa bastante mejor y lo que vendés no se espera que suba. Lo que no se puede pagar se avisa en vez de recomendarse igual. Si sobra suficiente, sugiere caución.</p>
+        <p>La cantidad de cada compra es la menor de estas. La confianza del modelo no interviene, porque los papers lo desaconsejan.</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>La que, si toca el stop loss, te hace perder {pctOf(m.risk_per_trade)} de la cartera (cuanto más se mueve el precio, menos se compra)</li>
+          <li>La que alcanza con tu efectivo</li>
+          <li>La que deja ese activo en menos del {pctOf(m.max_position)} de tu cartera</li>
+          <li>La que deja su grupo de riesgo en menos del {pctOf(m.concentration_limit)} (si ya lo pasó, como mucho 2% más)</li>
+          <li>La que no supera el {pctOf(m.max_volume_share)} de lo que se opera por día</li>
+        </ul>
+        <p>El stop loss se pone a dos días típicos debajo del precio y el take profit al doble de esa distancia arriba. En <span className="text-text">Operaciones</span>, lo que hiciste como decía el plan de ese día queda marcado como &quot;Según el plan&quot;.</p>
       </Step>
 
-      <Step n={11} title="Después del cierre se mide" summary="A las 18:30, con los precios de cierre ya firmes, contra la mediana de su clase.">
-        <p>Se califica el día, se actualiza la cartera simulada que sigue el plan y se recalculan las pruebas de <span className="text-text">Resultados</span>.</p>
+      <Step n={11} title="Después del cierre se mide" summary="A las 18:30, de la apertura al cierre, contra la mediana de su clase.">
+        <p>Comprar acierta si le gana a su clase, vender si pierde contra ella. Mantener no es una apuesta, así que no suma ni resta aciertos. Cada recomendación guarda la versión del modelo que la hizo (hoy, la {m.version}), así los resultados de un modelo no se mezclan con los de otro.</p>
+        <p>{MEDIAN}</p>
+        <p>También se actualiza la cartera que sigue el plan, que está en <span className="text-text">Resultados</span>, y las pruebas de abajo.</p>
       </Step>
     </ol>
   );

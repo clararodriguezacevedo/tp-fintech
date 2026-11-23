@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { CloseTrade } from "@/components/close-trade";
 import { inBoth } from "@/components/position-detail";
-import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term, Tooltip } from "@/components/ui";
+import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term } from "@/components/ui";
 import { Amount, ByMode, UnitToggle } from "@/components/units";
 import { api, type Health, type Operation, type Trade } from "@/lib/api/client";
 import { dateTime, fromEntry, integer, money, pct, price } from "@/lib/format";
@@ -34,27 +34,29 @@ function Result({ value, usd, cost }: { value: number; usd: number | null; cost:
 
 const TAG = "rounded border border-border px-1.5 py-0.5 text-sm text-text-2";
 
-/** What an operation was, beyond buy or sell: what the plan said, and whether it was from this site. */
+/** What an operation was, beyond buy or sell: what the plan said, and whether it was from this site.
+ * TAGS_INFO explains them once, on the section title. */
 function Tags({ o }: { o: Operation }) {
   const tags = [
-    o.followed_plan && {
-      label: "Según el plan",
-      info: "Ese día el plan decía comprar o vender este activo, o venderlo para pagar una compra del plan. Cuenta aunque la cantidad no sea la misma.",
-    },
-    o.source === "simulated" && { label: "Simulada", info: "Desde este sitio, con precios reales de IOL. No cambió tu cuenta." },
-    o.source === "site" && { label: "Desde El Parqué", info: "Una orden real que mandaste a IOL desde este sitio." },
-  ].filter((t) => !!t);
+    o.followed_plan && "Según el plan",
+    o.source === "simulated" && "Simulada",
+    o.source === "site" && "Desde El Parqué",
+  ].filter((t): t is string => !!t);
   if (tags.length === 0) return null;
   return (
     <p className="mt-1.5 flex flex-wrap gap-1.5">
-      {tags.map((t) => (
-        <Tooltip key={t.label} content={t.info}>
-          <span className={TAG}>{t.label}</span>
-        </Tooltip>
-      ))}
+      {tags.map((t) => <span key={t} className={TAG}>{t}</span>)}
     </p>
   );
 }
+
+const TAGS_INFO = (
+  <>
+    <span className="block">Según el plan: ese día el plan decía comprar o vender ese activo, o venderlo para pagar una compra del plan. Cuenta aunque la cantidad no sea la misma.</span>
+    <span className="mt-1 block">Simulada: desde este sitio, con precios reales de IOL. No cambió tu cuenta.</span>
+    <span className="mt-1 block">Desde El Parqué: una orden real que mandaste a IOL desde este sitio.</span>
+  </>
+);
 
 function stateOf(o: Operation) {
   if (o.status === "pending") return o.source === "simulated" ? STATUS.queued : "Orden pendiente";
@@ -153,7 +155,7 @@ export default async function TradesPage() {
               ]}
             />
             <div className="mt-14">
-              <SectionTitle aside={<UnitToggle />} info="Las de tu cuenta de IOL y las simuladas desde este sitio.">Compras y ventas</SectionTitle>
+              <SectionTitle aside={<UnitToggle />} info={TAGS_INFO}>Compras y ventas</SectionTitle>
               <RealOperations operations={real.data.operations} names={names} />
             </div>
           </>
