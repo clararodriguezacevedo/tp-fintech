@@ -3,7 +3,7 @@ of each asset's class:
 
   spread   the top 20% of recommendations by score against the bottom 20%
   top      the top 20% alone, which is all the app can do (there's no short selling). The page takes
-           the account's real trading costs off it.
+           `cost`, the account's real cost of trading, off it for a buy and a sell.
   placebo  scores shuffled between the tickers of each day: if the real spread doesn't beat that,
            it's luck, not the signal
 """
@@ -17,7 +17,8 @@ from datetime import date
 from pydantic import BaseModel
 
 from app import prices
-from app.analysis import track_record
+from app.analysis import simulation, track_record
+from app.brokers.iol import trade_cost_rate
 from app.models.db import RecommendationRow
 from app.models.iol import DailyBar
 
@@ -40,6 +41,7 @@ class SignalTest(BaseModel):
     spread_bp: float | None  # top minus bottom, before costs
     top_bp: float | None  # the top alone, before costs
     placebo: Placebo | None  # scores shuffled between the tickers of each day
+    cost: float | None = None  # the account's cost of one operation (a buy or a sell), as a share
 
 
 Scores = dict[str, float]
@@ -152,4 +154,6 @@ def run() -> list[SignalTest]:
                 cache[ticker] = []
         return cache[ticker]
 
-    return [check_signal(versions[v], bars_of, v) for v in sorted(versions, reverse=True)]
+    real_rate = trade_cost_rate()
+    cost = simulation.COMMISSION if real_rate is None else real_rate
+    return [check_signal(versions[v], bars_of, v).model_copy(update={"cost": cost}) for v in sorted(versions, reverse=True)]

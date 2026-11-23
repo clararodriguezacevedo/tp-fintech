@@ -4072,6 +4072,17 @@
                 "type": "null"
               }
             ]
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
           }
         },
         "type": "object",

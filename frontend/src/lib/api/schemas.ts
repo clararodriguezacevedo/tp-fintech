@@ -527,6 +527,7 @@ const SignalTest = z
     spread_bp: z.union([z.number(), z.null()]),
     top_bp: z.union([z.number(), z.null()]),
     placebo: z.union([Placebo, z.null()]),
+    cost: z.union([z.number(), z.null()]).optional(),
   })
   .passthrough();
 

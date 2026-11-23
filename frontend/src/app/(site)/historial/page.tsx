@@ -3,81 +3,11 @@ import Link from "next/link";
 import { ActionBadge } from "@/components/signals";
 import { ApiFailure, attempt, Delta, Notice, PageTitle, SectionTitle, Stats, Term } from "@/components/ui";
 import { Amount, ByMode, UnitToggle } from "@/components/units";
-import { api, type Recommendation, type SignalTest } from "@/lib/api/client";
+import { api, type Recommendation } from "@/lib/api/client";
 import { dayNumeric, money, pct } from "@/lib/format";
 import { assetNames, nameOf } from "@/lib/names";
 
 export const metadata = { title: "Resultados | El Parqué" };
-
-const share = (x: number) => `${Math.round(x * 100)}%`;
-/** A return as a signed percentage with two decimals: 0,0035 -> "+0,35%". */
-const signedPct = (x: number | null | undefined) =>
-  x == null ? "-" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x * 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-const fromBp = (x: number | null | undefined) => (x == null ? null : x / 1e4);
-
-type Row = { label: string; value: (t: SignalTest) => string; about: string };
-
-/** `cost`: the account's cost of one operation, as a share of the amount. */
-function rows(cost: number): Row[] {
-  const costText = (cost * 2 * 100).toLocaleString("es-AR", { maximumFractionDigits: 2 });
-  return [
-    {
-      label: "Puntaje alto contra puntaje bajo",
-      value: (t) => signedPct(fromBp(t.spread_bp)),
-      about: "Cuánto rindió en el día el 20% de mejor puntaje de cada clase, menos lo que rindió el 20% de peor puntaje. Positivo quiere decir que el puntaje ordena bien.",
-    },
-    {
-      label: "Comprar los de puntaje alto, con costos",
-      value: (t) => signedPct(t.top_bp == null ? null : t.top_bp / 1e4 - cost * 2),
-      about: `Lo que quedaba por comprar el 20% de mejor puntaje a la apertura y venderlo al cierre, contra la mediana de su clase, después de pagar comprar y vender en IOL (${costText}%). Es lo único que la app puede hacer, porque no vende en corto.`,
-    },
-    {
-      label: "Puntajes al azar que dan lo mismo",
-      value: (t) => (t.placebo ? share(t.placebo.share_at_least_real) : "-"),
-      about: "Se repartieron los puntajes al azar 300 veces. Es cuántas de esas veces la primera fila dio igual o más. Menos de 5% quiere decir que la primera fila no es suerte.",
-    },
-  ];
-}
-
-/** Every model's tests side by side, each row explained next to its numbers. */
-function RankingTable({ tests, cost }: { tests: SignalTest[]; cost: number }) {
-  const few = tests.some((t) => !t.enough);
-  return (
-    <>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left">
-          <thead className="text-text-2">
-            <tr className="border-b border-border align-bottom">
-              <th className="py-3 pr-4 font-normal">Prueba</th>
-              {tests.map((t) => (
-                <th key={t.model_version} className="py-3 pr-4 text-right font-normal">
-                  <span className="block text-text">Modelo {t.model_version}</span>
-                  <span className="num block text-sm">{t.recommendations.toLocaleString("es-AR")} en {t.sessions} {t.sessions === 1 ? "rueda" : "ruedas"}</span>
-                </th>
-              ))}
-              <th className="w-[24rem] py-3 pl-4 font-normal">Qué mide</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows(cost).map((r) => (
-              <tr key={r.label} className="border-t border-grid">
-                <td className="py-2.5 pr-4 align-top">{r.label}</td>
-                {tests.map((t) => (
-                  <td key={t.model_version} className="num whitespace-nowrap py-2.5 pr-4 text-right align-top">{r.value(t)}</td>
-                ))}
-                <td className="py-2.5 pl-4 align-top text-sm text-text-2">{r.about}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-4 max-w-3xl text-sm text-text-2">
-        Cada activo se mide contra la mediana de su clase ese día, así una suba o una baja de todo el mercado no cuenta.
-        {few && " Con menos de 20 ruedas el azar todavía mueve mucho estos números, así que no alcanzan para concluir."}
-      </p>
-    </>
-  );
-}
 
 const DRAWDOWN_INFO =
   "La peor baja del período: desde el valor más alto que tuvo hasta el más bajo que vino después, antes de recuperarse. −8% quiere decir que en algún momento valió 8% menos que en su mejor día anterior.";
@@ -100,12 +30,11 @@ function DayResult({ amount, percent, inUsd }: { amount: number; percent: string
 }
 
 export default async function HistoryPage() {
-  const [sim, history, names, portfolio, evaluation] = await Promise.all([
+  const [sim, history, names, portfolio] = await Promise.all([
     attempt(api.simulation),
     attempt(() => api.trackRecordHistory(20000)),
     assetNames(),
     attempt(api.portfolio),
-    attempt(api.evaluation),
   ]);
   if (!sim.ok) return <ApiFailure error={sim.error} />;
   const s = sim.data;
@@ -190,15 +119,6 @@ export default async function HistoryPage() {
         </ul>
       </section>
 
-      {evaluation.ok && evaluation.data.length > 0 && (
-        <section>
-          <SectionTitle>¿El puntaje sirve para elegir?</SectionTitle>
-          <p className="mb-6 max-w-3xl text-text-2">
-            Cada día se ordenan los activos de cada clase por puntaje, y se mira cuánto rindió cada uno de la apertura al cierre.
-          </p>
-          <RankingTable tests={evaluation.data} cost={s.commission} />
-        </section>
-      )}
 
       <section>
         <SectionTitle

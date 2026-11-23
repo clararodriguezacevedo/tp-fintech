@@ -5,7 +5,7 @@ import { DecisionFlow } from "@/components/decision-flow";
 import { ActionBadge, CLASS_NAME, evidenceText } from "@/components/signals";
 import { ApiFailure, attempt, PageTitle, SectionTitle, Term } from "@/components/ui";
 import { ByMode, UnitToggle } from "@/components/units";
-import { api, type ModelInfo, type Recommendation } from "@/lib/api/client";
+import { api, type ModelInfo, type Recommendation, type SignalTest } from "@/lib/api/client";
 import { score } from "@/lib/format";
 import { assetNames, nameOf } from "@/lib/names";
 
@@ -110,13 +110,86 @@ function Example({ r, m, name }: { r: Recommendation; m: ModelInfo; name: string
   );
 }
 
+const share = (x: number) => `${Math.round(x * 100)}%`;
+/** A return as a signed percentage with two decimals: 0,0035 -> "+0,35%". */
+const signedPct = (x: number | null | undefined) =>
+  x == null ? "-" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x * 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+const MEDIAN = "Contra la mediana de su clase quiere decir contra el activo del medio: el que ese día tiene la mitad de su clase arriba y la mitad abajo. Si todos los CEDEARs bajaron 3% porque bajó el dólar y uno bajó 1%, ese cuenta como +2%. Así, un día en que sube o baja todo el mercado no cuenta como acierto ni como error.";
+
+type TestRow = { label: string; value: (t: SignalTest) => string; about: string };
+
+/** `cost`: the account's cost of one operation, as a share of the amount. */
+function testRows(cost: number | null): TestRow[] {
+  const roundTrip = cost == null ? null : cost * 2;
+  return [
+    {
+      label: "Puntaje alto contra puntaje bajo",
+      value: (t) => signedPct(t.spread_bp == null ? null : t.spread_bp / 1e4),
+      about: "Cuánto rindió en el día el 20% de mejor puntaje de cada clase, menos lo que rindió el 20% de peor puntaje. Positivo quiere decir que el puntaje ordena bien.",
+    },
+    {
+      label: "Comprar los de puntaje alto, con costos",
+      value: (t) => signedPct(t.top_bp == null || roundTrip == null ? null : t.top_bp / 1e4 - roundTrip),
+      about: `Lo que se ganaba o perdía comprando el 20% de mejor puntaje a la apertura y vendiéndolo al cierre, contra la mediana de su clase, después de pagar comprar y vender en IOL${roundTrip == null ? "" : ` (${signedPct(roundTrip).slice(1)})`}. Es lo único que la app puede hacer, porque no vende en corto.`,
+    },
+    {
+      label: "¿Podría ser suerte?",
+      value: (t) => (t.placebo ? share(t.placebo.share_at_least_real) : "-"),
+      about: "Se mezclaron los puntajes entre los activos de cada día, como si se repartieran al azar, y se calculó la primera fila otra vez. Se hizo 300 veces. Es el porcentaje de esas veces en que el azar dio igual o más que el puntaje real. Cuanto más bajo, menos probable que sea suerte: abajo de 5% se suele aceptar que no lo es.",
+    },
+  ];
+}
+
+/** Every model's tests side by side, each row explained next to its numbers. */
+function RankingTable({ tests }: { tests: SignalTest[] }) {
+  const few = tests.some((t) => !t.enough);
+  return (
+    <>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left">
+          <thead className="text-text-2">
+            <tr className="border-b border-border align-bottom">
+              <th className="py-3 pr-4 font-normal">Prueba</th>
+              {tests.map((t) => (
+                <th key={t.model_version} className="py-3 pr-4 text-right font-normal">
+                  <span className="block text-text">Modelo {t.model_version}</span>
+                  <span className="num block text-sm">{t.recommendations.toLocaleString("es-AR")} en {t.sessions} {t.sessions === 1 ? "rueda" : "ruedas"}</span>
+                </th>
+              ))}
+              <th className="w-[24rem] py-3 pl-4 font-normal">Qué mide</th>
+            </tr>
+          </thead>
+          <tbody>
+            {testRows(tests[0]?.cost ?? null).map((r) => (
+              <tr key={r.label} className="border-t border-grid">
+                <td className="py-2.5 pr-4 align-top">{r.label}</td>
+                {tests.map((t) => (
+                  <td key={t.model_version} className="num whitespace-nowrap py-2.5 pr-4 text-right align-top">{r.value(t)}</td>
+                ))}
+                <td className="py-2.5 pl-4 align-top text-sm text-text-2">{r.about}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-4 max-w-3xl space-y-2 text-sm text-text-2">
+        <p>{MEDIAN}</p>
+        <p>Cada modelo se mide en sus propios días, así que dos columnas no comparan los mismos días.{few && " Con menos de 20 ruedas el azar todavía mueve mucho estos números, así que no alcanzan para concluir."}</p>
+      </div>
+    </>
+  );
+}
+
 const PAPERS = [
   { name: "StockBench", url: "https://arxiv.org/abs/2510.02209", took: "Medir como cartera durante meses, con retorno, caída máxima y Sortino, contra quedarse quieto. Saber de finanzas no alcanza para invertir bien." },
   { name: "Lopez-Lira y Tang", url: "https://arxiv.org/abs/2304.07619", took: "Una sola pregunta por noticia, sobre esa empresa y el corto plazo, con \"incierto\" como respuesta válida. Comparar los de puntaje alto con los de puntaje bajo, y restar los costos de operar." },
 ];
 
 export default async function HowItDecides() {
-  const [model, recs, names, signals] = await Promise.all([attempt(api.model), attempt(() => api.recommendations()), assetNames(), attempt(api.signals)]);
+  const [model, recs, names, signals, evaluation] = await Promise.all([
+    attempt(api.model), attempt(() => api.recommendations()), assetNames(), attempt(api.signals), attempt(api.evaluation),
+  ]);
   if (!model.ok) return <ApiFailure error={model.error} />;
   const m = model.data;
   // The clearest example of the day, from this model: a buy or sell if there is one, else the strongest.
@@ -138,7 +211,6 @@ export default async function HowItDecides() {
             <li>Vender: lo tenés y tiene {score(m.sell_threshold_held)} o menos.</li>
             <li>Mantener: todo lo demás.</li>
           </ul>
-          <p>La recomendación sale antes de cada apertura, y es la misma que ves, la que seguís y la que se mide.</p>
         </div>
       </section>
 
@@ -154,7 +226,7 @@ export default async function HowItDecides() {
           aside={<UnitToggle currency={false} />}
           info="Cuántas veces el activo le ganó o perdió a la mediana de su clase ese día, como decía la señal. 50% es tirar una moneda. Solo cuenta este modelo, y con pocos días todavía no es concluyente."
         >
-          Las señales
+          Señales
         </SectionTitle>
         <ul className="divide-y divide-grid">
           {[
@@ -181,7 +253,7 @@ export default async function HowItDecides() {
       </section>
 
       <section>
-        <SectionTitle>Los detalles</SectionTitle>
+        <SectionTitle>Detalles</SectionTitle>
         <ul className="divide-y divide-grid">
           <Block title="Lo que no cuenta">
             <p>Una noticia que no nombra al activo. Si Gemini etiqueta a Exxon por una nota sobre el petróleo, el control la descarta, sin importar lo que haya respondido.</p>
@@ -224,15 +296,26 @@ export default async function HowItDecides() {
 
           <Block title="Cómo se mide">
             <p>
-              Cada recomendación se mide desde la apertura hasta el cierre, contra la mediana de su clase ese día. Si todo cae, comprar lo que cayó menos fue un acierto. Comprar acierta si le gana a su clase, vender si pierde contra ella. Mantener no es una apuesta, así que no suma ni resta aciertos.
+              Cada recomendación se mide desde la apertura hasta el cierre, contra la mediana de su clase ese día. Comprar acierta si le gana a su clase, vender si pierde contra ella. Mantener no es una apuesta, así que no suma ni resta aciertos.
             </p>
+            <p>{MEDIAN}</p>
             <p>
-              En <Link href="/historial" className="underline">Resultados</Link> está la cartera que sigue el plan, con sus stops, contra lo que hiciste, quedarte quieto y las líderes del Merval. También si el puntaje ordena bien: si los de puntaje alto le ganan a los de puntaje bajo, si queda ganancia después de tus costos en IOL, y si un orden al azar daría lo mismo.
+              En <Link href="/historial" className="underline">Resultados</Link> está la cartera que sigue el plan, con sus stops, contra lo que hiciste, quedarte quieto y las líderes del Merval.
             </p>
             <p>Cada recomendación guarda la versión del modelo que la hizo (hoy, la {m.version}), así los resultados de un modelo no se mezclan con los de otro.</p>
           </Block>
         </ul>
       </section>
+
+      {evaluation.ok && evaluation.data.length > 0 && (
+        <section>
+          <SectionTitle>¿El puntaje sirve para elegir?</SectionTitle>
+          <p className="mb-6 max-w-3xl text-text-2">
+            Cada día se ordenan los activos de cada clase por puntaje, y se mira cuánto rindió cada uno de la apertura al cierre.
+          </p>
+          <RankingTable tests={evaluation.data} />
+        </section>
+      )}
 
       <section>
         <SectionTitle>El flujo completo</SectionTitle>
@@ -250,15 +333,15 @@ export default async function HowItDecides() {
           ))}
         </ul>
         <div className="mt-8 max-w-3xl space-y-2 text-text-2">
-          <p className="font-semibold text-text">Lo que probamos con tus datos antes de cambiar</p>
+          <p className="font-semibold text-text">Lo que probamos con los datos antes de cambiar</p>
           <p>Con 389 recomendaciones de 8 ruedas, el modelo anterior no se distinguía del azar. El mejor 20% le ganaba al peor 20% por 0,2% antes de costos, y repartir los puntajes al azar daba eso o más en 26% a 32% de los casos.</p>
           <p>Solo 25% de las etiquetas &quot;propias&quot; nombraban al activo. De 312 mercados que se movieron 2 puntos o más, 4 operaban más de US$ 1.000 entre los de volumen conocido, y el volumen de Polymarket estaba en cero por un error de lectura. Muchas etiquetas eran apuestas sobre el propio precio, y casi todas decían &quot;sube&quot;.</p>
           <p>58% de las noticias llegaba entre las 17:30 y la apertura, y la recomendación que se medía no las veía.</p>
         </div>
         <div className="mt-8 max-w-3xl space-y-2 text-text-2">
           <p className="font-semibold text-text">Lo que todavía no sabemos</p>
-          <p>Unas pocas ruedas no alcanzan para decir que un modelo sirve o no sirve. Este modelo tiene menos piezas que el anterior, pero no se demostró que gane más. En <Link href="/historial" className="underline">Resultados</Link> está cuántas ruedas lleva.</p>
-          <p>El {num(m.novelty_similarity)} de similitud para detectar repetidos está calibrado a mano sobre tus noticias, comparando palabras. También son decisiones nuestras el {pctOf(m.top_share)} del ranking, los umbrales de compra y venta y el peso de {num(m.factor_weight)} de los factores.</p>
+          <p>Unas pocas ruedas no alcanzan para decir que un modelo sirve o no sirve. Este modelo tiene menos piezas que el anterior, pero no se demostró que gane más. La tabla de arriba dice cuántas ruedas lleva.</p>
+          <p>El {num(m.novelty_similarity)} de similitud para detectar repetidos está calibrado a mano sobre las noticias guardadas, comparando palabras. También son decisiones nuestras el {pctOf(m.top_share)} del ranking, los umbrales de compra y venta y el peso de {num(m.factor_weight)} de los factores.</p>
           <p>Los papers miran acciones de EE.UU. con datos pagos, y hasta ahí el resultado se fue achicando con el tiempo. No hay por qué esperar algo mejor con noticias gratuitas y activos argentinos.</p>
         </div>
       </section>

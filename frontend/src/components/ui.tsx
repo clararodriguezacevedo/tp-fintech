@@ -10,19 +10,23 @@ export const BUTTON_SMALL_ALT = "whitespace-nowrap rounded-lg border border-bord
 // The same look wherever it opens: it doesn't take the size or weight of a title it sits on.
 const POPUP = "pointer-events-none absolute z-20 hidden rounded-lg border border-border bg-bg px-2.5 py-1.5 text-left text-sm font-normal normal-case leading-snug tracking-normal text-text-2 shadow-lg";
 
+// The visible "?" after anything that has an explanation, so it's clear there is one.
+const MARK = "ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-border align-[0.1em] text-[10px] font-normal not-italic leading-none text-text-2 group-hover:border-text-2 group-hover:text-text";
+
 /** A small popup over `children`, on hover or focus, that doesn't show while `content` is empty.
  * `place`: where it opens. Inside a table that scrolls sideways, open it to a side: anything above
- * or below the table would be cut. */
-export function Tooltip({ children, content, place = "left-0 top-full mt-1" }: { children: ReactNode; content: ReactNode; place?: string }) {
+ * or below the table would be cut. `mark`: false for children that are a mark themselves. */
+export function Tooltip({ children, content, place = "left-0 top-full mt-1", mark = true }: { children: ReactNode; content: ReactNode; place?: string; mark?: boolean }) {
   return (
     <span tabIndex={0} className="group relative inline-block cursor-help">
       {children}
+      {mark && <span aria-hidden className={MARK}>?</span>}
       <span role="tooltip" className={`${POPUP} w-max max-w-[min(26rem,80vw)] group-hover:[&:not(:empty)]:block group-focus:[&:not(:empty)]:block ${place}`}>{content}</span>
     </span>
   );
 }
 
-/** A term that explains itself on hover or focus, with no mark at rest. Without `info`, just the term. */
+/** A term with a "?" that explains it on hover or focus. Without `info`, just the term. */
 export function Term({ children, info, place }: { children: ReactNode; info?: ReactNode; place?: string }) {
   if (!info) return <>{children}</>;
   return <Tooltip content={info} place={place}>{children}</Tooltip>;
@@ -31,7 +35,7 @@ export function Term({ children, info, place }: { children: ReactNode; info?: Re
 /** A "!" that stays visible, for what the user shouldn't miss, with the reason on hover or focus. */
 export function WarningMark({ children, place }: { children: ReactNode; place?: string }) {
   return (
-    <Tooltip content={children} place={place}>
+    <Tooltip content={children} place={place} mark={false}>
       <span
         aria-label="Aviso"
         style={{ color: "var(--sell)" }}
