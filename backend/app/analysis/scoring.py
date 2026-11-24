@@ -56,6 +56,8 @@ TAG_VERSION = 2  # the tags this model reads (ticker_impacts.tag_version)
 PRIOR_WEIGHT = 1.0
 TOP_SHARE = 0.2
 BUY_THRESHOLD = 0.35  # one market through a factor (0.33 at most) isn't enough to buy; two are
+# Demo: the threshold decide() applies. BUY_THRESHOLD stays as the one /model shows.
+DECIDE_BUY_THRESHOLD = 0.10
 SELL_THRESHOLD_HELD = -0.6  # a single bad headline (-0.5) isn't enough to sell
 NEWS_MAX_OPENS = 2  # opens after which a news item stops counting; each one halves its weight
 NOVELTY_DAYS = 7  # calendar days looked back for repeats, 5 sessions
@@ -332,7 +334,7 @@ def rank_by_class(recs: list["Recommendation"]) -> None:
 def decide(score: float, held: bool, top_rank: bool, out_of_profile: bool) -> Action:
     if held:
         return "sell" if score <= SELL_THRESHOLD_HELD else "keep"
-    return "buy" if top_rank and score >= BUY_THRESHOLD and not out_of_profile else "keep"
+    return "buy" if top_rank and score >= DECIDE_BUY_THRESHOLD and not out_of_profile else "keep"
 
 
 def is_buy_signal(r: RecommendationRow) -> bool:
