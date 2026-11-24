@@ -3,6 +3,7 @@
 // choice applies to every table and is kept in a cookie, so the server renders the page with it.
 import { createContext, useContext, useState, type ReactNode } from "react";
 
+import { Delta } from "@/components/ui";
 import { money, price } from "@/lib/format";
 
 export type Currency = "ARS" | "USD";
@@ -58,6 +59,18 @@ export function UnitToggle({ currency = true, mode = true }: { currency?: boolea
 export function Amount({ ars, usd }: { ars: number | null | undefined; usd?: number | null }) {
   const { currency } = useContext(UnitsContext);
   return <>{currency === "USD" && usd != null ? `US$ ${price(usd)}` : money(ars)}</>;
+}
+
+type Gain = { amount: number; pct: string };
+
+/** A gain with its ▲/▼ in the chosen currency, since a position can gain in pesos and lose in
+ * dollars. `usd` missing (unknown dollar cost): stays in pesos. */
+export function GainAmount({ ars, usd }: { ars: Gain; usd: Gain | null }) {
+  const { currency, mode } = useContext(UnitsContext);
+  const inUsd = currency === "USD" && usd != null;
+  const g = inUsd ? usd : ars;
+  const size = Math.abs(g.amount);
+  return <Delta value={g.amount}>{mode === "pct" ? g.pct : inUsd ? `US$ ${price(size)}` : money(size)}</Delta>;
 }
 
 /** One of two renderings, by the chosen mode. */

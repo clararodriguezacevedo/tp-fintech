@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { HoldingSplit, loadDollar } from "@/components/cedear-move";
 import { LineChart } from "@/components/charts";
+import { DollarGain, DollarPpc, DollarTotalGain } from "@/components/dollar-cost";
 import { ExpandableRow } from "@/components/expandable-row";
 import { PositionDetail, loadOperations } from "@/components/position-detail";
 import { ActionBadge } from "@/components/signals";
@@ -193,7 +194,7 @@ export default async function PortfolioPage() {
                     rest={
                       <>
                         <td className="num py-4 text-right text-text-2"><Amount {...pair(h, h.last_price)} /></td>
-                        <td className="num py-4 text-right text-text-2"><Amount {...pair(h, h.avg_price)} /></td>
+                        <td className="num py-4 text-right text-text-2">{h.currency === "ARS" ? <DollarPpc operations={operations} h={h} mep={p.mep} /> : <Amount {...pair(h, h.avg_price)} />}</td>
                         <td className="py-4 text-right text-text-2">
                           {h.currency === "ARS" && h.day_change_pct !== 0 && cedears.has(h.ticker) ? (
                             <HoldingSplit dollar={dollar} total={h.day_change_pct / 100}>{hoy}</HoldingSplit>
@@ -203,7 +204,11 @@ export default async function PortfolioPage() {
                           <ByMode abs={<Amount {...pair(h, h.value)} />} pct={h.currency === "ARS" && total ? `${shareOf.get(h.ticker)}%` : "-"} />
                         </td>
                         <td className="py-4 text-right">
-                          <Delta value={h.gain_amount}><ByMode abs={<Amount {...pair(h, Math.abs(h.gain_amount))} />} pct={pctPoints(h.gain_pct)} /></Delta>
+                          {h.currency === "ARS" ? (
+                            <DollarGain operations={operations} h={h} mep={p.mep} />
+                          ) : (
+                            <Delta value={h.gain_amount}><ByMode abs={<Amount {...pair(h, Math.abs(h.gain_amount))} />} pct={pctPoints(h.gain_pct)} /></Delta>
+                          )}
                         </td>
                         <td className="py-4 text-right">
                           {sell?.pairs.length ? (
@@ -253,7 +258,7 @@ export default async function PortfolioPage() {
                 <td className="py-4" />
                 <td className="num py-4 text-right"><ByMode abs={<Amount ars={total} usd={inUsd(total)} />} pct="100%" /></td>
                 <td className="py-4 text-right">
-                  <Delta value={gain}><ByMode abs={<Amount ars={Math.abs(gain)} usd={inUsd(Math.abs(gain))} />} pct={pctPoints(cost ? (gain / cost) * 100 : 0)} /></Delta>
+                  <DollarTotalGain operations={operations} holdings={ars} mep={p.mep} />
                 </td>
                 <td className="py-4" />
                 <td className="py-4" />

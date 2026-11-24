@@ -8,7 +8,7 @@ import { score } from "@/lib/format";
 
 const pctOf = (x: number) => `${Math.round(x * 100)}%`;
 
-export const MEDIAN = "Contra la mediana de su clase quiere decir contra el activo del medio: el que ese día tiene la mitad de su clase arriba y la mitad abajo. Si todos los CEDEARs bajaron 3% porque bajó el dólar y uno bajó 1%, ese cuenta como +2%. Así, un día en que sube o baja todo el mercado no cuenta como acierto ni como error.";
+const MEDIAN = "La mediana es el activo del medio de su clase ese día. Si todos los CEDEARs cayeron 3% y uno cayó 1%, ese cuenta como +2%, así que una suba o baja de todo el mercado no cuenta.";
 const num = (x: number) => x.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 const points = (x: number) => `${x > 0 ? "sube" : "baja"} ${num(Math.abs(x * 100))} pts`;
 
@@ -100,90 +100,73 @@ function Factors({ m }: { m: ModelInfo }) {
   );
 }
 
+/** A title that opens its explanation, like a step without a number. */
+export function Fold({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <li>
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-start gap-2 py-2.5 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden className="mt-1 text-text-2 transition-transform group-open:rotate-90">▶</span>
+          <span className="min-w-0 flex-1">{title}</span>
+        </summary>
+        <div className="max-w-3xl space-y-3 pb-3 pl-5 text-text-2">{children}</div>
+      </details>
+    </li>
+  );
+}
+
 export function DecisionFlow({ m }: { m: ModelInfo }) {
   return (
     <ol>
-      <Step n={1} title="Junta la información" summary="Cada 2 horas, sin IA.">
-        <p>Noticias generales (RSS y GDELT), noticias por empresa (Google News, de tu cartera, las líderes del Merval y los CEDEARs más comunes, por turnos), mercados de predicción (Polymarket y Kalshi), y tu cartera y los precios (IOL).</p>
+      <Step n={1} title="Junta la información" summary="Cada 2 horas, y a las 10:15 antes de abrir.">
+        <p>Noticias (RSS, GDELT y Google News por empresa), mercados de predicción (Polymarket y Kalshi), y tu cartera y los precios (IOL).</p>
       </Step>
 
-      <Step n={2} ai title="Gemini lee cada noticia" summary="Una pregunta, de qué activo habla y si es bueno, malo o incierto para su precio en 1 a 3 días.">
-        <p>Cada 2 horas, después de juntar la información (y a las 10:15, antes de las recomendaciones del día). Se usa {m.tagger_model}, en lotes de hasta {m.tag_batch}, con temperatura 0. De tu cartera solo ve qué activos tenés, no cuánta plata. No da recomendaciones. Este es el prompt, tal cual se envía.</p>
+      <Step n={2} ai title="Gemini lee cada noticia y cada mercado" summary="Una pregunta: de qué activo habla y si es bueno, malo o incierto.">
+        <p>Con {m.tagger_model} y temperatura 0. No da recomendaciones ni ve cuánta plata tenés. Estos son los prompts tal cual se envían.</p>
         <Prompt>{m.news_prompt}</Prompt>
-      </Step>
-
-      <Step n={3} ai title="Gemini lee cada mercado de predicción" summary="Una pregunta, qué significa el SÍ y qué empuja para arriba o para abajo.">
-        <p>No adivina qué activos mueve un mercado sobre el mundo. Dice de qué factor se trata, y una tabla fija dice a quién llega.</p>
+        <p>Un mercado no dice qué activos mueve: dice de qué factor se trata, y esta tabla fija a quién llega.</p>
         <Prompt>{m.market_prompt}</Prompt>
         <Factors m={m} />
       </Step>
 
-      <Step n={4} title="Se controla lo que respondió" summary="Con reglas, sin confiar en Gemini.">
+      <Step n={3} title="Se controla lo que respondió" summary="Con reglas, sin confiar en Gemini.">
         <ul className="list-disc space-y-1 pl-5">
-          <li>El activo tiene que estar nombrado en el texto, con palabras que sean de ese activo. Si no, la etiqueta se descarta.</li>
-          <li>Una apuesta sobre el precio de una acción o un índice se descarta, aunque Gemini la haya etiquetado.</li>
-          <li>En una apuesta sobre el petróleo, el oro o bitcoin, la dirección sale del título. Un mínimo empuja para abajo, responda lo que responda.</li>
-          <li>Un rango (&quot;entre 400 y 425&quot;) no dice para qué lado va, así que queda como incierto.</li>
-          <li>Un activo que no existe, un factor inventado o un texto roto también se descartan.</li>
-          <li>Los dividendos y los cupones no son señal. El día que se pagan el precio baja, pero no es una pérdida. Se avisan en cada recomendación y se descuentan al medir.</li>
+          <li>El activo tiene que estar nombrado en el texto.</li>
+          <li>Una apuesta sobre el precio de una acción o un índice se descarta.</li>
+          <li>Una noticia repetida en los últimos {m.novelty_days} días cuenta una vez, y las notas de cierre no cuentan.</li>
+          <li>Los dividendos y cupones no son señal: se avisan y se descuentan al medir.</li>
         </ul>
       </Step>
 
-      <Step n={5} title="Cada noticia pasa a un número" summary="Vale +1, −1 o 0, y pesa según cuántas aperturas pudieron operarla.">
-        <Rule>valor = +1 si sube, −1 si baja, 0 si es incierto. peso = 1 sin aperturas, la mitad con una, 0 con {m.news_max_opens}</Rule>
-        <p>Una noticia incierta no suma para ningún lado, pero pesa, así que acerca el promedio a cero. Las noches, los fines de semana y los feriados no la envejecen.</p>
-        <p>Lo que se parece a algo publicado en los últimos {m.novelty_days} días sobre el mismo activo no es nuevo: cuenta una vez, aunque lo publiquen varios medios. Las notas de cierre (&quot;así cerró el mercado&quot;) tampoco cuentan, porque solo describen lo que ya pasó.</p>
-      </Step>
-
-      <Step n={6} title="Cada mercado pasa a un número" summary="Cuenta cuánto se movió la probabilidad, no qué tan alta está.">
-        <Rule>valor = cambio en 24 h ÷ {num(m.market_move_unit * 100)} pts, entre −1 y +1, con el signo de lo que hace el SÍ</Rule>
-        <p>Por eso un mercado malo para el activo cuya probabilidad baja suma a favor, porque se está alejando algo malo.</p>
+      <Step n={4} title="Cada noticia y cada mercado pasa a un número" summary="Una noticia vale +1, −1 o 0. Un mercado, cuánto se movió su probabilidad.">
+        <Rule>noticia: +1 si sube, −1 si baja, 0 si es incierto. Pesa 1, la mitad después de una apertura y 0 después de {m.news_max_opens}</Rule>
+        <Rule>mercado: cambio en 24 h ÷ {num(m.market_move_unit * 100)} pts, con el signo de lo que hace el SÍ. Pesa 1 si nombra al activo y {num(m.factor_weight)} si llega por un factor</Rule>
+        <p>Un mercado cuenta con US$ {num(m.market_min_volume)} operados en el día, un movimiento de {num(m.market_min_move * 100)} puntos o más y {m.min_market_days} días o más por delante.</p>
         <MarketCases m={m} />
-        <ul className="list-disc space-y-1 pl-5">
-          <li>Pide US$ {num(m.market_min_volume)} operados en el día, un movimiento de {num(m.market_min_move * 100)} puntos o más, y al menos {m.min_market_days} días por delante.</li>
-          <li>Con fecha límite (&quot;llega a $115 antes del 30&quot;) la probabilidad baja sola al pasar los días, y eso se descuenta.</li>
-          <li>Varios mercados del mismo evento cuentan una vez, y cuenta el más operado, no el que más se movió, porque eso elegiría el ruido.</li>
-          <li>Pesa 1 si nombra al activo y {num(m.factor_weight)} si llega por un factor. A más de {m.far_market_days} días pesa menos, hasta un mínimo de {pctOf(m.far_market_min_weight)}.</li>
-        </ul>
       </Step>
 
-      <Step n={7} title="Todo se promedia en un puntaje" summary="Un número entre −1 y +1, y 0 si no hay nada.">
+      <Step n={5} title="Se arma el puntaje y se compara en su clase" summary={`Comprar pide el ${pctOf(m.top_share)} mejor de su clase y ${score(m.buy_threshold)} o más.`}>
         <Rule>puntaje = suma(peso × valor) ÷ (suma(pesos) + {num(m.prior_weight)})</Rule>
-        <p>Es un promedio, así que diez noticias que dicen lo mismo no valen diez veces una. El {num(m.prior_weight)} es un voto neutro. Con una sola noticia el puntaje es {score(1 / (1 + m.prior_weight))}, y con tres, {score(3 / (3 + m.prior_weight))}.</p>
+        <p>Es un promedio, así que diez noticias iguales no valen diez veces una. Con una sola noticia buena da {score(1 / (1 + m.prior_weight))}, y con tres, {score(3 / (3 + m.prior_weight))}.</p>
+        <p>Vender pide {score(m.sell_threshold_held)} o menos: una sola mala noticia no alcanza. Tu perfil es {m.profile}, y lo que está por encima nunca sale comprar.</p>
       </Step>
 
-      <Step n={8} title="Se compara dentro de cada clase" summary={`Acciones, CEDEARs y bonos por separado. Comprar pide el ${pctOf(m.top_share)} mejor.`}>
+      <Step n={6} title="Sale el plan del día" summary="A las 10:15, con la plata que tenés.">
+        <p>Primero vende lo que dice vender, después paga cada compra con tu plata disponible. Si no alcanza, rota desde algo que puntúa bastante peor. Si sobra, sugiere caución.</p>
+        <p>Cada compra es la menor de estas cantidades:</p>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Si no lo tenés, se compra si está en el {pctOf(m.top_share)} mejor de su clase y tiene {score(m.buy_threshold)} o más. Los puntajes iguales comparten el puesto, y un solo mercado por factor no llega a ese puntaje. Hacen falta dos, o una noticia sobre el activo.</li>
-          <li>Si lo tenés, se vende con {score(m.sell_threshold_held)} o menos. Una sola mala noticia ({score(-1 / (1 + m.prior_weight))}) no alcanza, porque vender desarma una posición que elegiste.</li>
-          <li>Lo que está por encima de tu perfil nunca sale comprar, aunque tenga buen puntaje, por las reglas de la CNV.</li>
-        </ul>
-        <p>
-          Tu perfil es {m.profile}, así que llega hasta riesgo medio. Riesgo bajo son los bonos y obligaciones negociables que se mueven hasta {pctOf(m.bond_low_vol)} al año. Medio son el resto de los bonos, y las acciones, CEDEARs y ETFs que se mueven hasta {pctOf(m.equity_mid_vol)} al año. Alto son los que se mueven más, y cualquier activo sin historial suficiente.
-        </p>
-      </Step>
-
-      <Step n={9} title="Antes de abrir, sale la del día" summary="A las 10:15, en días de mercado, antes de la subasta de apertura. Lo que ves es lo que se mide.">
-        <p>Junta lo último, lo etiqueta y emite las recomendaciones. Así entran las noticias de la noche, y desde ese momento hasta el cierre no cambian, así que lo que ves es lo que se califica. BYMA abre a las 10:30, y acciones y CEDEARs operan hasta las 18:00 (bonos y cauciones, hasta las 17:00). Entre sesiones, la página muestra una vista previa del día siguiente.</p>
-      </Step>
-
-      <Step n={10} title="Las recomendaciones se vuelven tu plan" summary="Qué hacer hoy, con la plata que tenés.">
-        <p>Primero se vende lo que dice vender. Después cada compra, de la mejor a la peor, se paga con tu plata disponible. Si no alcanza, propone rotar: vender parte de algo que tenés y comprar con esa plata, solo si la compra puntúa bastante mejor y lo que vendés no se espera que suba. Lo que no se puede pagar se avisa en vez de recomendarse igual. Si sobra suficiente, sugiere caución.</p>
-        <p>La cantidad de cada compra es la menor de estas. La confianza del modelo no interviene, porque los papers lo desaconsejan.</p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>La que, si toca el stop loss, te hace perder {pctOf(m.risk_per_trade)} de la cartera (cuanto más se mueve el precio, menos se compra)</li>
+          <li>La que pierde {pctOf(m.risk_per_trade)} de la cartera si toca el stop loss</li>
           <li>La que alcanza con tu efectivo</li>
-          <li>La que deja ese activo en menos del {pctOf(m.max_position)} de tu cartera</li>
-          <li>La que deja su grupo de riesgo en menos del {pctOf(m.concentration_limit)} (si ya lo pasó, como mucho 2% más)</li>
-          <li>La que no supera el {pctOf(m.max_volume_share)} de lo que se opera por día</li>
+          <li>La que deja el activo en menos del {pctOf(m.max_position)} de tu cartera</li>
+          <li>La que deja su grupo de riesgo en menos del {pctOf(m.concentration_limit)}</li>
+          <li>La que no pasa el {pctOf(m.max_volume_share)} de lo que se opera por día</li>
         </ul>
-        <p>El stop loss se pone a dos días típicos debajo del precio y el take profit al doble de esa distancia arriba. En <span className="text-text">Operaciones</span>, lo que hiciste como decía el plan de ese día queda marcado como &quot;Según el plan&quot;.</p>
       </Step>
 
-      <Step n={11} title="Después del cierre se mide" summary="A las 18:30, de la apertura al cierre, contra la mediana de su clase.">
-        <p>Comprar acierta si le gana a su clase, vender si pierde contra ella. Mantener no es una apuesta, así que no suma ni resta aciertos. Cada recomendación guarda la versión del modelo que la hizo (hoy, la {m.version}), así los resultados de un modelo no se mezclan con los de otro.</p>
+      <Step n={7} title="Después del cierre se mide" summary="A las 18:30, de la apertura al cierre, contra la mediana de su clase.">
+        <p>Comprar acierta si le gana a su clase, vender si pierde contra ella. Mantener no cuenta.</p>
         <p>{MEDIAN}</p>
-        <p>También se actualiza la cartera que sigue el plan, que está en <span className="text-text">Resultados</span>, y las pruebas de abajo.</p>
       </Step>
     </ol>
   );
