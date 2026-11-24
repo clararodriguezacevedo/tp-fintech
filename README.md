@@ -22,8 +22,7 @@ mercado argentino (acciones, CEDEARs, bonos).
 
 ## Funcionalidades
 
-- **Track record**: se guarda cada recomendación con la versión del modelo que la hizo, y se compara
-  contra la mediana de su clase. Acierto por señal.
+- **Track record**: se guarda cada recomendación y se compara contra la mediana de su clase. Acierto por señal.
 - **SL/TP según volatilidad**: distancia en base al ATR de cada ticker, y tamaño de la
   posición para que un stop-out pierda un % fijo del portfolio.
 - **CEDEAR, acción o dólar**: para cada CEDEAR se separa cuánto del movimiento es la acción y
@@ -186,7 +185,7 @@ cd backend && uv run pyright
 La página `/como-decide` explica todo esto con un ejemplo real del día, y `GET /model` devuelve las
 constantes y los prompts vigentes.
 
-### El modelo (versión 2)
+### El modelo
 
 **Gemini lee, no decide** (`backend/app/analysis/tagger.py`). Hay dos prompts, uno por tipo:
 
@@ -238,7 +237,7 @@ mucho 2% más), y no más del 10% del volumen diario promedio. La confianza del 
 
 Las recomendaciones salen a las 10:15 y se miden de **apertura a cierre** de ese día, contra la
 **mediana de su clase**. Comprar acierta si le gana, vender si pierde contra ella. Mantener no es una
-apuesta. Cada fila guarda `model_version`, para no mezclar modelos.
+apuesta.
 
 - `GET /track-record/simulation`: cuánto valdría la cartera siguiendo el plan de cada día: una cartera
   propia que se arrastra de un día a otro desde la real del primer día (el mismo código que "Tu plan
@@ -253,24 +252,6 @@ apuesta. Cada fila guarda `model_version`, para no mezclar modelos.
   (la página le resta el costo real de comprar y vender en IOL), y cuántas de 300 veces repartir los
   puntajes al azar da lo mismo o más. Antes de 20 ruedas la página avisa que no alcanza para concluir.
 - `GET /track-record/signals`: cuántas veces acertó cada señal por separado.
-
-### Pasar al modelo 2
-
-En este orden. La migración funciona con el código anterior, así que no hay corte:
-
-```bash
-cd backend && uv run python scripts/migrate.py
-```
-
-Después, desplegar y correr:
-
-```bash
-cd backend && uv run python -m scripts.start_model_v2
-```
-
-Vuelve a pedir a IOL las velas guardadas antes de que su día cerrara, marca para etiquetar de nuevo lo
-de los últimos 5 días (las etiquetas viejas quedan, como del primer modelo) y vuelve a calificar todo
-contra la mediana de su clase.
 
 ### Universo de activos
 

@@ -97,30 +97,29 @@ const share = (x: number) => `${Math.round(x * 100)}%`;
 const signedPct = (x: number | null | undefined) =>
   x == null ? "-" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x * 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 
-type TestRow = { label: string; value: (t: SignalTest) => string; info: string };
+type TestRow = { label: string; value: string; info: string };
 
-/** `cost`: the account's cost of one operation, as a share of the amount. Each signal on its own is
- * only measured for the current model (`version`). */
-function testRows(cost: number | null, signals: SignalStats[], version: number): TestRow[] {
-  const roundTrip = cost == null ? null : cost * 2;
-  const signal = (key: SignalStats["signal"]) => (t: SignalTest) => {
+/** The current model's tests. `cost`: the account's cost of one operation, as a share of the amount. */
+function testRows(t: SignalTest, signals: SignalStats[]): TestRow[] {
+  const roundTrip = t.cost == null ? null : t.cost * 2;
+  const signal = (key: SignalStats["signal"]) => {
     const s = signals.find((x) => x.signal === key && x.n > 0);
-    return t.model_version === version && s ? `${s.hits} de ${s.n} (${share(s.rate ?? 0)})` : "-";
+    return s ? `${s.hits} de ${s.n} (${share(s.rate ?? 0)})` : "-";
   };
   return [
     {
       label: "Puntaje alto contra puntaje bajo",
-      value: (t) => signedPct(t.spread_bp == null ? null : t.spread_bp / 1e4),
+      value: signedPct(t.spread_bp == null ? null : t.spread_bp / 1e4),
       info: "Lo que rindió en el día el 20% de mejor puntaje de cada clase, menos el 20% de peor puntaje. Positivo: el puntaje ordena bien.",
     },
     {
       label: "Comprar los de puntaje alto, con costos",
-      value: (t) => signedPct(t.top_bp == null || roundTrip == null ? null : t.top_bp / 1e4 - roundTrip),
+      value: signedPct(t.top_bp == null || roundTrip == null ? null : t.top_bp / 1e4 - roundTrip),
       info: `El 20% de mejor puntaje contra la mediana de su clase, menos el costo de comprar y vender en IOL${roundTrip == null ? "" : ` (${signedPct(roundTrip).slice(1)})`}.`,
     },
     {
       label: "¿Podría ser suerte?",
-      value: (t) => (t.placebo ? share(t.placebo.share_at_least_real) : "-"),
+      value: t.placebo ? share(t.placebo.share_at_least_real) : "-",
       info: "Cuántas de 300 veces repartir los puntajes al azar dio igual o más que la primera fila. Abajo de 5% se suele aceptar que no es suerte.",
     },
     {
@@ -136,29 +135,22 @@ function testRows(cost: number | null, signals: SignalStats[], version: number):
   ];
 }
 
-/** Every model's tests side by side; each row explains itself on its "?". */
-function TestTable({ tests, signals, version }: { tests: SignalTest[]; signals: SignalStats[]; version: number }) {
+/** Each row explains itself on its "?". */
+function TestTable({ test, signals }: { test: SignalTest; signals: SignalStats[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[520px] text-left">
+      <table className="w-full min-w-[420px] max-w-3xl text-left">
         <thead className="text-text-2">
-          <tr className="border-b border-border align-bottom">
+          <tr className="border-b border-border">
             <th className="py-3 pr-4 font-normal">Prueba</th>
-            {tests.map((t) => (
-              <th key={t.model_version} className="whitespace-nowrap py-3 pl-6 text-right font-normal">
-                <span className="block text-text">Modelo {t.model_version}</span>
-                <span className="num block text-sm">{t.sessions} {t.sessions === 1 ? "rueda" : "ruedas"}</span>
-              </th>
-            ))}
+            <th className="num whitespace-nowrap py-3 pl-6 text-right font-normal">{test.sessions} {test.sessions === 1 ? "rueda" : "ruedas"}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-grid">
-          {testRows(tests[0]?.cost ?? null, signals, version).map((r) => (
+          {testRows(test, signals).map((r) => (
             <tr key={r.label}>
               <td className="py-3 pr-4"><Term info={r.info}>{r.label}</Term></td>
-              {tests.map((t) => (
-                <td key={t.model_version} className="num whitespace-nowrap py-3 pl-6 text-right">{r.value(t)}</td>
-              ))}
+              <td className="num whitespace-nowrap py-3 pl-6 text-right">{r.value}</td>
             </tr>
           ))}
         </tbody>
@@ -183,8 +175,8 @@ export default async function HowItDecides() {
   const example = [...current].sort((a, b) =>
     Number(b.action !== "keep") - Number(a.action !== "keep") || Math.abs(b.score) - Math.abs(a.score),
   )[0];
-  const tests = evaluation.ok ? evaluation.data : [];
-  const few = tests.some((t) => !t.enough);
+  const test = evaluation.ok ? evaluation.data.find((t) => t.model_version === m.version) : undefined;
+  const few = !test?.enough;
 
   return (
     <div className="space-y-14">
@@ -217,14 +209,10 @@ export default async function HowItDecides() {
         <p className="mb-6 max-w-3xl text-text-2">
           Cada día se ordenan los activos de cada clase por puntaje y se mide cuánto rindió cada uno de la apertura al cierre.{few && " Con menos de 20 ruedas todavía no alcanza para concluir."}
         </p>
-        {tests.length > 0 && <TestTable tests={tests} signals={signals.ok ? signals.data : []} version={m.version} />}
+        {test && <TestTable test={test} signals={signals.ok ? signals.data : []} />}
         <ul className="mt-6">
-          <Fold title="Por qué se cambió el modelo anterior">
-            <p>En 8 ruedas no se distinguía del azar: repartir los puntajes al azar daba lo mismo en 26% a 32% de los casos.</p>
-            <p>Solo 25% de sus etiquetas nombraban al activo, muchas eran apuestas sobre el propio precio, y 58% de las noticias llegaba después del cierre sin que la recomendación medida las viera.</p>
-          </Fold>
           <Fold title="Lo que todavía no sabemos">
-            <p>Si este modelo gana más que el anterior: pocas ruedas no alcanzan para decirlo.</p>
+            <p>Si el puntaje sirve para ganar plata: pocas ruedas no alcanzan para decirlo.</p>
             <p>Si los números elegidos a mano son los mejores: el {pctOf(m.top_share)} del ranking, los umbrales, el peso de los factores y el {num(m.novelty_similarity)} de similitud para detectar repetidos.</p>
             <p>Si sirve con noticias gratuitas y activos argentinos: los papers usan acciones de EE.UU. con datos pagos, y ahí el resultado se fue achicando.</p>
           </Fold>
